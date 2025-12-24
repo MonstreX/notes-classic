@@ -11,6 +11,7 @@ The project follows a decoupled architecture where the frontend (React) communic
 - **Backend**: Rust (Tauri).
 - **Database**: SQLite (managed via `sqlx`).
 - **Editor**: TipTap (WYSIWYG) with custom extensions.
+- **Drag-and-Drop**: `@dnd-kit/core` for robust cross-platform interactions.
 - **Icons**: Lucide React.
 
 ---
@@ -22,14 +23,16 @@ notes-classic/
 ├── docs/                  # Project documentation
 ├── src/                   # Frontend source code (React + TypeScript)
 │   ├── assets/          # Static assets
-│   ├── components/      # React components (Editor, etc.)
-│   ├── App.tsx          # Main application layout and logic
+│   ├── components/      # React components
+│   │   ├── Editor.tsx   # TipTap Editor wrapper
+│   │   └── Toolbar.tsx  # Rich-text editor controls
+│   ├── App.tsx          # Main application logic, DND context, and Layout
 │   ├── main.tsx         # Application entry point
 │   └── index.css        # Global styles and Tailwind directives
 ├── src-tauri/             # Backend source code (Rust)
-│   ├── icons/           # Application icons for different platforms
+│   ├── icons/           # Application icons
 │   ├── src/
-│   │   ├── db.rs       # SQLite database initialization and Repository Pattern
+│   │   ├── db.rs       # SQLite schema, migrations, and Repository Pattern
 │   │   └── main.rs     # Tauri command handlers and app lifecycle
 │   ├── build.rs         # Tauri build script
 │   └── Cargo.toml       # Rust dependencies
@@ -42,34 +45,30 @@ notes-classic/
 
 ## Features Implemented
 
-### 1. Three-Panel Interface
-- **Sidebar**: Dark-themed (#1A1A1A) navigation with a distinct "New Note" button (#00A82D).
-- **Note List**: Searchable list of notes with real-time filtering and selection.
-- **Note View**: Clean, white-background editor area with a prominent title field.
+### 1. Three-Panel Resizable Interface
+- **Sidebar**: Dark-themed (#1A1A1A). Now includes **resizable width**.
+- **Note List**: Searchable list with **resizable width**.
+- **Note View**: Fixed-size typography for consistent reading experience.
 
-### 2. Rich Text Editor (TipTap)
-- Full WYSIWYG support.
-- **Code Highlighting**: Integrated `CodeBlockLowlight` using `highlight.js` (GitHub Dark theme).
-- **Tables**: Support for creating and managing tables within notes.
-- **Task Lists**: Interactive checklists with checkboxes.
-- **Placeholder**: Contextual "Start writing..." prompt.
-- **Typography**: Optimized for readability using `@tailwindcss/typography`.
+### 2. Nested Notebooks (Categories)
+- Support for hierarchical notebook structures (sub-folders).
+- Recursive rendering in the sidebar.
+- Create sub-notebooks directly from the parent item.
 
-### 3. Local Persistence (SQLite)
-- All data is stored in a local SQLite database named `notes_classic.db`.
-- **Location**: Database is stored in the user's local AppData directory (`%APPDATA%/com.notes-classic.app`).
-- **Schema**:
-  - `id`: Primary key (Integer).
-  - `title`: Note title (Text).
-  - `content`: Note HTML content (Text).
-  - `created_at` / `updated_at`: Unix timestamps (Integer).
-  - `sync_status`: Reserved for future cloud sync (0 - local, 1 - synced).
-  - `remote_id`: Reserved for future cloud sync.
+### 3. Advanced Note Management
+- **Drag-and-Drop**: Notes can be dragged from the list and dropped onto notebooks in the sidebar using `dnd-kit`.
+- **Custom Context Menu**: Right-click any note to move it to a specific notebook via a dedicated menu.
+- **Native Dialogs**: All deletions require confirmation via native Tauri system dialogs (`ask`).
 
-### 4. Application Logic
-- **Autosave**: Notes are automatically saved to the database 1 second after the last change.
-- **CRUD**: Full support for Creating, Reading, Updating, and Deleting notes.
-- **Repository Pattern**: Rust backend uses a trait-based repository pattern, making it easy to swap SQLite for other storage or add Cloud sync services in the future.
+### 4. Rich Text Editor (TipTap)
+- **Toolbar**: Full control over Bold, Italic, Strikethrough, Headings, Lists, Task Lists, Code Blocks, and Tables.
+- **Code Highlighting**: Integrated `CodeBlockLowlight` with GitHub Dark theme.
+- **Fixed Typography**: Fonts no longer scale with window size, ensuring a stable layout.
+
+### 5. Persistence and Logic
+- **SQLite**: Automatic database initialization and schema migrations.
+- **Autosave**: Changes are committed to the local DB 1 second after typing stops.
+- **Repository Pattern**: Abstracted data layer in Rust for future-proofing.
 
 ---
 
@@ -88,12 +87,10 @@ npm run tauri dev
 ```bash
 npm run tauri build
 ```
-The output `.exe` and installers will be located in `src-tauri/target/release/bundle/`.
 
 ---
 
-## Future Roadmap (Planned)
-- [ ] **Attachments**: Store images and files in a local `attachments/` folder.
-- [ ] **Cloud Sync**: Integrate with a remote API using the existing `sync_status` fields.
-- [ ] **Code Block Language Selector**: UI dropdown to manually select highlighting language.
-- [ ] **Tags**: Categorize notes using tags.
+## Future Roadmap
+- [ ] **Attachments**: Implementation of the `attachments/` folder for local file storage.
+- [ ] **Cloud Sync**: Integration with remote sync services.
+- [ ] **Tags**: Global tagging system for cross-notebook organization.
