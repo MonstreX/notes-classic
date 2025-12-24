@@ -1,4 +1,4 @@
-import { useEditor, EditorContent } from '@tiptap/react';
+import { useEditor, EditorContent, Editor as TipTapEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import Table from '@tiptap/extension-table';
@@ -10,15 +10,17 @@ import TaskItem from '@tiptap/extension-task-item';
 import Placeholder from '@tiptap/extension-placeholder';
 import { common, createLowlight } from 'lowlight';
 import React, { useEffect } from 'react';
+import Toolbar from './Toolbar';
 
 const lowlight = createLowlight(common);
 
 interface EditorProps {
   content: string;
   onChange: (content: string) => void;
+  onInit?: (editor: TipTapEditor) => void;
 }
 
-const Editor: React.FC<EditorProps> = ({ content, onChange }) => {
+const Editor: React.FC<EditorProps> = ({ content, onChange, onInit }) => {
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -45,9 +47,13 @@ const Editor: React.FC<EditorProps> = ({ content, onChange }) => {
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML());
     },
+    onCreate: ({ editor }) => {
+      if (onInit) onInit(editor);
+    },
     editorProps: {
       attributes: {
-        class: 'prose prose-sm sm:prose lg:prose-lg xl:prose-2xl focus:outline-none min-h-[500px] max-w-none',
+        // Убрал prose-sm sm:prose и т.д. Оставил только базовый prose для структуры.
+        class: 'prose focus:outline-none min-h-[500px] max-w-none px-10 py-8',
       },
     },
   });
@@ -63,8 +69,11 @@ const Editor: React.FC<EditorProps> = ({ content, onChange }) => {
   }
 
   return (
-    <div className="w-full h-full bg-white overflow-y-auto pt-2">
-      <EditorContent editor={editor} />
+    <div className="flex flex-col h-full bg-white">
+      <Toolbar editor={editor} />
+      <div className="flex-1 overflow-y-auto">
+        <EditorContent editor={editor} />
+      </div>
     </div>
   );
 };

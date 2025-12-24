@@ -11,65 +11,34 @@
   }
 }
 
-/* TipTap Editor Styles */
+/* Фиксированные размеры текста в редакторе */
 .ProseMirror {
   outline: none;
   min-height: 500px;
+  font-size: 16px !important; /* Фикс размера */
+  line-height: 1.6;
+  color: #333;
 }
 
-.ProseMirror p.is-editor-empty:first-child::before {
-  content: attr(data-placeholder);
-  float: left;
-  color: #adb5bd;
-  pointer-events: none;
-  height: 0;
+.ProseMirror h1 { font-size: 2em !important; font-weight: bold; margin-bottom: 0.5em; }
+.ProseMirror h2 { font-size: 1.5em !important; font-weight: bold; margin-bottom: 0.5em; }
+.ProseMirror p { margin-bottom: 1em; }
+
+/* Кастомный ресайзер */
+.resize-handle {
+  width: 4px;
+  cursor: col-resize;
+  background-color: transparent;
+  transition: background-color 0.2s;
+}
+.resize-handle:hover, .resize-handle.active {
+  background-color: #00A82D;
 }
 
-/* Code blocks styling */
-.ProseMirror pre {
-  background: #282c34;
-  color: #abb2bf;
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  padding: 0.75rem 1rem;
-  border-radius: 0.5rem;
+/* Тулбар */
+.editor-toolbar button {
+  @apply p-1.5 rounded hover:bg-gray-100 text-gray-600 transition-colors;
 }
-
-.ProseMirror code {
-  color: inherit;
-  padding: 0;
-  background: none;
-  font-size: 0.8rem;
-}
-
-/* Table styling */
-.ProseMirror table {
-  border-collapse: collapse;
-  table-layout: fixed;
-  width: 100%;
-  margin: 0;
-  overflow: hidden;
-}
-
-.ProseMirror td, .ProseMirror th {
-  min-width: 1em;
-  border: 1px solid #ced4da;
-  padding: 3px 5px;
-  vertical-align: top;
-  box-sizing: border-box;
-  position: relative;
-}
-
-/* Task list styling */
-.ProseMirror ul[data-type="taskList"] {
-  list-style: none;
-  padding: 0;
-}
-
-.ProseMirror ul[data-type="taskList"] li {
-  display: flex;
-  align-items: center;
-}
-
-.ProseMirror ul[data-type="taskList"] input[type="checkbox"] {
-  margin-right: 10px;
+.editor-toolbar button.is-active {
+  @apply bg-gray-200 text-black;
 }
