@@ -4,7 +4,7 @@ import { ask } from "@tauri-apps/api/dialog";
 import { Plus, Trash2, Search, FileText, Book, FolderPlus, ChevronRight } from "lucide-react";
 import { DndContext, DragOverlay, PointerSensor, useDraggable, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { Menu, Item, Submenu, useContextMenu } from "react-contexify";
+import { Menu, Item, Submenu, Separator, useContextMenu } from "react-contexify";
 import Editor from "./components/Editor";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -439,8 +439,16 @@ function App() {
         )}
       </div>
       <Menu id={NOTE_CONTEXT_MENU_ID}>
-        <Item onClick={({ props }) => { if (props?.noteId) moveNoteToNotebook(props.noteId, null); }}>All Notes</Item>
-        {notebooks.filter(nb => !nb.parentId).map(nb => renderNotebookMenuNode(nb))}
+        <Item onClick={({ props }) => { if (props?.noteId) deleteNote(props.noteId); }}>
+          Delete Note
+        </Item>
+        <Separator />
+        <Submenu label="Move To">
+          <Item onClick={({ props }) => { if (props?.noteId) moveNoteToNotebook(props.noteId, null); }}>
+            All Notes
+          </Item>
+          {notebooks.filter(nb => !nb.parentId).map(nb => renderNotebookMenuNode(nb))}
+        </Submenu>
       </Menu>
       <DragOverlay>
         {activeDragNoteId
