@@ -12,15 +12,21 @@ async fn get_notebooks(state: State<'_, DbState>) -> Result<Vec<Notebook>, Strin
 }
 
 #[tauri::command]
-async fn create_notebook(name: String, state: State<'_, DbState>) -> Result<i64, String> {
+async fn create_notebook(name: String, parent_id: Option<i64>, state: State<'_, DbState>) -> Result<i64, String> {
     let repo = SqliteRepository { pool: state.pool.clone() };
-    repo.create_notebook(&name).await.map_err(|e| e.to_string())
+    repo.create_notebook(&name, parent_id).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn delete_notebook(id: i64, state: State<'_, DbState>) -> Result<(), String> {
     let repo = SqliteRepository { pool: state.pool.clone() };
     repo.delete_notebook(id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn move_note(note_id: i64, notebook_id: Option<i64>, state: State<'_, DbState>) -> Result<(), String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    repo.update_note_notebook(note_id, notebook_id).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -64,6 +70,7 @@ fn main() {
             get_notebooks,
             create_notebook,
             delete_notebook,
+            move_note,
             get_notes,
             upsert_note,
             delete_note

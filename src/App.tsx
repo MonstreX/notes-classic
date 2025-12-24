@@ -1,6 +1,19 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/tauri";
-import { Plus, Trash2, Search, FileText, ChevronDown, Settings, Book, FolderPlus, MoreVertical } from "lucide-react";
+import { ask } from "@tauri-apps/api/dialog";
+import { Plus, Trash2, Search, FileText, Book, FolderPlus, ChevronRight } from "lucide-react";
+import { 
+  DndContext, 
+  DragOverlay, 
+  useDraggable, 
+  useDroppable,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragStartEvent,
+  DragEndEvent
+} from '@dnd-kit/core';
+import { restrictToWindowEdges } from '@dnd-kit/modifiers';
 import Editor from "./components/Editor";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -12,6 +25,7 @@ function cn(...inputs: ClassValue[]) {
 interface Notebook {
   id: number;
   name: string;
+  parent_id: number | null;
 }
 
 interface Note {
@@ -22,6 +36,88 @@ interface Note {
   notebook_id: number | null;
 }
 
+// --- DRAGGABLE COMPONENT ---
+function DraggableNote({ note, isSelected, onClick, onDelete, onContextMenu }: { 
+  note: Note, isSelected: boolean, onClick: () => void, onDelete: (e: any, id: number) => void, onContextMenu: (e: any, id: number) => void 
+}) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `note-${note.id}`,
+    data: { noteId: note.id }
+  });
+
+  const style = transform ? {
+    transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+  } : undefined;
+
+  return (
+    <div 
+      ref={setNodeRef}
+      style={style}
+      {...listeners}
+      {...attributes}
+      onClick={onClick}
+      onContextMenu={(e) => onContextMenu(e, note.id)}
+      className={cn(
+        "px-6 py-5 border-b border-gray-100 cursor-pointer group hover:bg-[#F8F8F8] relative bg-white",
+        isSelected && "ring-1 ring-[#00A82D] z-10",
+        isDragging && "opacity-50 z-50 shadow-2xl"
+      )}
+    >
+      <div className="flex justify-between items-start mb-1 pointer-events-none">
+        <h3 className={cn("font-semibold text-sm truncate pr-4 text-[#222]", isSelected && "text-[#00A82D]")}>
+          {note.title || "Untitled"}
+        </h3>
+        <button 
+          onMouseDown={(e) => e.stopPropagation()} 
+          onClick={(e) => onDelete(e, note.id)}
+          className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 pointer-events-auto"
+        >
+          <Trash2 size={14} />
+        </button>
+      </div>
+      <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed mb-2 pointer-events-none">
+        {note.content.replace(/<[^>]*>/g, '') || "No text"}
+      </p>
+      <div className="text-[10px] text-gray-400 uppercase font-medium pointer-events-none">
+        {new Date(note.updated_at * 1000).toLocaleDateString()}
+      </div>
+    </div>
+  );
+}
+
+// --- DROPPABLE COMPONENT ---
+function NotebookItem({ notebook, isSelected, level, onSelect, onAddSub, onDelete, children, isOverGlobal }: any) {
+  const { isOver, setNodeRef } = useDroppable({
+    id: `nb-${notebook.id}`,
+    data: { notebookId: notebook.id }
+  });
+
+  return (
+    <div ref={setNodeRef} className="w-full">
+      <div 
+        onClick={() => onSelect(notebook.id)}
+        className={cn(
+          "flex items-center justify-between text-gray-400 p-2 rounded cursor-pointer group transition-all mx-1",
+          isSelected && "bg-[#2A2A2A] text-white",
+          isOver && "bg-[#00A82D] text-white ring-2 ring-white/20 scale-[1.02]"
+        )}
+        style={{ paddingLeft: `${level * 16 + 8}px` }}
+      >
+        <div className="flex items-center gap-2 overflow-hidden">
+          {children}
+          <Book size={18} className={isSelected ? "text-[#00A82D]" : ""} />
+          <span className="text-sm truncate font-medium">{notebook.name}</span>
+        </div>
+        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <Plus size={14} className="hover:text-white" onClick={(e) => onAddSub(e, notebook.id)} />
+          <Trash2 size={14} className="hover:text-red-500" onClick={(e) => onDelete(e, notebook.id)} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- MAIN APP ---
 function App() {
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
@@ -30,14 +126,18 @@ function App() {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [expandedNotebooks, setExpandedNotebooks] = useState<Set<number>>(new Set());
+  
+  // Custom Context Menu State
+  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, noteId: number } | null>(null);
 
-  // Resize states
+  // Resize
   const [sidebarWidth, setSidebarWidth] = useState(240);
   const [listWidth, setListWidth] = useState(350);
   const isResizingSidebar = useRef(false);
   const isResizingList = useRef(false);
 
-  const selectedNote = notes.find((n) => n.id === selectedNoteId);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const fetchData = useCallback(async () => {
     try {
@@ -45,261 +145,171 @@ function App() {
       setNotebooks(nbs);
       const allNotes = await invoke<Note[]>("get_notes", { notebookId: selectedNotebookId });
       setNotes(allNotes);
-    } catch (err) {
-      console.error("Failed to fetch data:", err);
-    }
+    } catch (err) { console.error(err); }
   }, [selectedNotebookId]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   useEffect(() => {
-    if (selectedNote) {
-      setTitle(selectedNote.title);
-      setContent(selectedNote.content);
-    }
+    const note = notes.find(n => n.id === selectedNoteId);
+    if (note) { setTitle(note.title); setContent(note.content); }
   }, [selectedNoteId]);
 
-  // Resize Logic
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      if (isResizingSidebar.current) {
-        setSidebarWidth(Math.max(150, Math.min(400, e.clientX)));
-      } else if (isResizingList.current) {
-        const newWidth = e.clientX - sidebarWidth;
-        setListWidth(Math.max(200, Math.min(600, newWidth)));
-      }
+      if (isResizingSidebar.current) setSidebarWidth(Math.max(150, Math.min(450, e.clientX)));
+      else if (isResizingList.current) setListWidth(Math.max(200, Math.min(600, e.clientX - sidebarWidth)));
     };
-    const handleMouseUp = () => {
-      isResizingSidebar.current = false;
-      isResizingList.current = false;
-      document.body.classList.remove("select-none");
-    };
+    const handleMouseUp = () => { isResizingSidebar.current = false; isResizingList.current = false; };
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
+    return () => { window.removeEventListener("mousemove", handleMouseMove); window.removeEventListener("mouseup", handleMouseUp); };
   }, [sidebarWidth]);
 
-  // Auto-save
   useEffect(() => {
     if (selectedNoteId === null) return;
     const timeout = setTimeout(async () => {
       const currentNote = notes.find(n => n.id === selectedNoteId);
       if (currentNote && (title !== currentNote.title || content !== currentNote.content)) {
-        try {
-          await invoke("upsert_note", {
-            id: selectedNoteId,
-            title,
-            content,
-            notebookId: selectedNotebookId
-          });
-          setNotes(prev => prev.map(n => n.id === selectedNoteId ? { ...n, title, content, updated_at: Date.now()/1000 } : n));
-        } catch (err) {
-          console.error("Failed to auto-save:", err);
-        }
+        await invoke("upsert_note", { id: selectedNoteId, title, content, notebookId: currentNote.notebook_id });
+        setNotes(prev => prev.map(n => n.id === selectedNoteId ? { ...n, title, content, updated_at: Date.now()/1000 } : n));
       }
     }, 1000);
     return () => clearTimeout(timeout);
   }, [title, content, selectedNoteId]);
 
-  const createNote = async () => {
-    try {
-      const id = await invoke<number>("upsert_note", {
-        id: null,
-        title: "Untitled Note",
-        content: "",
-        notebookId: selectedNotebookId
-      });
-      await fetchData();
-      setSelectedNoteId(id);
-    } catch (err) {
-      console.error("Failed to create note:", err);
+  const onDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.data.current) {
+      const noteId = active.data.current.noteId;
+      const notebookId = over.id === 'all-notes' ? null : (over.data.current as any).notebookId;
+      await invoke("move_note", { noteId, notebookId });
+      fetchData();
     }
   };
 
-  const deleteNote = async (id: number) => {
-    if (!window.confirm("Are you sure you want to delete this note?")) return;
-    try {
+  const handleContextMenu = (e: React.MouseEvent, noteId: number) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, noteId });
+  };
+
+  const moveNote = async (noteId: number, notebookId: number | null) => {
+    await invoke("move_note", { noteId, notebookId });
+    setContextMenu(null);
+    fetchData();
+  };
+
+  const deleteNote = async (e: any, id: number) => {
+    e.stopPropagation();
+    if (await ask("Delete note permanently?", { title: "Confirm", type: "warning" })) {
       await invoke("delete_note", { id });
       if (selectedNoteId === id) setSelectedNoteId(null);
       fetchData();
-    } catch (err) {
-      console.error("Failed to delete note:", err);
     }
   };
 
-  const createNotebook = async () => {
-    const name = window.prompt("Enter notebook name:");
-    if (!name) return;
-    try {
-      await invoke("create_notebook", { name });
-      fetchData();
-    } catch (err) {
-      console.error("Failed to create notebook:", err);
-    }
-  };
-
-  const deleteNotebook = async (id: number) => {
-    if (!window.confirm("Delete notebook? Notes will be moved to 'All Notes'.")) return;
-    try {
+  const deleteNotebook = async (e: any, id: number) => {
+    e.stopPropagation();
+    if (await ask("Delete notebook?", { title: "Confirm", type: "warning" })) {
       await invoke("delete_notebook", { id });
       if (selectedNotebookId === id) setSelectedNotebookId(null);
       fetchData();
-    } catch (err) {
-      console.error("Failed to delete notebook:", err);
     }
   };
 
-  const filteredNotes = notes.filter(n => 
-    n.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    n.content.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const renderNotebookRecursive = (nb: Notebook, level: number = 0) => {
+    const children = notebooks.filter(c => c.parent_id === nb.id);
+    const isExpanded = expandedNotebooks.has(nb.id);
+    return (
+      <div key={nb.id}>
+        <NotebookItem 
+          notebook={nb} 
+          isSelected={selectedNotebookId === nb.id} 
+          level={level}
+          onSelect={setSelectedNotebookId}
+          onAddSub={(e: any, pid: number) => { e.stopPropagation(); const name = window.prompt("Name:"); if(name) invoke("create_notebook", {name, parentId: pid}).then(() => fetchData()); }}
+          onDelete={deleteNotebook}
+        >
+          <div onClick={(e) => { e.stopPropagation(); setExpandedNotebooks(prev => { const n = new Set(prev); n.has(nb.id) ? n.delete(nb.id) : n.add(nb.id); return n; }); }}>
+            {children.length > 0 ? <ChevronRight size={14} className={cn("transition-transform", isExpanded && "rotate-90")} /> : <div className="w-[14px]" />}
+          </div>
+        </NotebookItem>
+        {isExpanded && children.map(c => renderNotebookRecursive(c, level + 1))}
+      </div>
+    );
+  };
+
+  const { setNodeRef: setAllNotesRef, isOver: isOverAll } = useDroppable({ id: 'all-notes' });
 
   return (
-    <div className="flex h-screen w-full bg-white text-[#333] font-sans overflow-hidden select-none">
-      {/* Sidebar */}
-      <div style={{ width: sidebarWidth }} className="bg-[#1A1A1A] flex flex-col shrink-0 relative">
-        <div className="p-4 flex flex-col h-full">
-          <div className="flex items-center gap-2 text-white mb-6 px-2">
-            <div className="w-8 h-8 bg-[#00A82D] rounded-full flex items-center justify-center font-bold text-xs">M</div>
-            <span className="font-semibold text-sm truncate">Monstre's Notes</span>
-          </div>
-
-          <button 
-            onClick={createNote}
-            className="w-fit bg-[#00A82D] hover:bg-[#008f26] text-white flex items-center gap-2 py-2 px-6 rounded-full transition-colors text-sm font-medium mb-8 ml-2 shadow-lg shrink-0"
-          >
-            <Plus size={20} strokeWidth={3} />
-            <span className="whitespace-nowrap">New Note</span>
-          </button>
-
-          <nav className="flex-1 overflow-y-auto space-y-1 custom-scrollbar">
-            <div 
-              onClick={() => setSelectedNotebookId(null)}
-              className={cn(
-                "flex items-center gap-3 text-gray-400 p-2 rounded cursor-pointer transition-colors",
-                selectedNotebookId === null && "bg-[#2A2A2A] text-white"
-              )}
-            >
-              <FileText size={18} className={selectedNotebookId === null ? "text-[#00A82D]" : ""} />
-              <span className="text-sm">All Notes</span>
+    <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+      <div className="flex h-screen w-full bg-white text-[#333] font-sans overflow-hidden select-none" onClick={() => setContextMenu(null)}>
+        {/* Sidebar */}
+        <div style={{ width: sidebarWidth }} className="bg-[#1A1A1A] flex flex-col shrink-0 relative">
+          <div className="p-4 flex flex-col h-full">
+            <div className="flex items-center gap-2 text-white mb-6 px-2">
+              <div className="w-8 h-8 bg-[#00A82D] rounded-full flex items-center justify-center font-bold text-xs">M</div>
+              <span className="font-semibold text-sm truncate uppercase tracking-widest">Notes Classic</span>
             </div>
-
-            <div className="pt-4 pb-2 px-2 flex justify-between items-center text-gray-500 uppercase text-[10px] font-bold tracking-widest">
-              <span>Notebooks</span>
-              <FolderPlus size={14} className="cursor-pointer hover:text-white" onClick={createNotebook} />
-            </div>
-
-            {notebooks.map(nb => (
-              <div 
-                key={nb.id}
-                onClick={() => setSelectedNotebookId(nb.id)}
-                className={cn(
-                  "flex items-center justify-between text-gray-400 p-2 rounded cursor-pointer group transition-colors",
-                  selectedNotebookId === nb.id && "bg-[#2A2A2A] text-white"
-                )}
-              >
-                <div className="flex items-center gap-3 overflow-hidden">
-                  <Book size={18} className={selectedNotebookId === nb.id ? "text-[#00A82D]" : ""} />
-                  <span className="text-sm truncate">{nb.name}</span>
-                </div>
-                <Trash2 
-                  size={12} 
-                  className="opacity-0 group-hover:opacity-100 hover:text-red-500" 
-                  onClick={(e) => { e.stopPropagation(); deleteNotebook(nb.id); }}
-                />
+            <button onClick={async () => { const id = await invoke<number>("upsert_note", { id: null, title: "New Note", content: "", notebookId: selectedNotebookId }); await fetchData(); setSelectedNoteId(id); }} className="w-fit bg-[#00A82D] hover:bg-[#008f26] text-white flex items-center gap-2 py-2 px-6 rounded-full transition-colors text-sm font-medium mb-8 ml-2 shadow-lg shrink-0">
+              <Plus size={20} strokeWidth={3} /><span>New Note</span>
+            </button>
+            <nav className="flex-1 overflow-y-auto space-y-1 custom-scrollbar">
+              <div ref={setAllNotesRef} onClick={() => setSelectedNotebookId(null)} className={cn("flex items-center gap-3 text-gray-400 p-2 rounded cursor-pointer mx-1 transition-all", selectedNotebookId === null && "bg-[#2A2A2A] text-white", isOverAll && "bg-[#00A82D] text-white scale-105")}>
+                <FileText size={18} className={selectedNotebookId === null ? "text-[#00A82D]" : ""} />
+                <span className="text-sm font-medium">All Notes</span>
               </div>
+              <div className="pt-6 pb-2 px-3 flex justify-between items-center text-gray-500 uppercase text-[10px] font-bold tracking-widest">
+                <span>Notebooks</span>
+                <FolderPlus size={16} className="cursor-pointer hover:text-white" onClick={() => { const name = window.prompt("Name:"); if(name) invoke("create_notebook", {name, parentId: null}).then(() => fetchData()); }} />
+              </div>
+              {notebooks.filter(nb => !nb.parent_id).map(nb => renderNotebookRecursive(nb))}
+            </nav>
+          </div>
+          <div onMouseDown={() => { isResizingSidebar.current = true; }} className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-[#00A82D] z-50 transition-colors" />
+        </div>
+
+        {/* Note List */}
+        <div style={{ width: listWidth }} className="border-r border-gray-200 bg-white flex flex-col shrink-0 relative">
+          <div className="px-6 py-4 border-b border-gray-200 bg-[#F8F8F8]">
+            <h2 className="text-xs uppercase tracking-[0.1em] text-gray-500 font-bold mb-4 italic truncate">{selectedNotebookId ? notebooks.find(n => n.id === selectedNotebookId)?.name : "All Notes"}</h2>
+            <div className="relative"><Search className="absolute left-3 top-2 text-gray-400" size={14} /><input type="text" placeholder="Search..." className="w-full bg-white border border-gray-200 rounded py-1.5 pl-9 pr-4 text-sm outline-none" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            {notes.filter(n => n.title.toLowerCase().includes(searchTerm.toLowerCase())).map(note => (
+              <DraggableNote key={note.id} note={note} isSelected={selectedNoteId === note.id} onClick={() => setSelectedNoteId(note.id)} onDelete={deleteNote} onContextMenu={handleContextMenu} />
             ))}
-          </nav>
-        </div>
-        {/* Resize Handle 1 */}
-        <div 
-          onMouseDown={() => { isResizingSidebar.current = true; document.body.classList.add("select-none"); }}
-          className="absolute right-0 top-0 bottom-0 resize-handle active:bg-[#00A82D]"
-        />
-      </div>
-
-      {/* Note List */}
-      <div style={{ width: listWidth }} className="border-r border-gray-200 bg-white flex flex-col shrink-0 relative">
-        <div className="px-6 py-4 border-b border-gray-200 bg-[#F8F8F8]">
-          <h2 className="text-xs uppercase tracking-[0.1em] text-gray-500 font-bold mb-4 italic">
-            {selectedNotebookId ? notebooks.find(n => n.id === selectedNotebookId)?.name : "All Notes"}
-          </h2>
-          <div className="relative">
-            <Search className="absolute left-3 top-2 text-gray-400" size={14} />
-            <input 
-              type="text" 
-              placeholder="Search..."
-              className="w-full bg-white border border-gray-200 rounded py-1.5 pl-9 pr-4 text-sm focus:border-[#00A82D] outline-none transition-colors"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
           </div>
+          <div onMouseDown={() => { isResizingList.current = true; }} className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-[#00A82D] z-50 transition-colors" />
         </div>
-        <div className="flex-1 overflow-y-auto">
-          {filteredNotes.map((note) => (
-            <div 
-              key={note.id}
-              onClick={() => setSelectedNoteId(note.id)}
-              className={cn(
-                "px-6 py-5 border-b border-gray-100 cursor-pointer group hover:bg-[#F8F8F8] transition-colors relative",
-                selectedNoteId === note.id && "bg-white ring-1 ring-[#00A82D] z-10"
-              )}
-            >
-              <div className="flex justify-between items-start mb-1">
-                <h3 className={cn("font-semibold text-sm truncate pr-4 text-[#222]", selectedNoteId === note.id && "text-[#00A82D]")}>
-                  {note.title || "Untitled"}
-                </h3>
-                <Trash2 
-                  size={14} 
-                  className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500" 
-                  onClick={(e) => { e.stopPropagation(); deleteNote(note.id); }}
-                />
-              </div>
-              <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed mb-2">
-                {note.content.replace(/<[^>]*>/g, '') || "No additional text"}
-              </p>
-              <div className="text-[10px] text-gray-400 uppercase font-medium">
-                {new Date(note.updated_at * 1000).toLocaleDateString()}
-              </div>
-            </div>
-          ))}
-        </div>
-        {/* Resize Handle 2 */}
-        <div 
-          onMouseDown={() => { isResizingList.current = true; document.body.classList.add("select-none"); }}
-          className="absolute right-0 top-0 bottom-0 resize-handle active:bg-[#00A82D]"
-        />
-      </div>
 
-      {/* Editor Panel */}
-      <div className="flex-1 flex flex-col bg-white overflow-hidden">
-        {selectedNoteId ? (
-          <div className="flex flex-col h-full">
-            <div className="px-10 py-6 shrink-0 bg-white z-20">
-              <input 
-                className="w-full text-4xl font-light text-[#222] border-none focus:ring-0 outline-none placeholder:text-gray-100"
-                value={title}
-                placeholder="Title"
-                onChange={(e) => setTitle(e.target.value)}
-              />
+        {/* Editor */}
+        <div className="flex-1 flex flex-col bg-white overflow-hidden">
+          {selectedNoteId ? (
+            <div className="flex flex-col h-full">
+              <div className="px-10 py-6 shrink-0 bg-white"><input className="w-full text-4xl font-light text-[#222] border-none focus:ring-0 outline-none" value={title} placeholder="Title" onChange={(e) => setTitle(e.target.value)} /></div>
+              <div className="flex-1 overflow-hidden"><Editor content={content} onChange={setContent} /></div>
             </div>
-            <div className="flex-1 overflow-hidden">
-              <Editor content={content} onChange={setContent} />
+          ) : <div className="flex-1 flex flex-col items-center justify-center text-gray-400"><FileText size={80} strokeWidth={1} className="mb-6 text-gray-100" /><p className="text-lg font-light">Select a note</p></div>}
+        </div>
+
+        {/* Custom Context Menu */}
+        {contextMenu && (
+          <div className="fixed bg-white shadow-2xl border border-gray-200 rounded-lg py-2 z-[9999] min-w-[200px]" style={{ left: contextMenu.x, top: contextMenu.y }} onClick={e => e.stopPropagation()}>
+            <div className="px-4 py-2 text-[10px] uppercase font-bold text-gray-400 border-b border-gray-100 mb-1">Move to Notebook</div>
+            <div className="max-h-[300px] overflow-y-auto">
+              <div onClick={() => moveNote(contextMenu.noteId, null)} className="px-4 py-2 hover:bg-[#00A82D] hover:text-white cursor-pointer text-sm flex items-center gap-2"><FileText size={14}/> None (All Notes)</div>
+              {notebooks.map(nb => (
+                <div key={nb.id} onClick={() => moveNote(contextMenu.noteId, nb.id)} className="px-4 py-2 hover:bg-[#00A82D] hover:text-white cursor-pointer text-sm flex items-center gap-2"><Book size={14}/> {nb.name}</div>
+              ))}
             </div>
-          </div>
-        ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
-            <FileText size={80} strokeWidth={1} className="mb-6 text-gray-100" />
-            <p className="text-lg font-light">Select a note to view or create a new one</p>
+            <div className="border-t border-gray-100 mt-1 pt-1">
+              <div onClick={() => { deleteNote(new MouseEvent('click'), contextMenu.noteId); setContextMenu(null); }} className="px-4 py-2 hover:bg-red-500 hover:text-white cursor-pointer text-sm flex items-center gap-2 text-red-500"><Trash2 size={14}/> Delete Note</div>
+            </div>
           </div>
         )}
       </div>
-    </div>
+    </DndContext>
   );
 }
 
