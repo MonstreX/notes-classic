@@ -66,6 +66,7 @@ fn main() {
             app.manage(DbState { pool });
             Ok(())
         })
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
             get_notebooks,
             create_notebook,

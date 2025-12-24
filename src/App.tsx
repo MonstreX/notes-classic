@@ -13,7 +13,6 @@ import {
   DragStartEvent,
   DragEndEvent
 } from '@dnd-kit/core';
-import { restrictToWindowEdges } from '@dnd-kit/modifiers';
 import Editor from "./components/Editor";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -35,6 +34,8 @@ interface Note {
   updated_at: number;
   notebook_id: number | null;
 }
+
+const STORAGE_KEY = "notes_classic_state_v3";
 
 // --- DRAGGABLE COMPONENT ---
 function DraggableNote({ note, isSelected, onClick, onDelete, onContextMenu }: { 
@@ -86,7 +87,7 @@ function DraggableNote({ note, isSelected, onClick, onDelete, onContextMenu }: {
 }
 
 // --- DROPPABLE COMPONENT ---
-function NotebookItem({ notebook, isSelected, level, onSelect, onAddSub, onDelete, children, isOverGlobal }: any) {
+function NotebookItem({ notebook, isSelected, level, onSelect, onAddSub, onDelete, children }: any) {
   const { isOver, setNodeRef } = useDroppable({
     id: `nb-${notebook.id}`,
     data: { notebookId: notebook.id }
@@ -119,25 +120,51 @@ function NotebookItem({ notebook, isSelected, level, onSelect, onAddSub, onDelet
 
 // --- MAIN APP ---
 function App() {
+  // Safe load from localStorage
+  const [initialState] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      return saved ? JSON.parse(saved) : {
+        sidebarWidth: 240,
+        listWidth: 350,
+        selectedNotebookId: null,
+        selectedNoteId: null,
+        expandedNotebooks: []
+      };
+    } catch (e) {
+      return { sidebarWidth: 240, listWidth: 350, selectedNotebookId: null, selectedNoteId: null, expandedNotebooks: [] };
+    }
+  });
+
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
-  const [selectedNotebookId, setSelectedNotebookId] = useState<number | null>(null);
-  const [selectedNoteId, setSelectedNoteId] = useState<number | null>(null);
+  const [selectedNotebookId, setSelectedNotebookId] = useState<number | null>(initialState.selectedNotebookId);
+  const [selectedNoteId, setSelectedNoteId] = useState<number | null>(initialState.selectedNoteId);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [expandedNotebooks, setExpandedNotebooks] = useState<Set<number>>(new Set());
+  const [expandedNotebooks, setExpandedNotebooks] = useState<Set<number>>(new Set(initialState.expandedNotebooks));
   
-  // Custom Context Menu State
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, noteId: number } | null>(null);
 
-  // Resize
-  const [sidebarWidth, setSidebarWidth] = useState(240);
-  const [listWidth, setListWidth] = useState(350);
+  const [sidebarWidth, setSidebarWidth] = useState(initialState.sidebarWidth);
+  const [listWidth, setListWidth] = useState(initialState.listWidth);
   const isResizingSidebar = useRef(false);
   const isResizingList = useRef(false);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  // Persistence effect
+  useEffect(() => {
+    const stateToSave = {
+      sidebarWidth,
+      listWidth,
+      selectedNotebookId,
+      selectedNoteId,
+      expandedNotebooks: Array.from(expandedNotebooks)
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
+  }, [sidebarWidth, listWidth, selectedNotebookId, selectedNoteId, expandedNotebooks]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -153,7 +180,7 @@ function App() {
   useEffect(() => {
     const note = notes.find(n => n.id === selectedNoteId);
     if (note) { setTitle(note.title); setContent(note.content); }
-  }, [selectedNoteId]);
+  }, [selectedNoteId, notes]);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -287,7 +314,7 @@ function App() {
         <div className="flex-1 flex flex-col bg-white overflow-hidden">
           {selectedNoteId ? (
             <div className="flex flex-col h-full">
-              <div className="px-10 py-6 shrink-0 bg-white"><input className="w-full text-4xl font-light text-[#222] border-none focus:ring-0 outline-none" value={title} placeholder="Title" onChange={(e) => setTitle(e.target.value)} /></div>
+              <div className="px-10 py-6 shrink-0 bg-white shadow-sm z-10"><input className="w-full text-4xl font-light text-[#222] border-none focus:ring-0 outline-none" value={title} placeholder="Title" onChange={(e) => setTitle(e.target.value)} /></div>
               <div className="flex-1 overflow-hidden"><Editor content={content} onChange={setContent} /></div>
             </div>
           ) : <div className="flex-1 flex flex-col items-center justify-center text-gray-400"><FileText size={80} strokeWidth={1} className="mb-6 text-gray-100" /><p className="text-lg font-light">Select a note</p></div>}
@@ -298,13 +325,13 @@ function App() {
           <div className="fixed bg-white shadow-2xl border border-gray-200 rounded-lg py-2 z-[9999] min-w-[200px]" style={{ left: contextMenu.x, top: contextMenu.y }} onClick={e => e.stopPropagation()}>
             <div className="px-4 py-2 text-[10px] uppercase font-bold text-gray-400 border-b border-gray-100 mb-1">Move to Notebook</div>
             <div className="max-h-[300px] overflow-y-auto">
-              <div onClick={() => moveNote(contextMenu.noteId, null)} className="px-4 py-2 hover:bg-[#00A82D] hover:text-white cursor-pointer text-sm flex items-center gap-2"><FileText size={14}/> None (All Notes)</div>
+              <div onClick={() => moveNote(contextMenu.noteId, null)} className="px-4 py-2 hover:bg-[#00A82D] hover:text-white cursor-pointer text-sm flex items-center gap-2 transition-colors"><FileText size={14}/> None (All Notes)</div>
               {notebooks.map(nb => (
-                <div key={nb.id} onClick={() => moveNote(contextMenu.noteId, nb.id)} className="px-4 py-2 hover:bg-[#00A82D] hover:text-white cursor-pointer text-sm flex items-center gap-2"><Book size={14}/> {nb.name}</div>
+                <div key={nb.id} onClick={() => moveNote(contextMenu.noteId, nb.id)} className="px-4 py-2 hover:bg-[#00A82D] hover:text-white cursor-pointer text-sm flex items-center gap-2 transition-colors"><Book size={14}/> {nb.name}</div>
               ))}
             </div>
             <div className="border-t border-gray-100 mt-1 pt-1">
-              <div onClick={() => { deleteNote(new MouseEvent('click'), contextMenu.noteId); setContextMenu(null); }} className="px-4 py-2 hover:bg-red-500 hover:text-white cursor-pointer text-sm flex items-center gap-2 text-red-500"><Trash2 size={14}/> Delete Note</div>
+              <div onClick={() => { deleteNote({ stopPropagation: () => {} }, contextMenu.noteId); setContextMenu(null); }} className="px-4 py-2 hover:bg-red-500 hover:text-white cursor-pointer text-sm flex items-center gap-2 text-red-500 transition-colors"><Trash2 size={14}/> Delete Note</div>
             </div>
           </div>
         )}
