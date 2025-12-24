@@ -227,11 +227,12 @@ function App() {
 
   const handleDragEnd = useCallback(async (event: any) => {
     const noteId = event?.active?.data?.current?.noteId;
-    const notebookId = event?.over?.data?.current?.notebookId ?? null;
+    const overTarget = event?.over?.data?.current;
     setActiveDragNoteId(null);
     expandTimersRef.current.forEach(timer => window.clearTimeout(timer));
     expandTimersRef.current.clear();
-    if (!noteId) return;
+    if (!noteId || !overTarget) return;
+    const notebookId = overTarget.notebookId ?? null;
     const currentNote = notesRef.current.find(n => n.id === noteId);
     if (!currentNote) return;
     if (currentNote.notebookId === notebookId) return;
@@ -283,24 +284,29 @@ function App() {
     );
   };
 
-  const renderNoteCard = (note: Note, isOverlay: boolean) => (
+  const renderNoteCard = (note: Note, isOverlay: boolean, isDragging: boolean) => (
     <div
       className={cn(
         "px-6 py-5 border-b border-gray-100 cursor-pointer relative bg-white",
         !isOverlay && "group hover:bg-[#F8F8F8]",
-        selectedNoteId === note.id && !isOverlay && "ring-1 ring-[#00A82D] z-10"
+        selectedNoteId === note.id && !isOverlay && "ring-1 ring-[#00A82D] z-10",
+        isDragging && "py-3"
       )}
     >
       <div className="flex justify-between items-start mb-1 text-black">
         <h3 className={cn("font-semibold text-sm truncate pr-4", selectedNoteId === note.id && !isOverlay && "text-[#00A82D]")}>{note.title || "Untitled"}</h3>
-        {!isOverlay && (
+        {!isOverlay && !isDragging && (
           <button onMouseDown={e => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); deleteNote(note.id); }} className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-opacity">
             <Trash2 size={14} />
           </button>
         )}
       </div>
-      <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed mb-2">{note.content.replace(/<[^>]*>/g, '') || "No text"}</p>
-      <div className="text-[10px] text-gray-400 uppercase font-medium">{new Date(note.updatedAt * 1000).toLocaleDateString()}</div>
+      {!isDragging && (
+        <>
+          <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed mb-2">{note.content.replace(/<[^>]*>/g, '') || "No text"}</p>
+          <div className="text-[10px] text-gray-400 uppercase font-medium">{new Date(note.updatedAt * 1000).toLocaleDateString()}</div>
+        </>
+      )}
     </div>
   );
 
@@ -330,7 +336,7 @@ function App() {
           isDragging && "opacity-30"
         )}
       >
-        {renderNoteCard(note, false)}
+        {renderNoteCard(note, false, isDragging)}
       </div>
     );
   };
