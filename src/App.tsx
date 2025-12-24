@@ -52,10 +52,16 @@ function NotebookItem({ notebook, isSelected, level, onSelect, onAddSub, onDelet
         style={{ paddingLeft: `${level * 16 + 8}px` }}
       >
         {dragIndicator === "before" && (
-          <div className="absolute left-3 right-3 -top-0.5 h-0.5 bg-[#00A82D]" />
+          <div
+            className="absolute -top-0.5 h-0.5 bg-[#00A82D]"
+            style={{ left: `${level * 16 + 8}px`, right: "8px" }}
+          />
         )}
         {dragIndicator === "after" && (
-          <div className="absolute left-3 right-3 -bottom-0.5 h-0.5 bg-[#00A82D]" />
+          <div
+            className="absolute -bottom-0.5 h-0.5 bg-[#00A82D]"
+            style={{ left: `${level * 16 + 8}px`, right: "8px" }}
+          />
         )}
         {dragIndicator === "inside" && (
           <div className="absolute inset-0 rounded border border-[#00A82D]" />
@@ -272,8 +278,6 @@ function App() {
           else if (activeMid > bottomThreshold) position = "after";
           setDragNotebookOver({ id: overNotebookId, position });
         }
-      } else if (overTarget?.dropType === "notebook-after") {
-        setDragNotebookOver(null);
       } else {
         setDragNotebookOver(null);
       }
@@ -326,17 +330,6 @@ function App() {
         if (isDescendant(targetParentId, notebookId)) return;
         const siblings = getOrderedChildren(null).filter(nb => nb.id !== notebookId);
         const targetIndex = siblings.length;
-        await invoke("move_notebook", { notebookId, parentId: targetParentId, index: targetIndex });
-        fetchData();
-        return;
-      }
-      if (overTarget.dropType === "notebook-after") {
-        const targetParentId = overTarget.parentId ?? null;
-        if (isDescendant(targetParentId, notebookId)) return;
-        const siblings = getOrderedChildren(targetParentId).filter(nb => nb.id !== notebookId);
-        let targetIndex = siblings.findIndex(nb => nb.id === overTarget.notebookId);
-        if (targetIndex < 0) targetIndex = siblings.length;
-        targetIndex += 1;
         await invoke("move_notebook", { notebookId, parentId: targetParentId, index: targetIndex });
         fetchData();
         return;
@@ -412,34 +405,14 @@ function App() {
     );
   };
 
-  const NotebookAfterDropZone = ({ notebookId, parentId, level }: { notebookId: number; parentId: number | null; level: number }) => {
-    const { setNodeRef, isOver } = useDroppable({
-      id: `notebook-after-${notebookId}`,
-      data: { dropType: "notebook-after", notebookId, parentId },
-    });
-    return (
-      <div ref={setNodeRef} className="relative h-2">
-        {isOver && (
-          <div
-            className="absolute left-3 right-3 top-0 h-0.5 bg-[#00A82D]"
-            style={{ marginLeft: `${level * 16}px` }}
-          />
-        )}
-      </div>
-    );
-  };
-
   const NotebookRootDropTarget = ({ children }: { children: React.ReactNode }) => {
-    const { setNodeRef, isOver } = useDroppable({
+    const { setNodeRef } = useDroppable({
       id: "notebook-root",
       data: { dropType: "root", notebookId: null },
     });
     return (
-      <div ref={setNodeRef} className="space-y-1 rounded relative">
+      <div ref={setNodeRef} className="rounded relative">
         {children}
-        {isOver && (
-          <div className="absolute left-3 right-3 -bottom-1 h-0.5 bg-[#00A82D]" />
-        )}
       </div>
     );
   };
@@ -520,7 +493,6 @@ function App() {
           })}
         />
         {isExpanded && children.map(c => renderNotebookRecursive(c, level + 1))}
-        <NotebookAfterDropZone notebookId={nb.id} parentId={nb.parentId} level={level} />
       </div>
     );
   };
