@@ -11,10 +11,11 @@ async fn get_notebooks(state: State<'_, DbState>) -> Result<Vec<Notebook>, Strin
     repo.get_notebooks().await.map_err(|e| e.to_string())
 }
 
+#[allow(non_snake_case)]
 #[tauri::command]
-async fn create_notebook(name: String, parent_id: Option<i64>, state: State<'_, DbState>) -> Result<i64, String> {
+async fn create_notebook(name: String, parentId: Option<i64>, state: State<'_, DbState>) -> Result<i64, String> {
     let repo = SqliteRepository { pool: state.pool.clone() };
-    repo.create_notebook(&name, parent_id).await.map_err(|e| e.to_string())
+    repo.create_notebook(&name, parentId).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -23,28 +24,37 @@ async fn delete_notebook(id: i64, state: State<'_, DbState>) -> Result<(), Strin
     repo.delete_notebook(id).await.map_err(|e| e.to_string())
 }
 
+#[allow(non_snake_case)]
 #[tauri::command]
-async fn move_note(note_id: i64, notebook_id: Option<i64>, state: State<'_, DbState>) -> Result<(), String> {
+async fn move_note(noteId: i64, notebookId: Option<i64>, state: State<'_, DbState>) -> Result<(), String> {
     let repo = SqliteRepository { pool: state.pool.clone() };
-    repo.update_note_notebook(note_id, notebook_id).await.map_err(|e| e.to_string())
+    repo.update_note_notebook(noteId, notebookId)
+        .await
+        .map_err(|e| e.to_string())
 }
 
+#[allow(non_snake_case)]
 #[tauri::command]
-async fn get_notes(notebook_id: Option<i64>, state: State<'_, DbState>) -> Result<Vec<Note>, String> {
+async fn get_notes(notebookId: Option<i64>, state: State<'_, DbState>) -> Result<Vec<Note>, String> {
     let repo = SqliteRepository { pool: state.pool.clone() };
-    repo.get_all_notes(notebook_id).await.map_err(|e| e.to_string())
+    repo.get_all_notes(notebookId)
+        .await
+        .map_err(|e| e.to_string())
 }
 
+#[allow(non_snake_case)]
 #[tauri::command]
-async fn upsert_note(id: Option<i64>, title: String, content: String, notebook_id: Option<i64>, state: State<'_, DbState>) -> Result<i64, String> {
+async fn upsert_note(id: Option<i64>, title: String, content: String, notebookId: Option<i64>, state: State<'_, DbState>) -> Result<i64, String> {
     let repo = SqliteRepository { pool: state.pool.clone() };
     match id {
         Some(id) => {
-            repo.update_note(id, &title, &content, notebook_id).await.map_err(|e| e.to_string())?;
+            repo.update_note(id, &title, &content, notebookId)
+                .await
+                .map_err(|e| e.to_string())?;
             Ok(id)
         }
         None => {
-            repo.create_note(&title, &content, notebook_id).await.map_err(|e| e.to_string())
+            repo.create_note(&title, &content, notebookId).await.map_err(|e| e.to_string())
         }
     }
 }

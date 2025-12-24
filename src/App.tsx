@@ -8,8 +8,8 @@ import { twMerge } from "tailwind-merge";
 
 function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)); }
 
-interface Notebook { id: number; name: string; parent_id: number | null; sort_order: number; }
-interface Note { id: number; title: string; content: string; updated_at: number; notebook_id: number | null; }
+interface Notebook { id: number; name: string; parentId: number | null; sortOrder?: number; }
+interface Note { id: number; title: string; content: string; updatedAt: number; notebookId: number | null; }
 
 const STORAGE_KEY = "notes_classic_v10_stable";
 
@@ -63,6 +63,7 @@ function App() {
 
   const isResizingSidebar = useRef(false);
   const isResizingList = useRef(false);
+  const notesRef = useRef<Note[]>([]);
 
   // Load persistence
   useEffect(() => {
@@ -92,7 +93,6 @@ function App() {
     try {
       const nbs = await invoke<Notebook[]>("get_notebooks");
       setNotebooks(nbs);
-      // Ключевой фикс: используем notebookId (camelCase) для Tauri invoke
       const filteredNotes = await invoke<Note[]>("get_notes", { notebookId: selectedNotebookId });
       setNotes(filteredNotes);
     } catch (err) { console.error("Fetch Error:", err); }
@@ -104,6 +104,10 @@ function App() {
     const note = notes.find(n => n.id === selectedNoteId);
     if (note) { setTitle(note.title); setContent(note.content); }
   }, [selectedNoteId, notes]);
+
+  useEffect(() => {
+    notesRef.current = notes;
+  }, [notes]);
 
   // Resize logic
   useEffect(() => {
@@ -121,14 +125,14 @@ function App() {
   useEffect(() => {
     if (!selectedNoteId) return;
     const timeout = setTimeout(async () => {
-      const currentNote = notes.find(n => n.id === selectedNoteId);
+      const currentNote = notesRef.current.find(n => n.id === selectedNoteId);
       if (currentNote && (title !== currentNote.title || content !== currentNote.content)) {
-        await invoke("upsert_note", { id: selectedNoteId, title, content, notebookId: currentNote.notebook_id });
-        setNotes(prev => prev.map(n => n.id === selectedNoteId ? { ...n, title, content, updated_at: Date.now()/1000 } : n));
+        await invoke("upsert_note", { id: selectedNoteId, title, content, notebookId: currentNote.notebookId });
+        setNotes(prev => prev.map(n => n.id === selectedNoteId ? { ...n, title, content, updatedAt: Date.now()/1000 } : n));
       }
     }, 1000);
     return () => clearTimeout(timeout);
-  }, [title, content, selectedNoteId, notes]);
+  }, [title, content, selectedNoteId]);
 
   const createNote = async () => {
     try {
@@ -163,7 +167,7 @@ function App() {
   };
 
   const renderNotebookRecursive = (nb: Notebook, level: number = 0) => {
-    const children = notebooks.filter(c => c.parent_id === nb.id);
+    const children = notebooks.filter(c => c.parentId === nb.id);
     const isExpanded = expandedNotebooks.has(nb.id);
     return (
       <div key={nb.id}>
@@ -218,7 +222,7 @@ function App() {
               <FolderPlus size={16} title="Create notebook" className="cursor-pointer hover:text-white transition-colors" onClick={() => createNotebook(null)} />
             </div>
             
-            {notebooks.filter(nb => !nb.parent_id).map(nb => renderNotebookRecursive(nb))}
+            {notebooks.filter(nb => !nb.parentId).map(nb => renderNotebookRecursive(nb))}
           </nav>
         </div>
         <div onMouseDown={() => { isResizingSidebar.current = true; }} className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-[#00A82D] z-50 transition-colors" />
@@ -252,7 +256,7 @@ function App() {
                 </button>
               </div>
               <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed mb-2">{note.content.replace(/<[^>]*>/g, '') || "No text"}</p>
-              <div className="text-[10px] text-gray-400 uppercase font-medium">{new Date(note.updated_at * 1000).toLocaleDateString()}</div>
+              <div className="text-[10px] text-gray-400 uppercase font-medium">{new Date(note.updatedAt * 1000).toLocaleDateString()}</div>
             </div>
           ))}
         </div>

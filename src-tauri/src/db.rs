@@ -4,6 +4,7 @@ use std::fs;
 use std::path::Path;
 
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Notebook {
     pub id: i64,
     pub name: String,
@@ -12,6 +13,7 @@ pub struct Notebook {
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Note {
     pub id: i64,
     pub title: String,
@@ -27,6 +29,16 @@ pub struct DbState {
     pub pool: SqlitePool,
 }
 
+async fn column_exists(pool: &SqlitePool, table: &str, column: &str) -> Result<bool, sqlx::Error> {
+    let table = table.replace('\'', "''");
+    let query = format!("SELECT name FROM pragma_table_info('{}') WHERE name = ?", table);
+    let row: Option<(String,)> = sqlx::query_as(&query)
+        .bind(column)
+        .fetch_optional(pool)
+        .await?;
+    Ok(row.is_some())
+}
+
 pub async fn init_db(app_dir: &Path) -> SqlitePool {
     if !app_dir.exists() {
         fs::create_dir_all(app_dir).expect("Could not create app directory");
@@ -40,7 +52,6 @@ pub async fn init_db(app_dir: &Path) -> SqlitePool {
     let db_url = format!("sqlite:{}", db_path.to_str().expect("Path is not valid UTF-8"));
     let pool = SqlitePool::connect(&db_url).await.expect("Failed to connect to SQLite");
 
-    // Таблица блокнотов с parent_id
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS notebooks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,12 +65,16 @@ pub async fn init_db(app_dir: &Path) -> SqlitePool {
     .await
     .expect("Failed to create notebooks table");
 
-    // Миграция для parent_id если база уже есть
-    let _ = sqlx::query("ALTER TABLE notebooks ADD COLUMN parent_id INTEGER REFERENCES notebooks(id) ON DELETE CASCADE")
-        .execute(&pool)
-        .await;
+    if !column_exists(&pool, "notebooks", "parent_id")
+        .await
+        .expect("Failed to check schema")
+    {
+        sqlx::query("ALTER TABLE notebooks ADD COLUMN parent_id INTEGER REFERENCES notebooks(id) ON DELETE CASCADE")
+            .execute(&pool)
+            .await
+            .expect("Failed to add parent_id column");
+    }
 
-    // Таблица заметок
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS notes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -103,52 +118,32 @@ impl SqliteRepository {
     }
 
     pub async fn delete_notebook(&self, id: i64) -> Result<(), sqlx::Error> {
-        // Удаление блокнота (каскадно удалит под-блокноты в теории, но сделаем явно для надежности или просто оставим как есть)
         sqlx::query("DELETE FROM notebooks WHERE id = ?").bind(id).execute(&self.pool).await?;
         Ok(())
     }
 
-        pub async fn get_all_notes(&self, notebook_id: Option<i64>) -> Result<Vec<Note>, sqlx::Error> {
-
-            if let Some(id) = notebook_id {
-
-                // Используем рекурсивный CTE для поиска всех ID под-блокнотов
-
-                sqlx::query_as::<_, Note>(
-
-                    "WITH RECURSIVE descendant_notebooks(id) AS (
-
-                        SELECT id FROM notebooks WHERE id = ?
-
-                        UNION ALL
-
-                        SELECT n.id FROM notebooks n
-
-                        JOIN descendant_notebooks dn ON n.parent_id = dn.id
-
-                    )
-
-                    SELECT * FROM notes 
-
-                    WHERE notebook_id IN (SELECT id FROM descendant_notebooks) 
-
-                    ORDER BY updated_at DESC"
-
+    pub async fn get_all_notes(&self, notebook_id: Option<i64>) -> Result<Vec<Note>, sqlx::Error> {
+        if let Some(id) = notebook_id {
+            sqlx::query_as::<_, Note>(
+                "WITH RECURSIVE descendant_notebooks(id) AS (
+                    SELECT id FROM notebooks WHERE id = ?
+                    UNION ALL
+                    SELECT n.id FROM notebooks n
+                    JOIN descendant_notebooks dn ON n.parent_id = dn.id
                 )
-
-                .bind(id)
-
+                SELECT * FROM notes
+                WHERE notebook_id IN (SELECT id FROM descendant_notebooks)
+                ORDER BY updated_at DESC",
+            )
+            .bind(id)
+            .fetch_all(&self.pool)
+            .await
+        } else {
+            sqlx::query_as::<_, Note>("SELECT * FROM notes ORDER BY updated_at DESC")
                 .fetch_all(&self.pool)
-
                 .await
-
-            } else {
-
-                sqlx::query_as::<_, Note>("SELECT * FROM notes ORDER BY updated_at DESC").fetch_all(&self.pool).await
-
-            }
-
         }
+    }
 
     pub async fn create_note(&self, title: &str, content: &str, notebook_id: Option<i64>) -> Result<i64, sqlx::Error> {
         let now = chrono::Utc::now().timestamp();

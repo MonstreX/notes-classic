@@ -52,7 +52,6 @@ const Editor: React.FC<EditorProps> = ({ content, onChange, onInit }) => {
     },
     editorProps: {
       attributes: {
-        // Убрал prose-sm sm:prose и т.д. Оставил только базовый prose для структуры.
         class: 'prose focus:outline-none min-h-[500px] max-w-none px-10 py-8',
       },
     },
