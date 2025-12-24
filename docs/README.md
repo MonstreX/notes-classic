@@ -19,23 +19,23 @@ The project follows a decoupled architecture where the frontend (React) communic
 
 ```text
 notes-classic/
-тФЬтФА docs/                  # Project documentation
-тФЬтФА src/                   # Frontend source code (React + TypeScript)
-тФВ   тФЬтФА assets/          # Static assets
-тФВ   тФЬтФА components/      # React components (Editor, etc.)
-тФВ   тФЬтФА App.tsx          # Main application layout and logic
-тФВ   тФЬтФА main.tsx         # Application entry point
-тФВ   тФФтФА index.css        # Global styles and Tailwind directives
-тФЬтФА src-tauri/             # Backend source code (Rust)
-тФВ   тФЬтФА icons/           # Application icons for different platforms
-тФВ   тФЬтФА src/
-тФВ   тФВ   тФЬтФА db.rs       # SQLite database initialization and Repository Pattern
-тФВ   тФВ   тФФтФА main.rs     # Tauri command handlers and app lifecycle
-тФВ   тФЬтФА build.rs         # Tauri build script
-тФВ   тФФтФА Cargo.toml       # Rust dependencies
-тФЬтФА index.html             # Main HTML entry
-тФЬтФА tailwind.config.js     # Tailwind CSS configuration
-тФФтФА tauri.conf.json        # Tauri app configuration
+├── docs/                  # Project documentation
+├── src/                   # Frontend source code (React + TypeScript)
+│   ├── assets/          # Static assets
+│   ├── components/      # React components (Editor, etc.)
+│   ├── App.tsx          # Main application layout and logic
+│   ├── main.tsx         # Application entry point
+│   └── index.css        # Global styles and Tailwind directives
+├── src-tauri/             # Backend source code (Rust)
+│   ├── icons/           # Application icons for different platforms
+│   ├── src/
+│   │   ├── db.rs       # SQLite database initialization and Repository Pattern
+│   │   └── main.rs     # Tauri command handlers and app lifecycle
+│   ├── build.rs         # Tauri build script
+│   └── Cargo.toml       # Rust dependencies
+├── index.html             # Main HTML entry
+├── tailwind.config.js     # Tailwind CSS configuration
+└── tauri.conf.json        # Tauri app configuration
 ```
 
 ---
