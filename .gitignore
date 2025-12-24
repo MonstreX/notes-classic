@@ -1,0 +1,25 @@
+# Node.js
+node_modules/
+dist/
+dist-tauri/
+.env
+
+# Rust
+src-tauri/target/
+src-tauri/Cargo.lock
+
+# IDEs
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Temporary directory
+tmp/

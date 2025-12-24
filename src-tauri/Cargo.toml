@@ -1,0 +1,21 @@
+[package]
+name = "notes-classic"
+version = "0.1.0"
+description = "Evernote 2020 style notes app"
+authors = ["AI Agent"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "1.5", features = [] }
+
+[dependencies]
+tauri = { version = "1.5", features = ["shell-open"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "macros"] }
+tokio = { version = "1", features = ["full"] }
+chrono = "0.4"
+futures = "0.3"
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
