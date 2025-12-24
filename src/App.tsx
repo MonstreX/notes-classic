@@ -2,6 +2,9 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/tauri";
 import { ask } from "@tauri-apps/api/dialog";
 import { Plus, Trash2, Search, FileText, Book, FolderPlus, ChevronRight } from "lucide-react";
+import { DndContext, DragOverlay, PointerSensor, useDraggable, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
+import { Menu, Item, Submenu, useContextMenu } from "react-contexify";
 import Editor from "./components/Editor";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -13,15 +16,23 @@ interface Note { id: number; title: string; content: string; updatedAt: number; 
 
 const STORAGE_KEY = "notes_classic_v10_stable";
 
+const NOTE_CONTEXT_MENU_ID = "note-context-menu";
+
 // --- NOTEBOOK ITEM ---
 function NotebookItem({ notebook, isSelected, level, onSelect, onAddSub, onDelete, isExpanded, onToggle }: any) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `notebook-${notebook.id}`,
+    data: { notebookId: notebook.id },
+  });
+
   return (
-    <div className="w-full py-0.5">
+    <div ref={setNodeRef} className="w-full py-0.5">
       <div 
         onClick={() => onSelect(notebook.id)}
         className={cn(
           "flex items-center text-gray-400 p-2 rounded cursor-pointer group transition-all mx-1 hover:bg-[#2A2A2A]",
-          isSelected && "bg-[#2A2A2A] text-white"
+          isSelected && "bg-[#2A2A2A] text-white",
+          isOver && "bg-[#1F2B1F] text-white"
         )}
         style={{ paddingLeft: `${level * 16 + 8}px` }}
       >
@@ -60,10 +71,15 @@ function App() {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [isLoaded, setIsLoaded] = useState(false);
+  const [activeDragNoteId, setActiveDragNoteId] = useState<number | null>(null);
 
   const isResizingSidebar = useRef(false);
   const isResizingList = useRef(false);
   const notesRef = useRef<Note[]>([]);
+  const { show } = useContextMenu({ id: NOTE_CONTEXT_MENU_ID });
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
+  );
 
   // Load persistence
   useEffect(() => {
@@ -166,6 +182,125 @@ function App() {
     }
   };
 
+  const moveNoteToNotebook = useCallback(async (noteId: number, notebookId: number | null) => {
+    await invoke("move_note", { noteId, notebookId });
+    if (selectedNotebookId !== null && notebookId !== selectedNotebookId) {
+      if (selectedNoteId === noteId) setSelectedNoteId(null);
+    }
+    fetchData();
+  }, [fetchData, selectedNotebookId, selectedNoteId]);
+
+  const handleDragStart = useCallback((event: any) => {
+    const noteId = event?.active?.data?.current?.noteId;
+    if (noteId) setActiveDragNoteId(noteId);
+  }, []);
+
+  const handleDragCancel = useCallback(() => {
+    setActiveDragNoteId(null);
+  }, []);
+
+  const handleDragEnd = useCallback(async (event: any) => {
+    const noteId = event?.active?.data?.current?.noteId;
+    const notebookId = event?.over?.data?.current?.notebookId ?? null;
+    setActiveDragNoteId(null);
+    if (!noteId) return;
+    const currentNote = notesRef.current.find(n => n.id === noteId);
+    if (!currentNote) return;
+    if (currentNote.notebookId === notebookId) return;
+    await moveNoteToNotebook(noteId, notebookId);
+  }, [moveNoteToNotebook]);
+
+  const handleNoteContextMenu = (event: React.MouseEvent, noteId: number) => {
+    event.preventDefault();
+    show({ event, props: { noteId } });
+  };
+
+  const renderNotebookMenuNode = (nb: Notebook) => {
+    const children = notebooks.filter(c => c.parentId === nb.id);
+    if (children.length > 0) {
+      return (
+        <Submenu key={nb.id} label={nb.name}>
+          <Item onClick={({ props }) => { if (props?.noteId) moveNoteToNotebook(props.noteId, nb.id); }}>Move here</Item>
+          {children.map(child => renderNotebookMenuNode(child))}
+        </Submenu>
+      );
+    }
+    return (
+      <Item key={nb.id} onClick={({ props }) => { if (props?.noteId) moveNoteToNotebook(props.noteId, nb.id); }}>
+        {nb.name}
+      </Item>
+    );
+  };
+
+  const AllNotesDropTarget = () => {
+    const { setNodeRef, isOver } = useDroppable({
+      id: "notebook-null",
+      data: { notebookId: null },
+    });
+
+    return (
+      <div
+        ref={setNodeRef}
+        onClick={() => setSelectedNotebookId(null)}
+        className={cn(
+          "flex items-center gap-3 text-gray-400 p-2 rounded cursor-pointer mx-1 transition-all",
+          selectedNotebookId === null && "bg-[#2A2A2A] text-white",
+          isOver && "bg-[#1F2B1F] text-white"
+        )}
+      >
+        <div className="w-[18px] shrink-0" />
+        <FileText size={18} className={cn("shrink-0", selectedNotebookId === null ? "text-[#00A82D]" : "text-gray-500")} />
+        <span className="text-sm font-medium">All Notes</span>
+      </div>
+    );
+  };
+
+  const renderNoteCard = (note: Note, isOverlay: boolean) => (
+    <div
+      className={cn(
+        "px-6 py-5 border-b border-gray-100 cursor-pointer relative bg-white",
+        !isOverlay && "group hover:bg-[#F8F8F8]",
+        selectedNoteId === note.id && !isOverlay && "ring-1 ring-[#00A82D] z-10"
+      )}
+    >
+      <div className="flex justify-between items-start mb-1 text-black">
+        <h3 className={cn("font-semibold text-sm truncate pr-4", selectedNoteId === note.id && !isOverlay && "text-[#00A82D]")}>{note.title || "Untitled"}</h3>
+        {!isOverlay && (
+          <button onMouseDown={e => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); deleteNote(note.id); }} className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-opacity">
+            <Trash2 size={14} />
+          </button>
+        )}
+      </div>
+      <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed mb-2">{note.content.replace(/<[^>]*>/g, '') || "No text"}</p>
+      <div className="text-[10px] text-gray-400 uppercase font-medium">{new Date(note.updatedAt * 1000).toLocaleDateString()}</div>
+    </div>
+  );
+
+  const NoteRow = ({ note }: { note: Note }) => {
+    const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+      id: `note-${note.id}`,
+      data: { noteId: note.id },
+    });
+    const style = { transform: CSS.Translate.toString(transform), touchAction: "none" as const };
+
+    return (
+      <div
+        ref={setNodeRef}
+        style={style}
+        {...attributes}
+        {...listeners}
+        onContextMenu={(event) => handleNoteContextMenu(event, note.id)}
+        onClick={() => setSelectedNoteId(note.id)}
+        className={cn(
+          "relative",
+          isDragging && "opacity-50"
+        )}
+      >
+        {renderNoteCard(note, false)}
+      </div>
+    );
+  };
+
   const renderNotebookRecursive = (nb: Notebook, level: number = 0) => {
     const children = notebooks.filter(c => c.parentId === nb.id);
     const isExpanded = expandedNotebooks.has(nb.id);
@@ -191,7 +326,8 @@ function App() {
   if (!isLoaded) return <div className="h-screen w-full bg-[#1A1A1A]" />;
 
   return (
-    <div className="flex h-screen w-full bg-white text-[#333] font-sans overflow-hidden select-none">
+    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragCancel={handleDragCancel} onDragEnd={handleDragEnd}>
+      <div className="flex h-screen w-full bg-white text-[#333] font-sans overflow-hidden select-none">
       {/* Sidebar */}
       <div style={{ width: sidebarWidth }} className="bg-[#1A1A1A] flex flex-col shrink-0 relative">
         <div className="p-4 flex flex-col h-full text-white">
@@ -208,14 +344,7 @@ function App() {
           </button>
           
           <nav className="flex-1 overflow-y-auto space-y-1 custom-scrollbar pr-1">
-            <div 
-              onClick={() => setSelectedNotebookId(null)} 
-              className={cn("flex items-center gap-3 text-gray-400 p-2 rounded cursor-pointer mx-1 transition-all", selectedNotebookId === null && "bg-[#2A2A2A] text-white")}
-            >
-              <div className="w-[18px] shrink-0" />
-              <FileText size={18} className={cn("shrink-0", selectedNotebookId === null ? "text-[#00A82D]" : "text-gray-500")} />
-              <span className="text-sm font-medium">All Notes</span>
-            </div>
+            <AllNotesDropTarget />
             
             <div className="mt-4 pt-4 pb-2 px-3 flex justify-between items-center text-gray-500 uppercase text-[10px] font-bold tracking-widest shrink-0">
               <span>Notebooks</span>
@@ -245,19 +374,7 @@ function App() {
         </div>
         <div className="flex-1 overflow-y-auto">
           {notes.filter(n => n.title.toLowerCase().includes(searchTerm.toLowerCase())).map(note => (
-            <div 
-              key={note.id} onClick={() => setSelectedNoteId(note.id)}
-              className={cn("px-6 py-5 border-b border-gray-100 cursor-pointer group hover:bg-[#F8F8F8] relative bg-white", selectedNoteId === note.id && "ring-1 ring-[#00A82D] z-10")}
-            >
-              <div className="flex justify-between items-start mb-1 text-black">
-                <h3 className={cn("font-semibold text-sm truncate pr-4", selectedNoteId === note.id && "text-[#00A82D]")}>{note.title || "Untitled"}</h3>
-                <button onMouseDown={e => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); deleteNote(note.id); }} className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-opacity">
-                  <Trash2 size={14} />
-                </button>
-              </div>
-              <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed mb-2">{note.content.replace(/<[^>]*>/g, '') || "No text"}</p>
-              <div className="text-[10px] text-gray-400 uppercase font-medium">{new Date(note.updatedAt * 1000).toLocaleDateString()}</div>
-            </div>
+            <NoteRow key={note.id} note={note} />
           ))}
         </div>
         <div onMouseDown={() => { isResizingList.current = true; }} className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-[#00A82D] z-50 transition-colors" />
@@ -281,7 +398,20 @@ function App() {
           </div>
         )}
       </div>
+      <Menu id={NOTE_CONTEXT_MENU_ID}>
+        <Item onClick={({ props }) => { if (props?.noteId) moveNoteToNotebook(props.noteId, null); }}>All Notes</Item>
+        {notebooks.filter(nb => !nb.parentId).map(nb => renderNotebookMenuNode(nb))}
+      </Menu>
+      <DragOverlay>
+        {activeDragNoteId
+          ? (() => {
+              const note = notesRef.current.find(n => n.id === activeDragNoteId);
+              return note ? renderNoteCard(note, true) : null;
+            })()
+          : null}
+      </DragOverlay>
     </div>
+    </DndContext>
   );
 }
 
