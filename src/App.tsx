@@ -11,7 +11,7 @@ import { twMerge } from "tailwind-merge";
 
 function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)); }
 
-interface Notebook { id: number; name: string; parentId: number | null; sortOrder?: number; }
+interface Notebook { id: number; name: string; parentId: number | null; sortOrder: number; }
 interface Note { id: number; title: string; content: string; updatedAt: number; notebookId: number | null; }
 
 const STORAGE_KEY = "notes_classic_v10_stable";
@@ -19,11 +19,21 @@ const STORAGE_KEY = "notes_classic_v10_stable";
 const NOTE_CONTEXT_MENU_ID = "note-context-menu";
 
 // --- NOTEBOOK ITEM ---
-function NotebookItem({ notebook, isSelected, level, onSelect, onAddSub, onDelete, isExpanded, onToggle }: any) {
+function NotebookItem({ notebook, isSelected, level, onSelect, onAddSub, onDelete, isExpanded, onToggle, dragIndicator }: any) {
   const { setNodeRef, isOver } = useDroppable({
     id: `notebook-${notebook.id}`,
-    data: { notebookId: notebook.id },
+    data: { notebookId: notebook.id, dropType: "notebook" },
   });
+
+  const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
+    id: `notebook-drag-${notebook.id}`,
+    data: { type: "notebook", notebookId: notebook.id },
+  });
+  const dragStyle = { transform: CSS.Translate.toString(transform), touchAction: "none" as const };
+  const setRefs = (node: HTMLDivElement | null) => {
+    setNodeRef(node);
+    setDragRef(node);
+  };
 
   useEffect(() => {
     if (isOver && !isExpanded) {
@@ -32,16 +42,24 @@ function NotebookItem({ notebook, isSelected, level, onSelect, onAddSub, onDelet
   }, [isOver, isExpanded, notebook.id, onToggle]);
 
   return (
-    <div ref={setNodeRef} className="w-full py-0.5">
+    <div ref={setRefs} style={dragStyle} {...attributes} {...listeners} className={cn("w-full py-0.5 relative", isDragging && "opacity-40")}>
       <div 
         onClick={() => onSelect(notebook.id)}
         className={cn(
           "flex items-center text-gray-400 p-2 rounded cursor-pointer group transition-all mx-1 hover:bg-[#2A2A2A]",
-          isSelected && "bg-[#2A2A2A] text-white",
-          isOver && "bg-[#1F2B1F] text-white"
+          isSelected && "bg-[#2A2A2A] text-white"
         )}
         style={{ paddingLeft: `${level * 16 + 8}px` }}
       >
+        {dragIndicator === "before" && (
+          <div className="absolute left-3 right-3 -top-0.5 h-0.5 bg-[#00A82D]" />
+        )}
+        {dragIndicator === "after" && (
+          <div className="absolute left-3 right-3 -bottom-0.5 h-0.5 bg-[#00A82D]" />
+        )}
+        {dragIndicator === "inside" && (
+          <div className="absolute inset-0 rounded border border-[#00A82D]" />
+        )}
         <div className="flex items-center gap-3 overflow-hidden flex-1">
           <Book size={18} className={cn("shrink-0 w-[18px]", isSelected ? "text-[#00A82D]" : "text-gray-500")} />
           <span className="text-sm truncate font-medium">{notebook.name}</span>
@@ -78,6 +96,8 @@ function App() {
   const [content, setContent] = useState("");
   const [isLoaded, setIsLoaded] = useState(false);
   const [activeDragNoteId, setActiveDragNoteId] = useState<number | null>(null);
+  const [activeDragNotebookId, setActiveDragNotebookId] = useState<number | null>(null);
+  const [dragNotebookOver, setDragNotebookOver] = useState<{ id: number; position: "before" | "after" | "inside" | "root" } | null>(null);
 
   const isResizingSidebar = useRef(false);
   const isResizingList = useRef(false);
@@ -131,6 +151,24 @@ function App() {
   useEffect(() => {
     notesRef.current = notes;
   }, [notes]);
+
+  const getOrderedChildren = useCallback((parentId: number | null) => {
+    return notebooks
+      .filter(nb => nb.parentId === parentId)
+      .sort((a, b) => (a.sortOrder - b.sortOrder) || a.name.localeCompare(b.name));
+  }, [notebooks]);
+
+  const isDescendant = useCallback((candidateParentId: number | null, notebookId: number) => {
+    if (candidateParentId === null) return false;
+    const parentMap = new Map<number, number | null>();
+    notebooks.forEach(nb => parentMap.set(nb.id, nb.parentId));
+    let current = candidateParentId;
+    while (current !== null) {
+      if (current === notebookId) return true;
+      current = parentMap.get(current) ?? null;
+    }
+    return false;
+  }, [notebooks]);
 
   // Resize logic
   useEffect(() => {
@@ -198,16 +236,51 @@ function App() {
   }, [fetchData, selectedNotebookId, selectedNoteId]);
 
   const handleDragStart = useCallback((event: any) => {
-    const noteId = event?.active?.data?.current?.noteId;
-    if (noteId) setActiveDragNoteId(noteId);
+    const activeData = event?.active?.data?.current;
+    if (activeData?.type === "note" && activeData.noteId) {
+      setActiveDragNoteId(activeData.noteId);
+    }
+    if (activeData?.type === "notebook" && activeData.notebookId) {
+      setActiveDragNotebookId(activeData.notebookId);
+    }
   }, []);
 
   const handleDragCancel = useCallback(() => {
     setActiveDragNoteId(null);
+    setActiveDragNotebookId(null);
+    setDragNotebookOver(null);
   }, []);
 
   const handleDragOver = useCallback((event: any) => {
+    const activeData = event?.active?.data?.current;
     const overId = event?.over?.id;
+    const overTarget = event?.over?.data?.current;
+
+    if (activeData?.type === "notebook") {
+      if (overTarget?.dropType === "root") {
+        setDragNotebookOver(null);
+      } else if (overTarget?.dropType === "notebook") {
+        const overNotebookId = overTarget.notebookId;
+        const activeRect = event?.active?.rect?.current?.translated ?? event?.active?.rect?.current?.initial;
+        const overRect = event?.over?.rect;
+        if (overRect && activeRect) {
+          const activeMid = activeRect.top + activeRect.height / 2;
+          const topThreshold = overRect.top + overRect.height * 0.33;
+          const bottomThreshold = overRect.top + overRect.height * 0.66;
+          let position: "before" | "after" | "inside" = "inside";
+          if (activeMid < topThreshold) position = "before";
+          else if (activeMid > bottomThreshold) position = "after";
+          setDragNotebookOver({ id: overNotebookId, position });
+        }
+      } else if (overTarget?.dropType === "notebook-after") {
+        setDragNotebookOver(null);
+      } else {
+        setDragNotebookOver(null);
+      }
+    } else {
+      setDragNotebookOver(null);
+    }
+
     if (typeof overId !== "string" || !overId.startsWith("notebook-")) return;
     const notebookId = Number(overId.replace("notebook-", ""));
     if (!Number.isFinite(notebookId)) return;
@@ -226,18 +299,73 @@ function App() {
   }, [expandedNotebooks]);
 
   const handleDragEnd = useCallback(async (event: any) => {
-    const noteId = event?.active?.data?.current?.noteId;
+    const activeData = event?.active?.data?.current;
     const overTarget = event?.over?.data?.current;
     setActiveDragNoteId(null);
+    setActiveDragNotebookId(null);
+    setDragNotebookOver(null);
     expandTimersRef.current.forEach(timer => window.clearTimeout(timer));
     expandTimersRef.current.clear();
-    if (!noteId || !overTarget) return;
-    const notebookId = overTarget.notebookId ?? null;
-    const currentNote = notesRef.current.find(n => n.id === noteId);
-    if (!currentNote) return;
-    if (currentNote.notebookId === notebookId) return;
-    await moveNoteToNotebook(noteId, notebookId);
-  }, [moveNoteToNotebook]);
+    if (!activeData || !overTarget) return;
+    if (activeData.type === "note") {
+      if (overTarget.dropType !== "notebook" && overTarget.dropType !== "all-notes") return;
+      const noteId = activeData.noteId;
+      if (!noteId) return;
+      const notebookId = overTarget.notebookId ?? null;
+      const currentNote = notesRef.current.find(n => n.id === noteId);
+      if (!currentNote) return;
+      if (currentNote.notebookId === notebookId) return;
+      await moveNoteToNotebook(noteId, notebookId);
+      return;
+    }
+    if (activeData.type === "notebook") {
+      const notebookId = activeData.notebookId;
+      if (!notebookId) return;
+      if (overTarget.dropType === "root") {
+        const targetParentId = null;
+        if (isDescendant(targetParentId, notebookId)) return;
+        const siblings = getOrderedChildren(null).filter(nb => nb.id !== notebookId);
+        const targetIndex = siblings.length;
+        await invoke("move_notebook", { notebookId, parentId: targetParentId, index: targetIndex });
+        fetchData();
+        return;
+      }
+      if (overTarget.dropType === "notebook-after") {
+        const targetParentId = overTarget.parentId ?? null;
+        if (isDescendant(targetParentId, notebookId)) return;
+        const siblings = getOrderedChildren(targetParentId).filter(nb => nb.id !== notebookId);
+        let targetIndex = siblings.findIndex(nb => nb.id === overTarget.notebookId);
+        if (targetIndex < 0) targetIndex = siblings.length;
+        targetIndex += 1;
+        await invoke("move_notebook", { notebookId, parentId: targetParentId, index: targetIndex });
+        fetchData();
+        return;
+      }
+      if (overTarget.dropType !== "notebook" || overTarget.notebookId === null) return;
+      if (overTarget.notebookId === notebookId) return;
+      const overNotebook = notebooks.find(nb => nb.id === overTarget.notebookId);
+      const activeNotebook = notebooks.find(nb => nb.id === notebookId);
+      if (!overNotebook || !activeNotebook) return;
+      const activeRect = event?.active?.rect?.current?.translated ?? event?.active?.rect?.current?.initial;
+      const overRect = event?.over?.rect;
+      if (!overRect || !activeRect) return;
+      const activeMid = activeRect.top + activeRect.height / 2;
+      const topThreshold = overRect.top + overRect.height * 0.33;
+      const bottomThreshold = overRect.top + overRect.height * 0.66;
+      let position: "before" | "after" | "inside" = "inside";
+      if (activeMid < topThreshold) position = "before";
+      else if (activeMid > bottomThreshold) position = "after";
+      const targetParentId = position === "inside" ? overNotebook.id : overNotebook.parentId;
+      if (isDescendant(targetParentId, notebookId)) return;
+      const siblings = getOrderedChildren(targetParentId).filter(nb => nb.id !== notebookId);
+      let targetIndex = siblings.findIndex(nb => nb.id === overNotebook.id);
+      if (targetIndex < 0) targetIndex = siblings.length;
+      if (position === "after") targetIndex += 1;
+      if (position === "inside") targetIndex = siblings.length;
+      await invoke("move_notebook", { notebookId, parentId: targetParentId, index: targetIndex });
+      fetchData();
+    }
+  }, [fetchData, getOrderedChildren, isDescendant, moveNoteToNotebook, notebooks]);
 
   const handleNoteContextMenu = (event: React.MouseEvent, noteId: number) => {
     event.preventDefault();
@@ -245,7 +373,7 @@ function App() {
   };
 
   const renderNotebookMenuNode = (nb: Notebook) => {
-    const children = notebooks.filter(c => c.parentId === nb.id);
+    const children = getOrderedChildren(nb.id);
     if (children.length > 0) {
       return (
         <Submenu key={nb.id} label={nb.name}>
@@ -264,7 +392,7 @@ function App() {
   const AllNotesDropTarget = () => {
     const { setNodeRef, isOver } = useDroppable({
       id: "notebook-null",
-      data: { notebookId: null },
+      data: { notebookId: null, dropType: "all-notes" },
     });
 
     return (
@@ -280,6 +408,38 @@ function App() {
       >
         <FileText size={18} className={cn("shrink-0", selectedNotebookId === null ? "text-[#00A82D]" : "text-gray-500")} />
         <span className="text-sm font-medium">All Notes</span>
+      </div>
+    );
+  };
+
+  const NotebookAfterDropZone = ({ notebookId, parentId, level }: { notebookId: number; parentId: number | null; level: number }) => {
+    const { setNodeRef, isOver } = useDroppable({
+      id: `notebook-after-${notebookId}`,
+      data: { dropType: "notebook-after", notebookId, parentId },
+    });
+    return (
+      <div ref={setNodeRef} className="relative h-2">
+        {isOver && (
+          <div
+            className="absolute left-3 right-3 top-0 h-0.5 bg-[#00A82D]"
+            style={{ marginLeft: `${level * 16}px` }}
+          />
+        )}
+      </div>
+    );
+  };
+
+  const NotebookRootDropTarget = ({ children }: { children: React.ReactNode }) => {
+    const { setNodeRef, isOver } = useDroppable({
+      id: "notebook-root",
+      data: { dropType: "root", notebookId: null },
+    });
+    return (
+      <div ref={setNodeRef} className="space-y-1 rounded relative">
+        {children}
+        {isOver && (
+          <div className="absolute left-3 right-3 -bottom-1 h-0.5 bg-[#00A82D]" />
+        )}
       </div>
     );
   };
@@ -319,7 +479,7 @@ function App() {
   const NoteRow = ({ note }: { note: Note }) => {
     const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
       id: `note-${note.id}`,
-      data: { noteId: note.id },
+      data: { type: "note", noteId: note.id },
     });
     const style = { transform: CSS.Translate.toString(transform), touchAction: "none" as const };
 
@@ -342,7 +502,7 @@ function App() {
   };
 
   const renderNotebookRecursive = (nb: Notebook, level: number = 0) => {
-    const children = notebooks.filter(c => c.parentId === nb.id);
+    const children = getOrderedChildren(nb.id);
     const isExpanded = expandedNotebooks.has(nb.id);
     return (
       <div key={nb.id}>
@@ -352,6 +512,7 @@ function App() {
           onAddSub={createNotebook}
           onDelete={deleteNotebook}
           isExpanded={isExpanded}
+          dragIndicator={dragNotebookOver?.id === nb.id ? dragNotebookOver.position : null}
           onToggle={(id: number) => setExpandedNotebooks(prev => {
             const next = new Set(prev);
             next.has(id) ? next.delete(id) : next.add(id);
@@ -359,6 +520,7 @@ function App() {
           })}
         />
         {isExpanded && children.map(c => renderNotebookRecursive(c, level + 1))}
+        <NotebookAfterDropZone notebookId={nb.id} parentId={nb.parentId} level={level} />
       </div>
     );
   };
@@ -383,7 +545,7 @@ function App() {
             <Plus size={20} strokeWidth={3} /><span>New Note</span>
           </button>
           
-          <nav className="flex-1 overflow-y-auto space-y-1 custom-scrollbar pr-1">
+          <nav className="flex-1 overflow-y-auto custom-scrollbar pr-1">
             <AllNotesDropTarget />
             
             <div className="mt-4 pt-4 pb-2 px-3 flex justify-between items-center text-gray-500 uppercase text-[10px] font-bold tracking-widest shrink-0">
@@ -391,7 +553,9 @@ function App() {
               <FolderPlus size={16} title="Create notebook" className="cursor-pointer hover:text-white transition-colors" onClick={() => createNotebook(null)} />
             </div>
             
-            {notebooks.filter(nb => !nb.parentId).map(nb => renderNotebookRecursive(nb))}
+            <NotebookRootDropTarget>
+              {getOrderedChildren(null).map(nb => renderNotebookRecursive(nb))}
+            </NotebookRootDropTarget>
           </nav>
         </div>
         <div onMouseDown={() => { isResizingSidebar.current = true; }} className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-[#00A82D] z-50 transition-colors" />
@@ -447,7 +611,7 @@ function App() {
           <Item onClick={({ props }) => { if (props?.noteId) moveNoteToNotebook(props.noteId, null); }}>
             All Notes
           </Item>
-          {notebooks.filter(nb => !nb.parentId).map(nb => renderNotebookMenuNode(nb))}
+          {getOrderedChildren(null).map(nb => renderNotebookMenuNode(nb))}
         </Submenu>
       </Menu>
       <DragOverlay>
@@ -456,7 +620,16 @@ function App() {
               const note = notesRef.current.find(n => n.id === activeDragNoteId);
               return note ? renderDragPreview(note) : null;
             })()
-          : null}
+          : activeDragNotebookId
+            ? (() => {
+                const notebook = notebooks.find(nb => nb.id === activeDragNotebookId);
+                return notebook ? (
+                  <div className="px-4 py-2 bg-[#1A1A1A] text-white border border-[#2A2A2A] rounded shadow-sm text-sm opacity-70">
+                    {notebook.name}
+                  </div>
+                ) : null;
+              })()
+            : null}
       </DragOverlay>
     </div>
     </DndContext>

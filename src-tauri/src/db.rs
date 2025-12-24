@@ -10,6 +10,7 @@ pub struct Notebook {
     pub name: String,
     pub created_at: i64,
     pub parent_id: Option<i64>,
+    pub sort_order: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
@@ -58,6 +59,7 @@ pub async fn init_db(app_dir: &Path) -> SqlitePool {
             name TEXT NOT NULL,
             created_at INTEGER NOT NULL,
             parent_id INTEGER,
+            sort_order INTEGER NOT NULL DEFAULT 0,
             FOREIGN KEY(parent_id) REFERENCES notebooks(id) ON DELETE CASCADE
         )",
     )
@@ -73,6 +75,18 @@ pub async fn init_db(app_dir: &Path) -> SqlitePool {
             .execute(&pool)
             .await
             .expect("Failed to add parent_id column");
+    }
+
+    let mut sort_order_added = false;
+    if !column_exists(&pool, "notebooks", "sort_order")
+        .await
+        .expect("Failed to check schema")
+    {
+        sqlx::query("ALTER TABLE notebooks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0")
+            .execute(&pool)
+            .await
+            .expect("Failed to add sort_order column");
+        sort_order_added = true;
     }
 
     sqlx::query(
@@ -92,6 +106,35 @@ pub async fn init_db(app_dir: &Path) -> SqlitePool {
     .await
     .expect("Failed to create notes table");
 
+    if sort_order_added {
+        let parents: Vec<(Option<i64>,)> = sqlx::query_as("SELECT DISTINCT parent_id FROM notebooks")
+            .fetch_all(&pool)
+            .await
+            .expect("Failed to read notebook parents");
+        for (parent_id,) in parents {
+            let ids: Vec<(i64,)> = if let Some(pid) = parent_id {
+                sqlx::query_as("SELECT id FROM notebooks WHERE parent_id = ? ORDER BY name ASC, created_at ASC")
+                    .bind(pid)
+                    .fetch_all(&pool)
+                    .await
+                    .expect("Failed to read notebooks")
+            } else {
+                sqlx::query_as("SELECT id FROM notebooks WHERE parent_id IS NULL ORDER BY name ASC, created_at ASC")
+                    .fetch_all(&pool)
+                    .await
+                    .expect("Failed to read notebooks")
+            };
+            for (index, (id,)) in ids.iter().enumerate() {
+                sqlx::query("UPDATE notebooks SET sort_order = ? WHERE id = ?")
+                    .bind(index as i64)
+                    .bind(id)
+                    .execute(&pool)
+                    .await
+                    .expect("Failed to update sort_order");
+            }
+        }
+    }
+
     pool
 }
 
@@ -101,17 +144,31 @@ pub struct SqliteRepository {
 
 impl SqliteRepository {
     pub async fn get_notebooks(&self) -> Result<Vec<Notebook>, sqlx::Error> {
-        sqlx::query_as::<_, Notebook>("SELECT * FROM notebooks ORDER BY name ASC")
+        sqlx::query_as::<_, Notebook>(
+            "SELECT * FROM notebooks ORDER BY parent_id IS NOT NULL, parent_id, sort_order ASC, name ASC",
+        )
             .fetch_all(&self.pool)
             .await
     }
 
     pub async fn create_notebook(&self, name: &str, parent_id: Option<i64>) -> Result<i64, sqlx::Error> {
         let now = chrono::Utc::now().timestamp();
-        let res = sqlx::query("INSERT INTO notebooks (name, created_at, parent_id) VALUES (?, ?, ?)")
+        let max_order: Option<(Option<i64>,)> = if let Some(pid) = parent_id {
+            sqlx::query_as("SELECT MAX(sort_order) FROM notebooks WHERE parent_id = ?")
+                .bind(pid)
+                .fetch_optional(&self.pool)
+                .await?
+        } else {
+            sqlx::query_as("SELECT MAX(sort_order) FROM notebooks WHERE parent_id IS NULL")
+                .fetch_optional(&self.pool)
+                .await?
+        };
+        let next_order = max_order.and_then(|(v,)| v).unwrap_or(-1) + 1;
+        let res = sqlx::query("INSERT INTO notebooks (name, created_at, parent_id, sort_order) VALUES (?, ?, ?, ?)")
             .bind(name)
             .bind(now)
             .bind(parent_id)
+            .bind(next_order)
             .execute(&self.pool)
             .await?;
         Ok(res.last_insert_rowid())
@@ -119,6 +176,96 @@ impl SqliteRepository {
 
     pub async fn delete_notebook(&self, id: i64) -> Result<(), sqlx::Error> {
         sqlx::query("DELETE FROM notebooks WHERE id = ?").bind(id).execute(&self.pool).await?;
+        Ok(())
+    }
+
+    pub async fn move_notebook(
+        &self,
+        notebook_id: i64,
+        target_parent_id: Option<i64>,
+        target_index: usize,
+    ) -> Result<(), sqlx::Error> {
+        let mut tx = self.pool.begin().await?;
+
+        let current: Option<(Option<i64>, i64)> =
+            sqlx::query_as("SELECT parent_id, sort_order FROM notebooks WHERE id = ?")
+                .bind(notebook_id)
+                .fetch_optional(&mut *tx)
+                .await?;
+        let (current_parent_id, _current_order) = match current {
+            Some(data) => data,
+            None => return Ok(()),
+        };
+
+        let source_ids: Vec<i64> = if let Some(pid) = current_parent_id {
+            sqlx::query_as("SELECT id FROM notebooks WHERE parent_id = ? AND id != ? ORDER BY sort_order ASC, name ASC")
+                .bind(pid)
+                .bind(notebook_id)
+                .fetch_all(&mut *tx)
+                .await?
+                .into_iter()
+                .map(|(id,)| id)
+                .collect()
+        } else {
+            sqlx::query_as("SELECT id FROM notebooks WHERE parent_id IS NULL AND id != ? ORDER BY sort_order ASC, name ASC")
+                .bind(notebook_id)
+                .fetch_all(&mut *tx)
+                .await?
+                .into_iter()
+                .map(|(id,)| id)
+                .collect()
+        };
+
+        let mut target_ids: Vec<i64> = if let Some(pid) = target_parent_id {
+            sqlx::query_as("SELECT id FROM notebooks WHERE parent_id = ? AND id != ? ORDER BY sort_order ASC, name ASC")
+                .bind(pid)
+                .bind(notebook_id)
+                .fetch_all(&mut *tx)
+                .await?
+                .into_iter()
+                .map(|(id,)| id)
+                .collect()
+        } else {
+            sqlx::query_as("SELECT id FROM notebooks WHERE parent_id IS NULL AND id != ? ORDER BY sort_order ASC, name ASC")
+                .bind(notebook_id)
+                .fetch_all(&mut *tx)
+                .await?
+                .into_iter()
+                .map(|(id,)| id)
+                .collect()
+        };
+
+        let insert_index = target_index.min(target_ids.len());
+
+        target_ids.insert(insert_index, notebook_id);
+
+        if current_parent_id == target_parent_id {
+            for (index, id) in target_ids.iter().enumerate() {
+                sqlx::query("UPDATE notebooks SET sort_order = ? WHERE id = ?")
+                    .bind(index as i64)
+                    .bind(id)
+                    .execute(&mut *tx)
+                    .await?;
+            }
+        } else {
+            for (index, id) in source_ids.iter().enumerate() {
+                sqlx::query("UPDATE notebooks SET sort_order = ? WHERE id = ?")
+                    .bind(index as i64)
+                    .bind(id)
+                    .execute(&mut *tx)
+                    .await?;
+            }
+            for (index, id) in target_ids.iter().enumerate() {
+                sqlx::query("UPDATE notebooks SET parent_id = ?, sort_order = ? WHERE id = ?")
+                    .bind(target_parent_id)
+                    .bind(index as i64)
+                    .bind(id)
+                    .execute(&mut *tx)
+                    .await?;
+            }
+        }
+
+        tx.commit().await?;
         Ok(())
     }
 

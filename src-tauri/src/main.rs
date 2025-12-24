@@ -26,6 +26,20 @@ async fn delete_notebook(id: i64, state: State<'_, DbState>) -> Result<(), Strin
 
 #[allow(non_snake_case)]
 #[tauri::command]
+async fn move_notebook(
+    notebookId: i64,
+    parentId: Option<i64>,
+    index: usize,
+    state: State<'_, DbState>,
+) -> Result<(), String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    repo.move_notebook(notebookId, parentId, index)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
 async fn move_note(noteId: i64, notebookId: Option<i64>, state: State<'_, DbState>) -> Result<(), String> {
     let repo = SqliteRepository { pool: state.pool.clone() };
     repo.update_note_notebook(noteId, notebookId)
@@ -81,6 +95,7 @@ fn main() {
             get_notebooks,
             create_notebook,
             delete_notebook,
+            move_notebook,
             move_note,
             get_notes,
             upsert_note,
