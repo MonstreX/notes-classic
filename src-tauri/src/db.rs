@@ -108,18 +108,47 @@ impl SqliteRepository {
         Ok(())
     }
 
-    pub async fn get_all_notes(&self, notebook_id: Option<i64>) -> Result<Vec<Note>, sqlx::Error> {
-        if let Some(id) = notebook_id {
-            sqlx::query_as::<_, Note>("SELECT * FROM notes WHERE notebook_id = ? ORDER BY updated_at DESC")
+        pub async fn get_all_notes(&self, notebook_id: Option<i64>) -> Result<Vec<Note>, sqlx::Error> {
+
+            if let Some(id) = notebook_id {
+
+                // Используем рекурсивный CTE для поиска всех ID под-блокнотов
+
+                sqlx::query_as::<_, Note>(
+
+                    "WITH RECURSIVE descendant_notebooks(id) AS (
+
+                        SELECT id FROM notebooks WHERE id = ?
+
+                        UNION ALL
+
+                        SELECT n.id FROM notebooks n
+
+                        JOIN descendant_notebooks dn ON n.parent_id = dn.id
+
+                    )
+
+                    SELECT * FROM notes 
+
+                    WHERE notebook_id IN (SELECT id FROM descendant_notebooks) 
+
+                    ORDER BY updated_at DESC"
+
+                )
+
                 .bind(id)
+
                 .fetch_all(&self.pool)
+
                 .await
-        } else {
-            sqlx::query_as::<_, Note>("SELECT * FROM notes ORDER BY updated_at DESC")
-                .fetch_all(&self.pool)
-                .await
+
+            } else {
+
+                sqlx::query_as::<_, Note>("SELECT * FROM notes ORDER BY updated_at DESC").fetch_all(&self.pool).await
+
+            }
+
         }
-    }
 
     pub async fn create_note(&self, title: &str, content: &str, notebook_id: Option<i64>) -> Result<i64, sqlx::Error> {
         let now = chrono::Utc::now().timestamp();
