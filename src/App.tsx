@@ -19,7 +19,7 @@ const STORAGE_KEY = "notes_classic_v10_stable";
 const NOTE_CONTEXT_MENU_ID = "note-context-menu";
 
 // --- NOTEBOOK ITEM ---
-function NotebookItem({ notebook, isSelected, level, onSelect, onAddSub, onDelete, isExpanded, onToggle, dragIndicator }: any) {
+function NotebookItem({ notebook, isSelected, level, onSelect, onAddSub, onDelete, isExpanded, onToggle, dragIndicator, isNoteDragging }: any) {
   const { setNodeRef, isOver } = useDroppable({
     id: `notebook-${notebook.id}`,
     data: { notebookId: notebook.id, dropType: "notebook" },
@@ -47,7 +47,8 @@ function NotebookItem({ notebook, isSelected, level, onSelect, onAddSub, onDelet
         onClick={() => onSelect(notebook.id)}
         className={cn(
           "flex items-center text-gray-400 p-2 rounded cursor-pointer group transition-all mx-1 hover:bg-[#2A2A2A]",
-          isSelected && "bg-[#2A2A2A] text-white"
+          isSelected && "bg-[#2A2A2A] text-white",
+          isOver && isNoteDragging && "bg-[#1F2B1F] text-white"
         )}
         style={{ paddingLeft: `${level * 16 + 8}px` }}
       >
@@ -382,7 +383,7 @@ function App() {
     );
   };
 
-  const AllNotesDropTarget = () => {
+  const AllNotesDropTarget = ({ isNoteDragging }: { isNoteDragging: boolean }) => {
     const { setNodeRef, isOver } = useDroppable({
       id: "notebook-null",
       data: { notebookId: null, dropType: "all-notes" },
@@ -395,7 +396,7 @@ function App() {
         className={cn(
           "flex items-center gap-3 text-gray-400 p-2 rounded cursor-pointer mx-1 transition-all",
           selectedNotebookId === null && "bg-[#2A2A2A] text-white",
-          isOver && "bg-[#1F2B1F] text-white"
+          isOver && isNoteDragging && "bg-[#1F2B1F] text-white"
         )}
         style={{ paddingLeft: "8px" }}
       >
@@ -485,6 +486,7 @@ function App() {
           onAddSub={createNotebook}
           onDelete={deleteNotebook}
           isExpanded={isExpanded}
+          isNoteDragging={activeDragNoteId !== null}
           dragIndicator={dragNotebookOver?.id === nb.id ? dragNotebookOver.position : null}
           onToggle={(id: number) => setExpandedNotebooks(prev => {
             const next = new Set(prev);
@@ -518,7 +520,7 @@ function App() {
           </button>
           
           <nav className="flex-1 overflow-y-auto custom-scrollbar pr-1">
-            <AllNotesDropTarget />
+            <AllNotesDropTarget isNoteDragging={activeDragNoteId !== null} />
             
             <div className="mt-4 pt-4 pb-2 px-3 flex justify-between items-center text-gray-500 uppercase text-[10px] font-bold tracking-widest shrink-0">
               <span>Notebooks</span>
