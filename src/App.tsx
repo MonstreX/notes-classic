@@ -25,6 +25,12 @@ function NotebookItem({ notebook, isSelected, level, onSelect, onAddSub, onDelet
     data: { notebookId: notebook.id },
   });
 
+  useEffect(() => {
+    if (isOver && !isExpanded) {
+      onToggle(notebook.id);
+    }
+  }, [isOver, isExpanded, notebook.id, onToggle]);
+
   return (
     <div ref={setNodeRef} className="w-full py-0.5">
       <div 
@@ -80,6 +86,7 @@ function App() {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
   );
+  const expandTimersRef = useRef<Map<number, number>>(new Map());
 
   // Load persistence
   useEffect(() => {
@@ -199,10 +206,31 @@ function App() {
     setActiveDragNoteId(null);
   }, []);
 
+  const handleDragOver = useCallback((event: any) => {
+    const overId = event?.over?.id;
+    if (typeof overId !== "string" || !overId.startsWith("notebook-")) return;
+    const notebookId = Number(overId.replace("notebook-", ""));
+    if (!Number.isFinite(notebookId)) return;
+    if (expandedNotebooks.has(notebookId)) return;
+    if (expandTimersRef.current.has(notebookId)) return;
+    const timer = window.setTimeout(() => {
+      setExpandedNotebooks(prev => {
+        if (prev.has(notebookId)) return prev;
+        const next = new Set(prev);
+        next.add(notebookId);
+        return next;
+      });
+      expandTimersRef.current.delete(notebookId);
+    }, 350);
+    expandTimersRef.current.set(notebookId, timer);
+  }, [expandedNotebooks]);
+
   const handleDragEnd = useCallback(async (event: any) => {
     const noteId = event?.active?.data?.current?.noteId;
     const notebookId = event?.over?.data?.current?.notebookId ?? null;
     setActiveDragNoteId(null);
+    expandTimersRef.current.forEach(timer => window.clearTimeout(timer));
+    expandTimersRef.current.clear();
     if (!noteId) return;
     const currentNote = notesRef.current.find(n => n.id === noteId);
     if (!currentNote) return;
@@ -247,8 +275,8 @@ function App() {
           selectedNotebookId === null && "bg-[#2A2A2A] text-white",
           isOver && "bg-[#1F2B1F] text-white"
         )}
+        style={{ paddingLeft: "8px" }}
       >
-        <div className="w-[18px] shrink-0" />
         <FileText size={18} className={cn("shrink-0", selectedNotebookId === null ? "text-[#00A82D]" : "text-gray-500")} />
         <span className="text-sm font-medium">All Notes</span>
       </div>
@@ -276,6 +304,12 @@ function App() {
     </div>
   );
 
+  const renderDragPreview = (note: Note) => (
+    <div className="px-4 py-2 bg-white border border-gray-200 rounded shadow-sm text-sm text-black opacity-70">
+      {note.title || "Untitled"}
+    </div>
+  );
+
   const NoteRow = ({ note }: { note: Note }) => {
     const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
       id: `note-${note.id}`,
@@ -293,7 +327,7 @@ function App() {
         onClick={() => setSelectedNoteId(note.id)}
         className={cn(
           "relative",
-          isDragging && "opacity-50"
+          isDragging && "opacity-30"
         )}
       >
         {renderNoteCard(note, false)}
@@ -326,7 +360,7 @@ function App() {
   if (!isLoaded) return <div className="h-screen w-full bg-[#1A1A1A]" />;
 
   return (
-    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragCancel={handleDragCancel} onDragEnd={handleDragEnd}>
+    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragCancel={handleDragCancel} onDragEnd={handleDragEnd}>
       <div className="flex h-screen w-full bg-white text-[#333] font-sans overflow-hidden select-none">
       {/* Sidebar */}
       <div style={{ width: sidebarWidth }} className="bg-[#1A1A1A] flex flex-col shrink-0 relative">
@@ -406,7 +440,7 @@ function App() {
         {activeDragNoteId
           ? (() => {
               const note = notesRef.current.find(n => n.id === activeDragNoteId);
-              return note ? renderNoteCard(note, true) : null;
+              return note ? renderDragPreview(note) : null;
             })()
           : null}
       </DragOverlay>
