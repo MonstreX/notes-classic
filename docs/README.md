@@ -11,7 +11,6 @@ The project follows a decoupled architecture where the frontend (React) communic
 - **Backend**: Rust (Tauri).
 - **Database**: SQLite (managed via `sqlx`).
 - **Editor**: TipTap (WYSIWYG) with custom extensions.
-- **Drag-and-Drop**: `@dnd-kit/core` for robust cross-platform interactions.
 - **Icons**: Lucide React.
 
 ---
@@ -26,7 +25,7 @@ notes-classic/
 │   ├── components/      # React components
 │   │   ├── Editor.tsx   # TipTap Editor wrapper
 │   │   └── Toolbar.tsx  # Rich-text editor controls
-│   ├── App.tsx          # Main application logic, DND context, and Layout
+│   ├── App.tsx          # Main application logic and Layout
 │   ├── main.tsx         # Application entry point
 │   └── index.css        # Global styles and Tailwind directives
 ├── src-tauri/             # Backend source code (Rust)
@@ -45,30 +44,27 @@ notes-classic/
 
 ## Features Implemented
 
-### 1. Three-Panel Resizable Interface
-- **Sidebar**: Dark-themed (#1A1A1A). Now includes **resizable width**.
-- **Note List**: Searchable list with **resizable width**.
-- **Note View**: Fixed-size typography for consistent reading experience.
+### 1. Three-Panel Interface
+- **Sidebar**: Dark-themed (#1A1A1A). Features perfect vertical alignment of notebook icons under the "All Notes" section.
+- **Note List**: Searchable list with real-time filtering and selection. Supports resizable width.
+- **Note View**: Clean, white-background editor area with fixed typography for a consistent reading experience.
 
 ### 2. Nested Notebooks (Categories)
-- Support for hierarchical notebook structures (sub-folders).
-- Recursive rendering in the sidebar.
-- Create sub-notebooks directly from the parent item.
+- Support for hierarchical structures (parent and sub-notebooks).
+- **Recursive Note Retrieval**: Selecting a parent notebook automatically displays notes from all its descendant sub-notebooks using recursive SQL CTE queries.
+- **Management**: Quick actions for creating sub-notebooks, toggling expansion, and deletion.
 
-### 3. Advanced Note Management
-- **Drag-and-Drop**: Notes can be dragged from the list and dropped onto notebooks in the sidebar using `dnd-kit`.
-- **Custom Context Menu**: Right-click any note to move it to a specific notebook via a dedicated menu.
-- **Native Dialogs**: All deletions require confirmation via native Tauri system dialogs (`ask`).
+### 3. State Persistence
+- **Window State**: Automatically saves and restores window position and size using the `tauri-plugin-window-state`.
+- **UI State**: Remembers panel widths, the last selected note/notebook, and which folders were expanded in the sidebar via `localStorage`.
 
 ### 4. Rich Text Editor (TipTap)
-- **Toolbar**: Full control over Bold, Italic, Strikethrough, Headings, Lists, Task Lists, Code Blocks, and Tables.
-- **Code Highlighting**: Integrated `CodeBlockLowlight` with GitHub Dark theme.
-- **Fixed Typography**: Fonts no longer scale with window size, ensuring a stable layout.
+- **Toolbar**: Controls for Bold, Italic, Strikethrough, Headings, Lists, Task Lists, Code Blocks, and Tables.
+- **Code Highlighting**: Integrated `CodeBlockLowlight` with GitHub Dark theme support.
+- **Autosave**: Changes are committed to the local SQLite database 1 second after the last keystroke.
 
-### 5. Persistence and Logic
-- **SQLite**: Automatic database initialization and schema migrations.
-- **Autosave**: Changes are committed to the local DB 1 second after typing stops.
-- **Repository Pattern**: Abstracted data layer in Rust for future-proofing.
+### 5. Data Safety
+- All destructive actions (deleting notes or notebooks) require explicit confirmation via native system dialogs.
 
 ---
 
@@ -90,7 +86,7 @@ npm run tauri build
 
 ---
 
-## Future Roadmap
-- [ ] **Attachments**: Implementation of the `attachments/` folder for local file storage.
-- [ ] **Cloud Sync**: Integration with remote sync services.
-- [ ] **Tags**: Global tagging system for cross-notebook organization.
+## Future Roadmap (Planned)
+- [ ] **Category Drag-and-Drop**: Implementing a robust sorting and reordering system for notebooks.
+- [ ] **Attachments**: Support for local file storage in the `attachments/` folder.
+- [ ] **Cloud Sync**: Optional synchronization with a remote backend.
