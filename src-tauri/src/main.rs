@@ -3,6 +3,8 @@
 mod db;
 
 use db::{Note, NoteCounts, NoteListItem, Notebook, SqliteRepository};
+use base64::engine::general_purpose::STANDARD as base64_engine;
+use base64::Engine;
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -34,8 +36,27 @@ fn resolve_portable_paths(app_handle: &AppHandle) -> Result<(PathBuf, PathBuf), 
         .ok()
         .and_then(|p| p.parent().map(|p| p.to_path_buf()))
         .ok_or_else(|| "Failed to resolve executable directory".to_string())?;
-    let data_dir = exe_dir.join("data");
-    let settings_dir = exe_dir.join("settings");
+    let mut data_dir = exe_dir.join("data");
+    let mut settings_dir = exe_dir.join("settings");
+
+    if let Ok(cwd) = std::env::current_dir() {
+        let mut candidates = Vec::new();
+        candidates.push(cwd.clone());
+        if let Some(parent) = cwd.parent() {
+            candidates.push(parent.to_path_buf());
+        }
+        if let Some(grand) = cwd.parent().and_then(|p| p.parent()) {
+            candidates.push(grand.to_path_buf());
+        }
+        for base in candidates {
+            let is_dev_root = base.join("package.json").exists() && base.join("src-tauri").exists();
+            if is_dev_root {
+                data_dir = base.join("data");
+                settings_dir = base.join("settings");
+                break;
+            }
+        }
+    }
     ensure_dir_writable(&data_dir)?;
     ensure_dir_writable(&settings_dir)?;
 
@@ -88,6 +109,34 @@ fn notes_file_response(data_dir: &Path, request: &tauri::http::Request) -> Resul
         .status(StatusCode::OK)
         .header("Content-Type", mime)
         .body(bytes)?)
+}
+
+#[tauri::command]
+fn read_data_file(path: String, state: State<'_, AppState>) -> Result<String, String> {
+    if path.contains("..") {
+        return Err("Invalid path".to_string());
+    }
+    let rel = PathBuf::from(path);
+    if rel.is_absolute() {
+        return Err("Invalid path".to_string());
+    }
+    let full_path = state.data_dir.join(&rel);
+    if !full_path.exists() {
+        return Err("File not found".to_string());
+    }
+    let bytes = fs::read(&full_path).map_err(|e| e.to_string())?;
+    let mime = match full_path.extension().and_then(|ext| ext.to_str()).map(|s| s.to_lowercase()) {
+        Some(ext) if ext == "png" => "image/png",
+        Some(ext) if ext == "jpg" || ext == "jpeg" => "image/jpeg",
+        Some(ext) if ext == "gif" => "image/gif",
+        Some(ext) if ext == "webp" => "image/webp",
+        Some(ext) if ext == "svg" => "image/svg+xml",
+        Some(ext) if ext == "pdf" => "application/pdf",
+        Some(ext) if ext == "txt" => "text/plain",
+        _ => "application/octet-stream",
+    };
+    let encoded = base64_engine.encode(bytes);
+    Ok(format!("data:{};base64,{}", mime, encoded))
 }
 
 fn update_notes_list_menu(app_handle: &AppHandle, view: &str) {
@@ -310,6 +359,7 @@ fn main() {
             get_note,
             get_note_counts,
             get_data_dir,
+            read_data_file,
             upsert_note,
             delete_note,
             set_notes_list_view,

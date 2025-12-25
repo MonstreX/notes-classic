@@ -76,6 +76,27 @@ function getLastInsertId(db) {
   return res[0]?.values?.[0]?.[0] ?? null;
 }
 
+function normalizeEnmlToHtml(enml) {
+  if (!enml) return "";
+  let html = enml;
+  html = html.replace(/<en-note[^>]*>/gi, "<div>");
+  html = html.replace(/<\/en-note>/gi, "</div>");
+  html = html.replace(/<br><\/br>/gi, "<br>");
+  html = html.replace(/<en-todo([^>]*)\/>/gi, (match, attrs) => {
+    const checked = /checked=\"true\"/i.test(attrs);
+    return `<input type="checkbox" ${checked ? "checked " : ""}disabled />`;
+  });
+  html = html.replace(/<div>/gi, "<p>");
+  html = html.replace(/<\/div>/gi, "</p>");
+  let prev = "";
+  while (prev !== html) {
+    prev = html;
+    html = html.replace(/<p>\s*<p>/gi, "<p>");
+    html = html.replace(/<\/p>\s*<\/p>/gi, "</p>");
+  }
+  return html;
+}
+
 async function main() {
   const args = parseArgs();
   if (!args.input) {
@@ -237,7 +258,8 @@ async function main() {
     const notebookId = notebookIdMap.get(notebookExternalId) ?? null;
     const assetsBase = exportData?.meta?.assetsBase ? String(exportData.meta.assetsBase) : null;
     const contentRaw = note.enmlResolved || note.enml || "";
-    const content = rewriteAssetPaths(contentRaw, assetsBase, "notes-file://files");
+    const contentResolved = rewriteAssetPaths(contentRaw, assetsBase, "notes-file://files");
+    const content = normalizeEnmlToHtml(contentResolved);
     const contentHash = crypto.createHash("sha256").update(content, "utf8").digest("hex");
     const contentSize = Buffer.byteLength(content, "utf8");
     const meta = {

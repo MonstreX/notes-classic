@@ -42,7 +42,7 @@ const Editor: React.FC<EditorProps> = ({ content, onChange, onInit }) => {
       }),
       Image.configure({
         inline: false,
-        allowBase64: false,
+        allowBase64: true,
       }),
       Placeholder.configure({
         placeholder: 'Start writing...',

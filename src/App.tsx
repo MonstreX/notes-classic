@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { invoke, convertFileSrc } from "@tauri-apps/api/tauri";
+import { invoke } from "@tauri-apps/api/tauri";
 import { ask } from "@tauri-apps/api/dialog";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/api/dialog";
@@ -136,7 +136,7 @@ function App() {
   const [noteCounts, setNoteCounts] = useState<Map<number, number>>(new Map());
   const [totalNotes, setTotalNotes] = useState(0);
   const [notesListView, setNotesListView] = useState<NotesListView>("detailed");
-  const [dataDir, setDataDir] = useState<string | null>(null);
+  const imageSrcMapRef = useRef<Map<string, string>>(new Map());
   
   // UI State
   const [selectedNotebookId, setSelectedNotebookId] = useState<number | null>(null);
@@ -173,6 +173,14 @@ function App() {
     if (p.notesListView === "compact" || p.notesListView === "detailed") setNotesListView(p.notesListView);
   }, []);
 
+  const normalizeEnmlContent = useCallback((raw: string) => {
+    if (!raw) return raw;
+    let out = raw.replace(/<en-note[^>]*>/gi, "<div>");
+    out = out.replace(/<\/en-note>/gi, "</div>");
+    out = out.replace(/<br><\/br>/gi, "<br>");
+    return out;
+  }, []);
+
   const ensureNotesScheme = useCallback((raw: string) => {
     if (!raw) return raw;
     if (raw.includes("notes-file://")) return raw;
@@ -181,23 +189,37 @@ function App() {
       .replace(/src='files\//g, "src='notes-file://files/");
   }, []);
 
-  const toDisplayContent = useCallback((raw: string) => {
-    if (!raw || !dataDir) return raw;
-    const sep = dataDir.includes("\\") ? "\\" : "/";
-    const base = dataDir.endsWith(sep) ? dataDir : `${dataDir}${sep}`;
-    const buildSrc = (relativePath: string) => {
-      const normalized = relativePath.replace(/\//g, sep);
-      return convertFileSrc(`${base}${normalized}`);
-    };
+  const toDisplayContent = useCallback(async (raw: string) => {
+    if (!raw) return raw;
+    const matches = Array.from(raw.matchAll(/src=(\"|')notes-file:\/\/files\/(?:evernote\/)?([^\"']+)\1/g));
+    if (matches.length === 0) return raw;
+
+    const uniqueRel = Array.from(new Set(matches.map(m => m[2])));
+    const resolved = new Map<string, string>();
+    await Promise.all(uniqueRel.map(async (rel) => {
+      try {
+        const dataUrl = await invoke<string>("read_data_file", { path: `files/${rel}` });
+        resolved.set(rel, dataUrl);
+        imageSrcMapRef.current.set(dataUrl, `notes-file://files/${rel}`);
+      } catch (e) {}
+    }));
+
     return raw.replace(/src=(\"|')notes-file:\/\/files\/(?:evernote\/)?([^\"']+)\1/g, (match, quote, rel) => {
-      return `src=${quote}${buildSrc(`files/${rel}`)}${quote}`;
+      const dataUrl = resolved.get(rel);
+      if (!dataUrl) return match;
+      return `src=${quote}${dataUrl}${quote}`;
     });
-  }, [dataDir]);
+  }, []);
 
   const toStorageContent = useCallback((raw: string) => {
     if (!raw) return raw;
-    return raw.replace(/src=(\"|')(asset|tauri):\/\/[^\"']*?\/files\/(?:evernote\/)?([^\"']+)\1/g, (match, quote, _scheme, rel) => {
+    const normalized = raw.replace(/src=(\"|')(asset|tauri):\/\/[^\"']*?\/files\/(?:evernote\/)?([^\"']+)\1/g, (match, quote, _scheme, rel) => {
       return `src=${quote}notes-file://files/${rel}${quote}`;
+    });
+    return normalized.replace(/src=(\"|')(data:[^\"']+)\1/g, (match, quote, dataUrl) => {
+      const original = imageSrcMapRef.current.get(dataUrl);
+      if (!original) return match;
+      return `src=${quote}${original}${quote}`;
     });
   }, []);
 
@@ -205,10 +227,6 @@ function App() {
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        try {
-          const dir = await invoke<string>("get_data_dir");
-          setDataDir(dir);
-        } catch (e) {}
         const stored = await invoke<any>("get_settings");
         if (stored) {
           applySettings(stored);
@@ -305,17 +323,22 @@ function App() {
           setContent("");
           return;
         }
-        const normalized = ensureNotesScheme(note.content);
-        const displayContent = toDisplayContent(normalized);
-        if (displayContent !== note.content) {
-          note = { ...note, content: displayContent };
-        }
-        setActiveNote(note);
-        setTitle(note.title);
-        setContent(note.content);
+        const normalized = ensureNotesScheme(normalizeEnmlContent(note.content));
+        toDisplayContent(normalized).then((displayContent) => {
+          if (displayContent !== note.content) {
+            note = { ...note, content: displayContent };
+          }
+          setActiveNote(note);
+          setTitle(note.title);
+          setContent(note.content);
+        }).catch(() => {
+          setActiveNote(note);
+          setTitle(note.title);
+          setContent(note.content);
+        });
       })
       .catch(() => {});
-  }, [selectedNoteId, ensureNotesScheme, toDisplayContent]);
+  }, [selectedNoteId, ensureNotesScheme, normalizeEnmlContent, toDisplayContent]);
 
   useEffect(() => {
     notesRef.current = notes;
