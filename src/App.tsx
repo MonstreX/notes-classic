@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { invoke } from "@tauri-apps/api/tauri";
+import { invoke, convertFileSrc } from "@tauri-apps/api/tauri";
 import { ask } from "@tauri-apps/api/dialog";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/api/dialog";
@@ -136,6 +136,7 @@ function App() {
   const [noteCounts, setNoteCounts] = useState<Map<number, number>>(new Map());
   const [totalNotes, setTotalNotes] = useState(0);
   const [notesListView, setNotesListView] = useState<NotesListView>("detailed");
+  const [dataDir, setDataDir] = useState<string | null>(null);
   
   // UI State
   const [selectedNotebookId, setSelectedNotebookId] = useState<number | null>(null);
@@ -180,10 +181,34 @@ function App() {
       .replace(/src='files\//g, "src='notes-file://files/");
   }, []);
 
+  const toDisplayContent = useCallback((raw: string) => {
+    if (!raw || !dataDir) return raw;
+    const sep = dataDir.includes("\\") ? "\\" : "/";
+    const base = dataDir.endsWith(sep) ? dataDir : `${dataDir}${sep}`;
+    const buildSrc = (relativePath: string) => {
+      const normalized = relativePath.replace(/\//g, sep);
+      return convertFileSrc(`${base}${normalized}`);
+    };
+    return raw.replace(/src=(\"|')notes-file:\/\/files\/(?:evernote\/)?([^\"']+)\1/g, (match, quote, rel) => {
+      return `src=${quote}${buildSrc(`files/${rel}`)}${quote}`;
+    });
+  }, [dataDir]);
+
+  const toStorageContent = useCallback((raw: string) => {
+    if (!raw) return raw;
+    return raw.replace(/src=(\"|')(asset|tauri):\/\/[^\"']*?\/files\/(?:evernote\/)?([^\"']+)\1/g, (match, quote, _scheme, rel) => {
+      return `src=${quote}notes-file://files/${rel}${quote}`;
+    });
+  }, []);
+
   // Load persistence
   useEffect(() => {
     const loadSettings = async () => {
       try {
+        try {
+          const dir = await invoke<string>("get_data_dir");
+          setDataDir(dir);
+        } catch (e) {}
         const stored = await invoke<any>("get_settings");
         if (stored) {
           applySettings(stored);
@@ -281,15 +306,16 @@ function App() {
           return;
         }
         const normalized = ensureNotesScheme(note.content);
-        if (normalized !== note.content) {
-          note = { ...note, content: normalized };
+        const displayContent = toDisplayContent(normalized);
+        if (displayContent !== note.content) {
+          note = { ...note, content: displayContent };
         }
         setActiveNote(note);
         setTitle(note.title);
         setContent(note.content);
       })
       .catch(() => {});
-  }, [selectedNoteId]);
+  }, [selectedNoteId, ensureNotesScheme, toDisplayContent]);
 
   useEffect(() => {
     notesRef.current = notes;
@@ -351,13 +377,14 @@ function App() {
       const currentNote = activeNoteRef.current;
       if (!currentNote || currentNote.id !== selectedNoteId) return;
       if (title !== currentNote.title || content !== currentNote.content) {
-        await invoke("upsert_note", { id: selectedNoteId, title, content, notebookId: currentNote.notebookId });
+        const storageContent = toStorageContent(content);
+        await invoke("upsert_note", { id: selectedNoteId, title, content: storageContent, notebookId: currentNote.notebookId });
         setActiveNote(prev => prev ? { ...prev, title, content, updatedAt: Date.now() / 1000 } : prev);
         setNotes(prev => prev.map(n => n.id === selectedNoteId ? { ...n, title, content, updatedAt: Date.now() / 1000 } : n));
       }
     }, 1000);
     return () => clearTimeout(timeout);
-  }, [title, content, selectedNoteId]);
+  }, [title, content, selectedNoteId, toStorageContent]);
 
   const createNote = async () => {
     try {

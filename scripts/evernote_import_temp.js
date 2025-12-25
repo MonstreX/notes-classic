@@ -237,7 +237,7 @@ async function main() {
     const notebookId = notebookIdMap.get(notebookExternalId) ?? null;
     const assetsBase = exportData?.meta?.assetsBase ? String(exportData.meta.assetsBase) : null;
     const contentRaw = note.enmlResolved || note.enml || "";
-    const content = rewriteAssetPaths(contentRaw, assetsBase, "notes-file://files/evernote");
+    const content = rewriteAssetPaths(contentRaw, assetsBase, "notes-file://files");
     const contentHash = crypto.createHash("sha256").update(content, "utf8").digest("hex");
     const contentSize = Buffer.byteLength(content, "utf8");
     const meta = {
@@ -280,7 +280,7 @@ async function main() {
     const width = fields.width ?? fields.imageWidth ?? null;
     const height = fields.height ?? fields.imageHeight ?? null;
     const relPath = attachment.localFile?.relPath
-      ? posixPath(path.join("files", "evernote", attachment.localFile.relPath))
+      ? posixPath(path.join("files", attachment.localFile.relPath))
       : null;
     const sourceUrl = fields.sourceUrl || fields.sourceURL || fields.source_url || null;
     const isAttachment = fields.isAttachment ?? fields.is_attachment ?? 1;
@@ -347,7 +347,7 @@ async function main() {
   fs.writeFileSync(dbPath, Buffer.from(dbBuffer));
 
   if (assetsPath && fs.existsSync(assetsPath)) {
-    const filesDir = path.join(dataDir, "files", "evernote");
+    const filesDir = path.join(dataDir, "files");
     copyDirRecursive(assetsPath, filesDir);
   }
 

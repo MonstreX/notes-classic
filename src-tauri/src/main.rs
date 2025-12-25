@@ -7,7 +7,8 @@ use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::{api::dialog::blocking::message, AppHandle, CustomMenuItem, Manager, Menu, MenuItem, State, Submenu};
-use tauri::http::{ResponseBuilder, StatusCode};
+use tauri::http::status::StatusCode;
+use tauri::http::{Response, ResponseBuilder, Uri};
 
 const NOTES_VIEW_DETAILED: &str = "view_notes_detailed";
 const NOTES_VIEW_COMPACT: &str = "view_notes_compact";
@@ -51,7 +52,8 @@ fn resolve_portable_paths(app_handle: &AppHandle) -> Result<(PathBuf, PathBuf), 
     Ok((data_dir, settings_dir))
 }
 
-fn notes_file_response(data_dir: &Path, uri: &tauri::http::Uri) -> Result<tauri::http::Response<Vec<u8>>, Box<dyn std::error::Error>> {
+fn notes_file_response(data_dir: &Path, request: &tauri::http::Request) -> Result<Response, Box<dyn std::error::Error>> {
+    let uri: Uri = request.uri().parse()?;
     let host = uri.host().unwrap_or_default();
     let mut rel = String::new();
     if !host.is_empty() {
@@ -204,6 +206,11 @@ async fn get_note_counts(state: State<'_, AppState>) -> Result<NoteCounts, Strin
     repo.get_note_counts().await.map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn get_data_dir(state: State<'_, AppState>) -> Result<String, String> {
+    Ok(state.data_dir.to_string_lossy().to_string())
+}
+
 #[allow(non_snake_case)]
 #[tauri::command]
 async fn upsert_note(id: Option<i64>, title: String, content: String, notebookId: Option<i64>, state: State<'_, AppState>) -> Result<i64, String> {
@@ -257,7 +264,7 @@ fn main() {
     tauri::Builder::default()
         .register_uri_scheme_protocol("notes-file", |app, request| {
             let state = app.state::<AppState>();
-            notes_file_response(&state.data_dir, request.uri())
+            notes_file_response(&state.data_dir, request)
         })
         .setup(|app| {
             let app_handle = app.handle();
@@ -302,6 +309,7 @@ fn main() {
             get_notes,
             get_note,
             get_note_counts,
+            get_data_dir,
             upsert_note,
             delete_note,
             set_notes_list_view,
