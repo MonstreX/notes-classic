@@ -167,9 +167,28 @@ function App() {
     if (!p || typeof p !== "object") return;
     if (p.sidebarWidth) setSidebarWidth(p.sidebarWidth);
     if (p.listWidth) setListWidth(p.listWidth);
-    if (p.selectedNotebookId !== undefined) setSelectedNotebookId(p.selectedNotebookId);
-    if (p.selectedNoteId !== undefined) setSelectedNoteId(p.selectedNoteId);
-    if (p.expandedNotebooks) setExpandedNotebooks(new Set(p.expandedNotebooks));
+    if (p.selectedNotebookId !== undefined) {
+      if (p.selectedNotebookId === null) {
+        setSelectedNotebookId(null);
+      } else {
+        const parsed = Number(p.selectedNotebookId);
+        setSelectedNotebookId(Number.isFinite(parsed) ? parsed : null);
+      }
+    }
+    if (p.selectedNoteId !== undefined) {
+      if (p.selectedNoteId === null) {
+        setSelectedNoteId(null);
+      } else {
+        const parsed = Number(p.selectedNoteId);
+        setSelectedNoteId(Number.isFinite(parsed) ? parsed : null);
+      }
+    }
+    if (p.expandedNotebooks) {
+      const ids = Array.isArray(p.expandedNotebooks)
+        ? p.expandedNotebooks.map((id: any) => Number(id)).filter((id: number) => Number.isFinite(id))
+        : [];
+      setExpandedNotebooks(new Set(ids));
+    }
     if (p.notesListView === "compact" || p.notesListView === "detailed") setNotesListView(p.notesListView);
   }, []);
 
@@ -289,6 +308,7 @@ function App() {
   }, [notesListView, isLoaded]);
 
   const fetchData = useCallback(async () => {
+    if (!isLoaded) return;
     try {
       const [nbs, filteredNotes, counts] = await Promise.all([
         invoke<Notebook[]>("get_notebooks"),
@@ -304,7 +324,7 @@ function App() {
       setNoteCounts(map);
       setTotalNotes(counts.total);
     } catch (err) { console.error("Fetch Error:", err); }
-  }, [selectedNotebookId]);
+  }, [selectedNotebookId, isLoaded]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
