@@ -13,6 +13,7 @@ pub struct Notebook {
     pub parent_id: Option<i64>,
     pub notebook_type: String,
     pub sort_order: i64,
+    pub external_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
@@ -26,6 +27,10 @@ pub struct Note {
     pub sync_status: i32,
     pub remote_id: Option<String>,
     pub notebook_id: Option<i64>,
+    pub external_id: Option<String>,
+    pub meta: Option<String>,
+    pub content_hash: Option<String>,
+    pub content_size: Option<i64>,
 }
 
 async fn column_exists(pool: &SqlitePool, table: &str, column: &str) -> Result<bool, sqlx::Error> {
@@ -59,6 +64,7 @@ pub async fn init_db(data_dir: &Path) -> SqlitePool {
             parent_id INTEGER,
             notebook_type TEXT NOT NULL DEFAULT 'stack',
             sort_order INTEGER NOT NULL DEFAULT 0,
+            external_id TEXT,
             FOREIGN KEY(parent_id) REFERENCES notebooks(id) ON DELETE CASCADE
         )",
     )
@@ -100,6 +106,16 @@ pub async fn init_db(data_dir: &Path) -> SqlitePool {
         notebook_type_added = true;
     }
 
+    if !column_exists(&pool, "notebooks", "external_id")
+        .await
+        .expect("Failed to check schema")
+    {
+        sqlx::query("ALTER TABLE notebooks ADD COLUMN external_id TEXT")
+            .execute(&pool)
+            .await
+            .expect("Failed to add external_id column");
+    }
+
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS notes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -110,12 +126,117 @@ pub async fn init_db(data_dir: &Path) -> SqlitePool {
             sync_status INTEGER DEFAULT 0,
             remote_id TEXT,
             notebook_id INTEGER,
+            external_id TEXT,
+            meta TEXT,
+            content_hash TEXT,
+            content_size INTEGER,
             FOREIGN KEY(notebook_id) REFERENCES notebooks(id) ON DELETE SET NULL
         )",
     )
     .execute(&pool)
     .await
     .expect("Failed to create notes table");
+
+    if !column_exists(&pool, "notes", "external_id")
+        .await
+        .expect("Failed to check schema")
+    {
+        sqlx::query("ALTER TABLE notes ADD COLUMN external_id TEXT")
+            .execute(&pool)
+            .await
+            .expect("Failed to add external_id column");
+    }
+
+    if !column_exists(&pool, "notes", "meta")
+        .await
+        .expect("Failed to check schema")
+    {
+        sqlx::query("ALTER TABLE notes ADD COLUMN meta TEXT")
+            .execute(&pool)
+            .await
+            .expect("Failed to add meta column");
+    }
+
+    if !column_exists(&pool, "notes", "content_hash")
+        .await
+        .expect("Failed to check schema")
+    {
+        sqlx::query("ALTER TABLE notes ADD COLUMN content_hash TEXT")
+            .execute(&pool)
+            .await
+            .expect("Failed to add content_hash column");
+    }
+
+    if !column_exists(&pool, "notes", "content_size")
+        .await
+        .expect("Failed to check schema")
+    {
+        sqlx::query("ALTER TABLE notes ADD COLUMN content_size INTEGER")
+            .execute(&pool)
+            .await
+            .expect("Failed to add content_size column");
+    }
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS tags (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            parent_id INTEGER,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            external_id TEXT,
+            FOREIGN KEY(parent_id) REFERENCES tags(id) ON DELETE CASCADE
+        )",
+    )
+    .execute(&pool)
+    .await
+    .expect("Failed to create tags table");
+
+    sqlx::query("CREATE UNIQUE INDEX IF NOT EXISTS idx_tags_parent_name ON tags(parent_id, name)")
+        .execute(&pool)
+        .await
+        .expect("Failed to create tags index");
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS note_tags (
+            note_id INTEGER NOT NULL,
+            tag_id INTEGER NOT NULL,
+            PRIMARY KEY(note_id, tag_id),
+            FOREIGN KEY(note_id) REFERENCES notes(id) ON DELETE CASCADE,
+            FOREIGN KEY(tag_id) REFERENCES tags(id) ON DELETE CASCADE
+        )",
+    )
+    .execute(&pool)
+    .await
+    .expect("Failed to create note_tags table");
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS attachments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            note_id INTEGER NOT NULL,
+            external_id TEXT,
+            hash TEXT,
+            filename TEXT,
+            mime TEXT,
+            size INTEGER,
+            width INTEGER,
+            height INTEGER,
+            local_path TEXT,
+            source_url TEXT,
+            is_attachment INTEGER,
+            created_at INTEGER,
+            updated_at INTEGER,
+            FOREIGN KEY(note_id) REFERENCES notes(id) ON DELETE CASCADE
+        )",
+    )
+    .execute(&pool)
+    .await
+    .expect("Failed to create attachments table");
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_attachments_note_id ON attachments(note_id)")
+        .execute(&pool)
+        .await
+        .expect("Failed to create attachments index");
 
     let mut structure_changed = sort_order_added || notebook_type_added;
     let rows: Vec<(i64, Option<i64>)> = sqlx::query_as("SELECT id, parent_id FROM notebooks")

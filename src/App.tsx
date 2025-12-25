@@ -13,8 +13,25 @@ import { twMerge } from "tailwind-merge";
 
 function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)); }
 
-interface Notebook { id: number; name: string; parentId: number | null; notebookType: "stack" | "notebook"; sortOrder: number; }
-interface Note { id: number; title: string; content: string; updatedAt: number; notebookId: number | null; }
+interface Notebook {
+  id: number;
+  name: string;
+  parentId: number | null;
+  notebookType: "stack" | "notebook";
+  sortOrder: number;
+  externalId?: string | null;
+}
+interface Note {
+  id: number;
+  title: string;
+  content: string;
+  updatedAt: number;
+  notebookId: number | null;
+  externalId?: string | null;
+  meta?: string | null;
+  contentHash?: string | null;
+  contentSize?: number | null;
+}
 type NotesListView = "detailed" | "compact";
 
 const STORAGE_KEY = "notes_classic_v10_stable";
