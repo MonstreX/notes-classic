@@ -79,6 +79,39 @@ function getLastInsertId(db) {
 function normalizeEnmlToHtml(enml) {
   if (!enml) return "";
   let html = enml;
+  const codeblockToken = /<\s*div\b[^>]*--en-codeblock:true[^>]*>/i;
+  const divToken = /<\/?div\b[^>]*>/gi;
+  let searchIndex = 0;
+  while (true) {
+    const match = html.slice(searchIndex).match(codeblockToken);
+    if (!match || match.index === undefined) break;
+    const start = searchIndex + match.index;
+    divToken.lastIndex = start;
+    let depth = 0;
+    let openTagEnd = null;
+    let closeTagStart = null;
+    let tokenMatch;
+    while ((tokenMatch = divToken.exec(html)) !== null) {
+      const token = tokenMatch[0];
+      const isClosing = token.startsWith("</") || token.startsWith("</ ");
+      if (!isClosing) {
+        depth += 1;
+        if (openTagEnd === null) {
+          openTagEnd = divToken.lastIndex;
+        }
+      } else {
+        depth -= 1;
+        if (depth === 0) {
+          closeTagStart = tokenMatch.index;
+          break;
+        }
+      }
+    }
+    if (openTagEnd === null || closeTagStart === null) break;
+    const inner = html.slice(openTagEnd, closeTagStart);
+    html = `${html.slice(0, start)}<note-callout>${inner}</note-callout>${html.slice(divToken.lastIndex)}`;
+    searchIndex = start + "<note-callout>".length + inner.length + "</note-callout>".length;
+  }
   html = html.replace(/<en-note[^>]*>/gi, "<div>");
   html = html.replace(/<\/en-note>/gi, "</div>");
   html = html.replace(/<br><\/br>/gi, "<br>");
@@ -88,6 +121,10 @@ function normalizeEnmlToHtml(enml) {
   });
   html = html.replace(/<div>/gi, "<p>");
   html = html.replace(/<\/div>/gi, "</p>");
+  html = html.replace(/<note-callout>/gi, '<div class="note-callout">');
+  html = html.replace(/<\/note-callout>/gi, "</div>");
+  html = html.replace(/<p>\s*(<div class=\"note-callout\">)/gi, "$1");
+  html = html.replace(/<\/div>\s*<\/p>/gi, "</div>");
   let prev = "";
   while (prev !== html) {
     prev = html;
