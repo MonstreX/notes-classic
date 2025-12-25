@@ -29,7 +29,7 @@
       "targets": "all",
       "identifier": "com.notes-classic.app",
       "icon": [
-        "icons/icon.ico"
+        "icons/app.ico"
       ]
     },
     "security": {
