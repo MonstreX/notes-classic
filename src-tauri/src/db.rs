@@ -516,14 +516,14 @@ impl SqliteRepository {
                 )
                 SELECT id, title, substr(content, 1, 4000) AS content, updated_at, notebook_id FROM notes
                 WHERE notebook_id IN (SELECT id FROM descendant_notebooks)
-                ORDER BY updated_at DESC",
+                ORDER BY updated_at DESC, created_at DESC, id DESC",
             )
             .bind(id)
             .fetch_all(&self.pool)
             .await
         } else {
             sqlx::query_as::<_, NoteListItem>(
-                "SELECT id, title, substr(content, 1, 4000) AS content, updated_at, notebook_id FROM notes ORDER BY updated_at DESC",
+                "SELECT id, title, substr(content, 1, 4000) AS content, updated_at, notebook_id FROM notes ORDER BY updated_at DESC, created_at DESC, id DESC",
             )
                 .fetch_all(&self.pool)
                 .await
