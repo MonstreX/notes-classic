@@ -27,6 +27,7 @@ const Editor: React.FC<EditorProps> = ({ content, onChange }) => {
       '|',
       'ul',
       'ol',
+      'callout',
       '|',
       'link',
       'image',
@@ -41,6 +42,7 @@ const Editor: React.FC<EditorProps> = ({ content, onChange }) => {
       '|',
       'ul',
       'ol',
+      'callout',
       '|',
       'link',
       'image',
@@ -54,6 +56,7 @@ const Editor: React.FC<EditorProps> = ({ content, onChange }) => {
       '|',
       'ul',
       'ol',
+      'callout',
       '|',
       'link',
       '|',
@@ -66,10 +69,37 @@ const Editor: React.FC<EditorProps> = ({ content, onChange }) => {
       '|',
       'ul',
       'ol',
+      'callout',
       '|',
       'undo',
       'redo',
     ],
+    commandToHotkeys: {
+      callout: 'ctrl+l',
+    },
+    controls: {
+      callout: {
+        tooltip: 'Callout',
+        text: 'C',
+        exec: (editor: any) => {
+          if (!editor || !editor.s || editor.s.isCollapsed()) return;
+          const current = editor.s.current();
+          let node = current;
+          while (node && node !== editor.editor) {
+            if (node.nodeType === 1 && node.classList.contains('note-callout')) {
+              return;
+            }
+            node = node.parentNode;
+          }
+          editor.s.wrapInTag(() => {
+            const wrapper = editor.createInside.element('div');
+            wrapper.className = 'note-callout';
+            return wrapper;
+          });
+          editor.synchronizeValues();
+        },
+      },
+    },
     cleanHTML: {
       fillEmptyParagraph: false,
       removeEmptyElements: false,

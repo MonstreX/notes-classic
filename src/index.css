@@ -131,3 +131,17 @@
   max-width: 100%;
   height: auto;
 }
+
+.notes-editor .jodit-container .jodit-wysiwyg .note-callout {
+  background: #f3f4f6;
+  border-radius: 5px;
+  padding: 10px 12px;
+  margin: 0 0 1em;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.notes-editor .jodit-container .jodit-wysiwyg .note-callout * {
+  font-size: inherit;
+  line-height: inherit;
+}
