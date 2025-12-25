@@ -94,6 +94,8 @@ function normalizeEnmlToHtml(enml) {
     html = html.replace(/<p>\s*<p>/gi, "<p>");
     html = html.replace(/<\/p>\s*<\/p>/gi, "</p>");
   }
+  html = html.replace(/<p>\s*<\/p>/gi, "");
+  html = html.replace(/<p>\s*<br\s*\/?>\s*<\/p>/gi, "");
   return html;
 }
 
