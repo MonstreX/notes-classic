@@ -200,6 +200,7 @@ function App() {
     return out;
   }, []);
 
+
   const ensureNotesScheme = useCallback((raw: string) => {
     if (!raw) return raw;
     if (raw.includes("notes-file://")) return raw;
