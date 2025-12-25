@@ -84,6 +84,50 @@
   height: 14px;
 }
 
-.notes-editor .jodit-wysiwyg {
-  padding-top: 50px;
+.notes-editor .jodit-container .jodit-wysiwyg {
+  padding-top: 50px !important;
+}
+
+.notes-editor .jodit-container .jodit-wysiwyg p {
+  margin: 0 0 0.9em 0;
+}
+
+.notes-editor .jodit-container .jodit-wysiwyg ul,
+.notes-editor .jodit-container .jodit-wysiwyg ol {
+  margin: 0 0 0.9em 1.5em;
+  padding-left: 1.2em;
+}
+
+.notes-editor .jodit-container .jodit-wysiwyg ul {
+  list-style: disc;
+}
+
+.notes-editor .jodit-container .jodit-wysiwyg ol {
+  list-style: decimal;
+}
+
+.notes-editor .jodit-container .jodit-wysiwyg li {
+  margin: 0.2em 0;
+}
+
+.notes-editor .jodit-container .jodit-wysiwyg h1,
+.notes-editor .jodit-container .jodit-wysiwyg h2,
+.notes-editor .jodit-container .jodit-wysiwyg h3,
+.notes-editor .jodit-container .jodit-wysiwyg h4,
+.notes-editor .jodit-container .jodit-wysiwyg h5,
+.notes-editor .jodit-container .jodit-wysiwyg h6 {
+  margin: 1.1em 0 0.6em;
+  font-weight: 600;
+}
+
+.notes-editor .jodit-container .jodit-wysiwyg blockquote {
+  margin: 0 0 1em;
+  padding-left: 1em;
+  border-left: 3px solid #e5e7eb;
+  color: #555;
+}
+
+.notes-editor .jodit-container .jodit-wysiwyg img {
+  max-width: 100%;
+  height: auto;
 }
