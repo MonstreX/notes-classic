@@ -372,9 +372,6 @@ function App() {
       const activeNotebook = notebooks.find(nb => nb.id === notebookId);
       if (!overNotebook || !activeNotebook) return;
       if (notebookType === "stack" && overNotebook.notebookType !== "stack") return;
-      if (notebookType === "notebook" && overNotebook.notebookType !== "stack" && overNotebook.parentId !== activeNotebook.parentId) {
-        return;
-      }
       const activeRect = event?.active?.rect?.current?.translated ?? event?.active?.rect?.current?.initial;
       const overRect = event?.over?.rect;
       if (!overRect || !activeRect) return;
@@ -394,8 +391,10 @@ function App() {
       }
       const targetParentId = position === "inside" ? overNotebook.id : overNotebook.parentId;
       if (notebookType === "stack" && targetParentId !== null) return;
-      if (notebookType === "notebook" && (targetParentId === null || overNotebook.notebookType !== "stack" && targetParentId !== activeNotebook.parentId)) {
-        return;
+      const targetParent = targetParentId === null ? null : notebooks.find(nb => nb.id === targetParentId);
+      if (notebookType === "notebook") {
+        if (targetParentId === null) return;
+        if (!targetParent || targetParent.notebookType !== "stack") return;
       }
       if (isDescendant(targetParentId, notebookId)) return;
       const siblings = getOrderedChildren(targetParentId).filter(nb => nb.id !== notebookId);
