@@ -133,12 +133,12 @@
 }
 
 .notes-editor .jodit-container .jodit-wysiwyg .note-callout {
-  background: #f3f4f6;
+  background: #f3f3f3;
   border-radius: 5px;
-  padding: 10px 12px;
+  padding: 10px 15px;
   margin: 0 0 1em;
-  font-size: 12px;
-  line-height: 1.5;
+  font-size: 13px;
+  line-height: 1.2;
 }
 
 .notes-editor .jodit-container .jodit-wysiwyg .note-callout * {
