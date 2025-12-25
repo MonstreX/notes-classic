@@ -176,6 +176,7 @@ async function main() {
   }
 
   const noteTagTable = tables.includes("NoteTag") ? selectAll(db, "SELECT * FROM NoteTag") : [];
+  const tagTable = tables.includes("Nodes_Tag") ? selectAll(db, "SELECT * FROM Nodes_Tag") : [];
   const attachmentTable = tables.includes("Attachment") ? selectAll(db, "SELECT * FROM Attachment") : [];
 
   const missingRte = [];
@@ -255,12 +256,14 @@ async function main() {
       notebookCount: notebooks.length,
       stackCount: stacksMap.size,
       attachmentCount: attachmentsOut.length,
+      tagCount: tagTable.length,
       noteTagCount: noteTagTable.length,
       missingRteCount: missingRte.length,
       decodeErrorCount: decodeErrors.length,
     },
     stacks: Array.from(stacksMap.values()),
     notebooks,
+    tags: tagTable,
     notes: notesResolved,
     attachments: attachmentsOut,
     noteTags: noteTagTable,

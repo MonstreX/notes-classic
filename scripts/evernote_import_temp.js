@@ -307,25 +307,34 @@ async function main() {
 
   if (Array.isArray(exportData.tags)) {
     const tagIdMap = new Map();
-    const tagOrder = exportData.tags.filter((t) => !t.parentId);
     const insertTag = db.prepare("INSERT INTO tags (name, parent_id, created_at, updated_at, external_id) VALUES (?, ?, ?, ?, ?)");
-    for (const tag of tagOrder) {
-      insertTag.run([tag.name, null, now, now, String(tag.id)]);
+
+    const roots = exportData.tags.filter((t) => !t.parentId && !t.parent_Tag_id);
+    for (const tag of roots) {
+      const name = tag.name || tag.label || tag.id;
+      insertTag.run([name, null, now, now, String(tag.id)]);
       const localId = getLastInsertId(db);
       if (localId !== null) tagIdMap.set(tag.id, localId);
     }
-    for (const tag of exportData.tags.filter((t) => t.parentId)) {
-      const parentId = tagIdMap.get(tag.parentId) ?? null;
-      insertTag.run([tag.name, parentId, now, now, String(tag.id)]);
+
+    const children = exportData.tags.filter((t) => t.parentId || t.parent_Tag_id);
+    for (const tag of children) {
+      const parentKey = tag.parentId || tag.parent_Tag_id;
+      const parentId = tagIdMap.get(parentKey) ?? null;
+      const name = tag.name || tag.label || tag.id;
+      insertTag.run([name, parentId, now, now, String(tag.id)]);
       const localId = getLastInsertId(db);
       if (localId !== null) tagIdMap.set(tag.id, localId);
     }
+
     insertTag.free();
 
     const insertNoteTag = db.prepare("INSERT OR IGNORE INTO note_tags (note_id, tag_id) VALUES (?, ?)");
     for (const nt of noteTags) {
-      const noteLocalId = noteIdMap.get(nt.note_id ?? nt.noteId);
-      const tagLocalId = tagIdMap.get(nt.tag_id ?? nt.tagId);
+      const noteExternal = nt.note_id ?? nt.noteId ?? nt.Note_id;
+      const tagExternal = nt.tag_id ?? nt.tagId ?? nt.Tag_id;
+      const noteLocalId = noteIdMap.get(noteExternal);
+      const tagLocalId = tagIdMap.get(tagExternal);
       if (!noteLocalId || !tagLocalId) continue;
       insertNoteTag.run([noteLocalId, tagLocalId]);
     }
