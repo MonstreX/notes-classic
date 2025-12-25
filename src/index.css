@@ -48,3 +48,15 @@
   background: #333;
   border-radius: 10px;
 }
+
+.notes-editor .jodit-container {
+  border: none;
+}
+
+.notes-editor .jodit-toolbar__box {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+}

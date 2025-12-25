@@ -31,7 +31,7 @@ const Editor: React.FC<EditorProps> = ({ content, onChange }) => {
 
   return (
     <div className="flex flex-col h-full bg-white">
-      <div className="flex-1 overflow-y-auto px-10 py-8">
+      <div className="flex-1 overflow-y-auto px-10 py-8 notes-editor">
         <JoditEditor
           value={content}
           config={config}
