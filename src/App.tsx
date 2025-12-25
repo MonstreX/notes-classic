@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { invoke } from "@tauri-apps/api/tauri";
 import { ask } from "@tauri-apps/api/dialog";
 import { listen } from "@tauri-apps/api/event";
+import { open } from "@tauri-apps/api/dialog";
 import { Plus, Trash2, Search, FileText, Book, FolderPlus, ChevronRight, BookOpen } from "lucide-react";
 import { DndContext, DragOverlay, PointerSensor, useDraggable, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
@@ -182,6 +183,19 @@ function App() {
     const unlisten = listen<string>("notes-list-view", (event) => {
       if (event.payload === "compact" || event.payload === "detailed") {
         setNotesListView(event.payload);
+      }
+    });
+    return () => { unlisten.then(fn => fn()); };
+  }, []);
+
+  useEffect(() => {
+    const unlisten = listen("import-evernote", async () => {
+      const selected = await open({
+        title: "Import from Evernote",
+        filters: [{ name: "Evernote Export", extensions: ["enex"] }],
+      });
+      if (selected) {
+        console.log("Evernote import file selected:", selected);
       }
     });
     return () => { unlisten.then(fn => fn()); };

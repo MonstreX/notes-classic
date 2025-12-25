@@ -11,6 +11,7 @@ use tauri::{api::dialog::blocking::message, AppHandle, CustomMenuItem, Manager, 
 const NOTES_VIEW_DETAILED: &str = "view_notes_detailed";
 const NOTES_VIEW_COMPACT: &str = "view_notes_compact";
 const SETTINGS_FILE_NAME: &str = "app.json";
+const FILE_IMPORT_EVERNOTE: &str = "file_import_evernote";
 
 struct AppState {
     pool: sqlx::sqlite::SqlitePool,
@@ -57,11 +58,16 @@ fn update_notes_list_menu(app_handle: &AppHandle, view: &str) {
 }
 
 fn build_menu() -> Menu {
+    let import_menu = Menu::new()
+        .add_item(CustomMenuItem::new("file_import_evernote".to_string(), "Evernote..."));
+
     let file_menu = Menu::new()
         .add_item(CustomMenuItem::new("file_new".to_string(), "New"))
         .add_item(CustomMenuItem::new("file_open".to_string(), "Open..."))
         .add_item(CustomMenuItem::new("file_save".to_string(), "Save"))
         .add_item(CustomMenuItem::new("file_save_as".to_string(), "Save As..."))
+        .add_native_item(MenuItem::Separator)
+        .add_submenu(Submenu::new("Import", import_menu))
         .add_native_item(MenuItem::Separator)
         .add_item(CustomMenuItem::new("file_settings".to_string(), "Settings"))
         .add_native_item(MenuItem::Separator)
@@ -218,6 +224,9 @@ fn main() {
         .on_menu_event(|event| {
             let app_handle = event.window().app_handle();
             match event.menu_item_id() {
+                FILE_IMPORT_EVERNOTE => {
+                    let _ = app_handle.emit_all("import-evernote", ());
+                }
                 NOTES_VIEW_DETAILED => {
                     update_notes_list_menu(&app_handle, "detailed");
                     let _ = app_handle.emit_all("notes-list-view", "detailed");
