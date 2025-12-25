@@ -83,19 +83,24 @@ const Editor: React.FC<EditorProps> = ({ content, onChange }) => {
         text: 'C',
         exec: (editor: any) => {
           if (!editor || !editor.s || editor.s.isCollapsed()) return;
-          const current = editor.s.current();
-          let node = current;
-          while (node && node !== editor.editor) {
-            if (node.nodeType === 1 && node.classList.contains('note-callout')) {
-              return;
+          const range = editor.s.range;
+          const isInsideCallout = (node: Node | null) => {
+            let current = node;
+            while (current && current !== editor.editor) {
+              if (current.nodeType === 1 && (current as HTMLElement).classList.contains('note-callout')) {
+                return true;
+              }
+              current = current.parentNode;
             }
-            node = node.parentNode;
-          }
-          editor.s.wrapInTag(() => {
-            const wrapper = editor.createInside.element('div');
-            wrapper.className = 'note-callout';
-            return wrapper;
-          });
+            return false;
+          };
+          if (isInsideCallout(range.startContainer) || isInsideCallout(range.endContainer)) return;
+          const wrapper = editor.createInside.element('div');
+          wrapper.className = 'note-callout';
+          const fragment = range.extractContents();
+          wrapper.appendChild(fragment);
+          range.insertNode(wrapper);
+          editor.s.setCursorAfter(wrapper);
           editor.synchronizeValues();
         },
       },
