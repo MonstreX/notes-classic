@@ -3,7 +3,18 @@
 mod db;
 
 use db::{DbState, Note, Notebook, SqliteRepository};
-use tauri::{CustomMenuItem, Manager, Menu, MenuItem, State, Submenu};
+use tauri::{AppHandle, CustomMenuItem, Manager, Menu, MenuItem, State, Submenu};
+
+const NOTES_VIEW_DETAILED: &str = "view_notes_detailed";
+const NOTES_VIEW_COMPACT: &str = "view_notes_compact";
+
+fn update_notes_list_menu(app_handle: &AppHandle, view: &str) {
+    if let Some(window) = app_handle.get_window("main") {
+        let menu = window.menu_handle();
+        let _ = menu.get_item(NOTES_VIEW_DETAILED).set_selected(view == "detailed");
+        let _ = menu.get_item(NOTES_VIEW_COMPACT).set_selected(view == "compact");
+    }
+}
 
 fn build_menu() -> Menu {
     let file_menu = Menu::new()
@@ -17,9 +28,15 @@ fn build_menu() -> Menu {
         .add_native_item(MenuItem::CloseWindow)
         .add_native_item(MenuItem::Quit);
 
+    let notes_list_menu = Menu::new()
+        .add_item(CustomMenuItem::new(NOTES_VIEW_DETAILED.to_string(), "Detailed").selected())
+        .add_item(CustomMenuItem::new(NOTES_VIEW_COMPACT.to_string(), "Compact"));
+
     let view_menu = Menu::new()
         .add_item(CustomMenuItem::new("view_toggle_sidebar".to_string(), "Toggle Sidebar").disabled())
         .add_item(CustomMenuItem::new("view_toggle_list".to_string(), "Toggle Notes List").disabled())
+        .add_native_item(MenuItem::Separator)
+        .add_submenu(Submenu::new("Notes List", notes_list_menu))
         .add_native_item(MenuItem::Separator)
         .add_item(CustomMenuItem::new("view_actual_size".to_string(), "Actual Size").disabled());
 
@@ -113,6 +130,12 @@ async fn delete_note(id: i64, state: State<'_, DbState>) -> Result<(), String> {
     repo.delete_note(id).await.map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn set_notes_list_view(view: String, app_handle: AppHandle) -> Result<(), String> {
+    update_notes_list_menu(&app_handle, &view);
+    Ok(())
+}
+
 fn main() {
     let menu = build_menu();
     tauri::Builder::default()
@@ -127,6 +150,20 @@ fn main() {
         })
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .menu(menu)
+        .on_menu_event(|event| {
+            let app_handle = event.window().app_handle();
+            match event.menu_item_id() {
+                NOTES_VIEW_DETAILED => {
+                    update_notes_list_menu(&app_handle, "detailed");
+                    let _ = app_handle.emit_all("notes-list-view", "detailed");
+                }
+                NOTES_VIEW_COMPACT => {
+                    update_notes_list_menu(&app_handle, "compact");
+                    let _ = app_handle.emit_all("notes-list-view", "compact");
+                }
+                _ => {}
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             get_notebooks,
             create_notebook,
@@ -135,7 +172,8 @@ fn main() {
             move_note,
             get_notes,
             upsert_note,
-            delete_note
+            delete_note,
+            set_notes_list_view
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
