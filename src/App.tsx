@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/tauri";
 import { ask } from "@tauri-apps/api/dialog";
 import { Plus, Trash2, Search, FileText, Book, FolderPlus, ChevronRight, BookOpen } from "lucide-react";
@@ -19,7 +19,7 @@ const STORAGE_KEY = "notes_classic_v10_stable";
 const NOTE_CONTEXT_MENU_ID = "note-context-menu";
 
 // --- NOTEBOOK ITEM ---
-function NotebookItem({ notebook, isSelected, level, onSelect, onAddSub, onDelete, isExpanded, onToggle, dragIndicator, isNoteDragging }: any) {
+function NotebookItem({ notebook, noteCount, isSelected, level, onSelect, onAddSub, onDelete, isExpanded, onToggle, dragIndicator, isNoteDragging }: any) {
   const { setNodeRef, isOver } = useDroppable({
     id: `notebook-${notebook.id}`,
     data: { notebookId: notebook.id, dropType: "notebook" },
@@ -76,6 +76,7 @@ function NotebookItem({ notebook, isSelected, level, onSelect, onAddSub, onDelet
             <Book size={18} className={cn("shrink-0 w-[18px]", isSelected ? "text-[#00A82D]" : "text-gray-500")} />
           )}
           <span className="text-sm truncate font-medium">{notebook.name}</span>
+          <span className="text-xs text-gray-500 font-medium">{noteCount ?? 0}</span>
         </div>
         
         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
@@ -101,6 +102,7 @@ function NotebookItem({ notebook, isSelected, level, onSelect, onAddSub, onDelet
 function App() {
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
+  const [allNotes, setAllNotes] = useState<Note[]>([]);
   
   // UI State
   const [selectedNotebookId, setSelectedNotebookId] = useState<number | null>(null);
@@ -151,10 +153,14 @@ function App() {
 
   const fetchData = useCallback(async () => {
     try {
-      const nbs = await invoke<Notebook[]>("get_notebooks");
+      const [nbs, filteredNotes, allNotesList] = await Promise.all([
+        invoke<Notebook[]>("get_notebooks"),
+        invoke<Note[]>("get_notes", { notebookId: selectedNotebookId }),
+        invoke<Note[]>("get_notes", { notebookId: null }),
+      ]);
       setNotebooks(nbs);
-      const filteredNotes = await invoke<Note[]>("get_notes", { notebookId: selectedNotebookId });
       setNotes(filteredNotes);
+      setAllNotes(allNotesList);
     } catch (err) { console.error("Fetch Error:", err); }
   }, [selectedNotebookId]);
 
@@ -175,6 +181,24 @@ function App() {
       .filter(nb => nb.parentId === parentId && nb.notebookType === typeFilter)
       .sort((a, b) => (a.sortOrder - b.sortOrder) || a.name.localeCompare(b.name));
   }, [notebooks]);
+
+  const notebookNoteCounts = useMemo(() => {
+    const notebookCounts = new Map<number, number>();
+    for (const note of allNotes) {
+      if (note.notebookId === null) continue;
+      notebookCounts.set(note.notebookId, (notebookCounts.get(note.notebookId) ?? 0) + 1);
+    }
+    const stackCounts = new Map<number, number>();
+    for (const nb of notebooks) {
+      if (nb.notebookType === "stack") stackCounts.set(nb.id, 0);
+    }
+    for (const nb of notebooks) {
+      if (nb.notebookType !== "notebook" || nb.parentId === null) continue;
+      const count = notebookCounts.get(nb.id) ?? 0;
+      stackCounts.set(nb.parentId, (stackCounts.get(nb.parentId) ?? 0) + count);
+    }
+    return { notebookCounts, stackCounts };
+  }, [allNotes, notebooks]);
 
   const isDescendant = useCallback((candidateParentId: number | null, notebookId: number) => {
     if (candidateParentId === null) return false;
@@ -429,7 +453,7 @@ function App() {
     );
   };
 
-  const AllNotesDropTarget = ({ isNoteDragging }: { isNoteDragging: boolean }) => {
+  const AllNotesDropTarget = ({ isNoteDragging, noteCount }: { isNoteDragging: boolean; noteCount: number }) => {
     const { setNodeRef, isOver } = useDroppable({
       id: "notebook-null",
       data: { notebookId: null, dropType: "all-notes" },
@@ -448,6 +472,7 @@ function App() {
       >
         <FileText size={18} className={cn("shrink-0", selectedNotebookId === null ? "text-[#00A82D]" : "text-gray-500")} />
         <span className="text-sm font-medium">All Notes</span>
+        <span className="text-xs text-gray-500 font-medium">{noteCount}</span>
       </div>
     );
   };
@@ -525,10 +550,14 @@ function App() {
     const children = getOrderedChildren(nb.id);
     const isExpanded = expandedNotebooks.has(nb.id);
     const canHaveChildren = nb.notebookType === "stack";
+    const noteCount = nb.notebookType === "stack"
+      ? (notebookNoteCounts.stackCounts.get(nb.id) ?? 0)
+      : (notebookNoteCounts.notebookCounts.get(nb.id) ?? 0);
     return (
       <div key={nb.id}>
         <NotebookItem 
           notebook={nb} isSelected={selectedNotebookId === nb.id} level={level}
+          noteCount={noteCount}
           onSelect={setSelectedNotebookId}
           onAddSub={createNotebook}
           onDelete={deleteNotebook}
@@ -567,7 +596,7 @@ function App() {
           </button>
           
           <nav className="flex-1 overflow-y-auto custom-scrollbar pr-1">
-            <AllNotesDropTarget isNoteDragging={activeDragNoteId !== null} />
+            <AllNotesDropTarget isNoteDragging={activeDragNoteId !== null} noteCount={allNotes.length} />
             
             <div className="mt-4 pt-4 pb-2 px-3 flex justify-between items-center text-gray-500 uppercase text-[10px] font-bold tracking-widest shrink-0">
               <span>Notebooks</span>
