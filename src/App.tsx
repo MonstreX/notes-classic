@@ -130,29 +130,52 @@ function App() {
   );
   const expandTimersRef = useRef<Map<number, number>>(new Map());
 
+  const applySettings = useCallback((p: any) => {
+    if (!p || typeof p !== "object") return;
+    if (p.sidebarWidth) setSidebarWidth(p.sidebarWidth);
+    if (p.listWidth) setListWidth(p.listWidth);
+    if (p.selectedNotebookId !== undefined) setSelectedNotebookId(p.selectedNotebookId);
+    if (p.selectedNoteId !== undefined) setSelectedNoteId(p.selectedNoteId);
+    if (p.expandedNotebooks) setExpandedNotebooks(new Set(p.expandedNotebooks));
+    if (p.notesListView === "compact" || p.notesListView === "detailed") setNotesListView(p.notesListView);
+  }, []);
+
   // Load persistence
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
+    const loadSettings = async () => {
       try {
-        const p = JSON.parse(saved);
-        if (p.sidebarWidth) setSidebarWidth(p.sidebarWidth);
-        if (p.listWidth) setListWidth(p.listWidth);
-        if (p.selectedNotebookId !== undefined) setSelectedNotebookId(p.selectedNotebookId);
-        if (p.selectedNoteId !== undefined) setSelectedNoteId(p.selectedNoteId);
-        if (p.expandedNotebooks) setExpandedNotebooks(new Set(p.expandedNotebooks));
-        if (p.notesListView === "compact" || p.notesListView === "detailed") setNotesListView(p.notesListView);
+        const stored = await invoke<any>("get_settings");
+        if (stored) {
+          applySettings(stored);
+        } else {
+          const saved = localStorage.getItem(STORAGE_KEY);
+          if (saved) {
+            try {
+              const p = JSON.parse(saved);
+              applySettings(p);
+              await invoke("set_settings", { settings: p });
+              localStorage.removeItem(STORAGE_KEY);
+            } catch (e) {}
+          }
+        }
       } catch (e) {}
-    }
-    setIsLoaded(true);
-  }, []);
+      setIsLoaded(true);
+    };
+    loadSettings();
+  }, [applySettings]);
 
   // Save persistence
   useEffect(() => {
     if (!isLoaded) return;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      sidebarWidth, listWidth, selectedNotebookId, selectedNoteId, expandedNotebooks: Array.from(expandedNotebooks), notesListView
-    }));
+    const payload = {
+      sidebarWidth,
+      listWidth,
+      selectedNotebookId,
+      selectedNoteId,
+      expandedNotebooks: Array.from(expandedNotebooks),
+      notesListView,
+    };
+    invoke("set_settings", { settings: payload }).catch(() => {});
   }, [sidebarWidth, listWidth, selectedNotebookId, selectedNoteId, expandedNotebooks, notesListView, isLoaded]);
 
   useEffect(() => {

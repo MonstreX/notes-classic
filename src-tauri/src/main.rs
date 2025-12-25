@@ -2,11 +2,51 @@
 
 mod db;
 
-use db::{DbState, Note, Notebook, SqliteRepository};
-use tauri::{AppHandle, CustomMenuItem, Manager, Menu, MenuItem, State, Submenu};
+use db::{Note, Notebook, SqliteRepository};
+use serde_json::Value;
+use std::fs;
+use std::path::{Path, PathBuf};
+use tauri::{api::dialog::blocking::message, AppHandle, CustomMenuItem, Manager, Menu, MenuItem, State, Submenu};
 
 const NOTES_VIEW_DETAILED: &str = "view_notes_detailed";
 const NOTES_VIEW_COMPACT: &str = "view_notes_compact";
+const SETTINGS_FILE_NAME: &str = "app.json";
+
+struct AppState {
+    pool: sqlx::sqlite::SqlitePool,
+    settings_dir: PathBuf,
+}
+
+fn ensure_dir_writable(dir: &Path) -> Result<(), String> {
+    fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let test_path = dir.join(".write_test");
+    fs::write(&test_path, b"test").map_err(|e| e.to_string())?;
+    fs::remove_file(&test_path).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn resolve_portable_paths(app_handle: &AppHandle) -> Result<(PathBuf, PathBuf), String> {
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .ok_or_else(|| "Failed to resolve executable directory".to_string())?;
+    let data_dir = exe_dir.join("data");
+    let settings_dir = exe_dir.join("settings");
+    ensure_dir_writable(&data_dir)?;
+    ensure_dir_writable(&settings_dir)?;
+
+    let legacy_dir = app_handle
+        .path_resolver()
+        .app_data_dir()
+        .ok_or_else(|| "Failed to resolve app data directory".to_string())?;
+    let legacy_db = legacy_dir.join("notes_classic.db");
+    let new_db = data_dir.join("notes.db");
+    if !new_db.exists() && legacy_db.exists() {
+        fs::copy(&legacy_db, &new_db).map_err(|e| e.to_string())?;
+    }
+
+    Ok((data_dir, settings_dir))
+}
 
 fn update_notes_list_menu(app_handle: &AppHandle, view: &str) {
     if let Some(window) = app_handle.get_window("main") {
@@ -57,20 +97,20 @@ fn build_menu() -> Menu {
 }
 
 #[tauri::command]
-async fn get_notebooks(state: State<'_, DbState>) -> Result<Vec<Notebook>, String> {
+async fn get_notebooks(state: State<'_, AppState>) -> Result<Vec<Notebook>, String> {
     let repo = SqliteRepository { pool: state.pool.clone() };
     repo.get_notebooks().await.map_err(|e| e.to_string())
 }
 
 #[allow(non_snake_case)]
 #[tauri::command]
-async fn create_notebook(name: String, parentId: Option<i64>, state: State<'_, DbState>) -> Result<i64, String> {
+async fn create_notebook(name: String, parentId: Option<i64>, state: State<'_, AppState>) -> Result<i64, String> {
     let repo = SqliteRepository { pool: state.pool.clone() };
     repo.create_notebook(&name, parentId).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn delete_notebook(id: i64, state: State<'_, DbState>) -> Result<(), String> {
+async fn delete_notebook(id: i64, state: State<'_, AppState>) -> Result<(), String> {
     let repo = SqliteRepository { pool: state.pool.clone() };
     repo.delete_notebook(id).await.map_err(|e| e.to_string())
 }
@@ -81,7 +121,7 @@ async fn move_notebook(
     notebookId: i64,
     parentId: Option<i64>,
     index: usize,
-    state: State<'_, DbState>,
+    state: State<'_, AppState>,
 ) -> Result<(), String> {
     let repo = SqliteRepository { pool: state.pool.clone() };
     repo.move_notebook(notebookId, parentId, index)
@@ -91,7 +131,7 @@ async fn move_notebook(
 
 #[allow(non_snake_case)]
 #[tauri::command]
-async fn move_note(noteId: i64, notebookId: Option<i64>, state: State<'_, DbState>) -> Result<(), String> {
+async fn move_note(noteId: i64, notebookId: Option<i64>, state: State<'_, AppState>) -> Result<(), String> {
     let repo = SqliteRepository { pool: state.pool.clone() };
     repo.update_note_notebook(noteId, notebookId)
         .await
@@ -100,7 +140,7 @@ async fn move_note(noteId: i64, notebookId: Option<i64>, state: State<'_, DbStat
 
 #[allow(non_snake_case)]
 #[tauri::command]
-async fn get_notes(notebookId: Option<i64>, state: State<'_, DbState>) -> Result<Vec<Note>, String> {
+async fn get_notes(notebookId: Option<i64>, state: State<'_, AppState>) -> Result<Vec<Note>, String> {
     let repo = SqliteRepository { pool: state.pool.clone() };
     repo.get_all_notes(notebookId)
         .await
@@ -109,7 +149,7 @@ async fn get_notes(notebookId: Option<i64>, state: State<'_, DbState>) -> Result
 
 #[allow(non_snake_case)]
 #[tauri::command]
-async fn upsert_note(id: Option<i64>, title: String, content: String, notebookId: Option<i64>, state: State<'_, DbState>) -> Result<i64, String> {
+async fn upsert_note(id: Option<i64>, title: String, content: String, notebookId: Option<i64>, state: State<'_, AppState>) -> Result<i64, String> {
     let repo = SqliteRepository { pool: state.pool.clone() };
     match id {
         Some(id) => {
@@ -125,9 +165,28 @@ async fn upsert_note(id: Option<i64>, title: String, content: String, notebookId
 }
 
 #[tauri::command]
-async fn delete_note(id: i64, state: State<'_, DbState>) -> Result<(), String> {
+async fn delete_note(id: i64, state: State<'_, AppState>) -> Result<(), String> {
     let repo = SqliteRepository { pool: state.pool.clone() };
     repo.delete_note(id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_settings(state: State<'_, AppState>) -> Result<Option<Value>, String> {
+    let settings_path = state.settings_dir.join(SETTINGS_FILE_NAME);
+    if !settings_path.exists() {
+        return Ok(None);
+    }
+    let raw = fs::read_to_string(&settings_path).map_err(|e| e.to_string())?;
+    let value: Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+    Ok(Some(value))
+}
+
+#[tauri::command]
+fn set_settings(settings: Value, state: State<'_, AppState>) -> Result<(), String> {
+    let settings_path = state.settings_dir.join(SETTINGS_FILE_NAME);
+    let data = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    fs::write(&settings_path, data).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -141,11 +200,17 @@ fn main() {
     tauri::Builder::default()
         .setup(|app| {
             let app_handle = app.handle();
-            let app_dir = app_handle.path_resolver().app_data_dir().expect("failed to get app data dir");
+            let (data_dir, settings_dir) = match resolve_portable_paths(&app_handle) {
+                Ok(paths) => paths,
+                Err(err) => {
+                    message(None::<&tauri::Window>, "Storage Error", err.as_str());
+                    return Err(err.into());
+                }
+            };
             let pool = tauri::async_runtime::block_on(async {
-                db::init_db(&app_dir).await
+                db::init_db(&data_dir).await
             });
-            app.manage(DbState { pool });
+            app.manage(AppState { pool, settings_dir });
             Ok(())
         })
         .plugin(tauri_plugin_window_state::Builder::default().build())
@@ -173,7 +238,9 @@ fn main() {
             get_notes,
             upsert_note,
             delete_note,
-            set_notes_list_view
+            set_notes_list_view,
+            get_settings,
+            set_settings
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

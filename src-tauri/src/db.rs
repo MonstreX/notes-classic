@@ -28,10 +28,6 @@ pub struct Note {
     pub notebook_id: Option<i64>,
 }
 
-pub struct DbState {
-    pub pool: SqlitePool,
-}
-
 async fn column_exists(pool: &SqlitePool, table: &str, column: &str) -> Result<bool, sqlx::Error> {
     let table = table.replace('\'', "''");
     let query = format!("SELECT name FROM pragma_table_info('{}') WHERE name = ?", table);
@@ -42,12 +38,12 @@ async fn column_exists(pool: &SqlitePool, table: &str, column: &str) -> Result<b
     Ok(row.is_some())
 }
 
-pub async fn init_db(app_dir: &Path) -> SqlitePool {
-    if !app_dir.exists() {
-        fs::create_dir_all(app_dir).expect("Could not create app directory");
+pub async fn init_db(data_dir: &Path) -> SqlitePool {
+    if !data_dir.exists() {
+        fs::create_dir_all(data_dir).expect("Could not create data directory");
     }
 
-    let db_path = app_dir.join("notes_classic.db");
+    let db_path = data_dir.join("notes.db");
     if !db_path.exists() {
         fs::File::create(&db_path).expect("Failed to create database file");
     }
