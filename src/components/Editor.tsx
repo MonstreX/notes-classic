@@ -20,6 +20,56 @@ const Editor: React.FC<EditorProps> = ({ content, onChange }) => {
     askBeforePasteHTML: false,
     askBeforePasteFromWord: false,
     enter: 'P',
+    buttons: [
+      'bold',
+      'italic',
+      'underline',
+      '|',
+      'ul',
+      'ol',
+      '|',
+      'link',
+      'image',
+      '|',
+      'undo',
+      'redo',
+    ],
+    buttonsMD: [
+      'bold',
+      'italic',
+      'underline',
+      '|',
+      'ul',
+      'ol',
+      '|',
+      'link',
+      'image',
+      '|',
+      'undo',
+      'redo',
+    ],
+    buttonsSM: [
+      'bold',
+      'italic',
+      '|',
+      'ul',
+      'ol',
+      '|',
+      'link',
+      '|',
+      'undo',
+      'redo',
+    ],
+    buttonsXS: [
+      'bold',
+      'italic',
+      '|',
+      'ul',
+      'ol',
+      '|',
+      'undo',
+      'redo',
+    ],
     cleanHTML: {
       fillEmptyParagraph: false,
       removeEmptyElements: false,
@@ -31,7 +81,7 @@ const Editor: React.FC<EditorProps> = ({ content, onChange }) => {
 
   return (
     <div className="flex flex-col h-full bg-white">
-      <div className="flex-1 overflow-y-auto px-10 py-8 notes-editor">
+      <div className="flex-1 overflow-y-auto px-10 pb-8 pt-0 notes-editor">
         <JoditEditor
           value={content}
           config={config}

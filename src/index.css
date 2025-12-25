@@ -59,4 +59,31 @@
   z-index: 30;
   background: #ffffff;
   border-bottom: 1px solid #e5e7eb;
+  margin-top: 0;
+  padding: 4px 8px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+
+.notes-editor .jodit-toolbar__box::-webkit-scrollbar {
+  height: 4px;
+}
+.notes-editor .jodit-toolbar__box::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 8px;
+}
+
+.notes-editor .jodit-toolbar__box .jodit-toolbar-button {
+  min-width: 24px;
+  height: 24px;
+  padding: 2px;
+}
+
+.notes-editor .jodit-toolbar__box .jodit-toolbar-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.notes-editor .jodit-wysiwyg {
+  padding-top: 12px;
 }
