@@ -15,6 +15,20 @@ The project follows a decoupled architecture where the frontend (React) communic
 
 ---
 
+## Storage Layout (Portable Mode)
+
+All user data is stored next to the application executable (portable-only layout).
+
+```text
+./data/notes.db        # SQLite database
+./data/assets/         # Attachments and embedded files (planned)
+./settings/app.json    # UI and app settings
+```
+
+If the app cannot write to the executable folder, it shows an error and aborts startup.
+
+---
+
 ## Project Structure
 
 ```text
@@ -56,7 +70,7 @@ notes-classic/
 
 ### 3. State Persistence
 - **Window State**: Automatically saves and restores window position and size using the `tauri-plugin-window-state`.
-- **UI State**: Remembers panel widths, the last selected note/notebook, and which folders were expanded in the sidebar via `localStorage`.
+- **UI State**: Remembers panel widths, the last selected note/notebook, and which folders were expanded in the sidebar via `./settings/app.json`.
 
 ### 4. Rich Text Editor (TipTap)
 - **Toolbar**: Controls for Bold, Italic, Strikethrough, Headings, Lists, Task Lists, Code Blocks, and Tables.
@@ -87,6 +101,37 @@ npm run tauri build
 ---
 
 ## Future Roadmap (Planned)
-- [ ] **Category Drag-and-Drop**: Implementing a robust sorting and reordering system for notebooks.
-- [ ] **Attachments**: Support for local file storage in the `attachments/` folder.
+- [ ] **Evernote Import (EXB)**: Import notebooks, stacks, notes, and resources from the Evernote Windows local database.
+- [ ] **Evernote Import (ENEX)**: Fallback import to a single notebook when only `.enex` is available.
+- [ ] **Attachments**: Support for local file storage in `./data/assets/`.
 - [ ] **Cloud Sync**: Optional synchronization with a remote backend.
+
+---
+
+## Evernote Import Plan (Draft)
+
+### Data Sources
+- **Primary**: `Databases/fido6080net.exb` (SQLite database).
+- **Fallback**: `Evernote.enex` (notes only, no notebook/stack structure).
+
+### Notebooks and Stacks
+- `notebook_attr.name` -> Notebook name.
+- `notebook_attr.stack` -> Stack name (top-level group).
+- Only two levels are used (stack -> notebook), matching Notes Classic structure.
+
+### Notes
+- `note_attr` provides note metadata (title, dates, notebook_uid).
+- Note ENML is stored in `attrs` where `uid = note_attr.uid` and `aid = 34`.
+
+### Resources (Attachments)
+- `resource_attr` links resources to a note (`note`) and provides `hash`, `mime`, `file_name`.
+- `resources.data` contains binary data; `resource_attr.hash` is the hex md5 used by `<en-media hash="...">`.
+- Importer writes files into `./data/assets/` and rewrites ENML links accordingly.
+
+### Date Conversion
+- Evernote timestamps in `note_attr` are days since `0001-01-01`.
+- Importer converts to Unix timestamps for storage.
+
+### ENEX Fallback
+- `.enex` contains notes, content, and resources but no stacks/notebooks.
+- Imported into a single notebook (e.g., "Evernote Import").
