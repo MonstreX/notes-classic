@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use sqlx::{sqlite::SqlitePool, FromRow};
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
@@ -10,6 +11,7 @@ pub struct Notebook {
     pub name: String,
     pub created_at: i64,
     pub parent_id: Option<i64>,
+    pub notebook_type: String,
     pub sort_order: i64,
 }
 
@@ -59,6 +61,7 @@ pub async fn init_db(app_dir: &Path) -> SqlitePool {
             name TEXT NOT NULL,
             created_at INTEGER NOT NULL,
             parent_id INTEGER,
+            notebook_type TEXT NOT NULL DEFAULT 'stack',
             sort_order INTEGER NOT NULL DEFAULT 0,
             FOREIGN KEY(parent_id) REFERENCES notebooks(id) ON DELETE CASCADE
         )",
@@ -78,6 +81,7 @@ pub async fn init_db(app_dir: &Path) -> SqlitePool {
     }
 
     let mut sort_order_added = false;
+    let mut notebook_type_added = false;
     if !column_exists(&pool, "notebooks", "sort_order")
         .await
         .expect("Failed to check schema")
@@ -87,6 +91,17 @@ pub async fn init_db(app_dir: &Path) -> SqlitePool {
             .await
             .expect("Failed to add sort_order column");
         sort_order_added = true;
+    }
+
+    if !column_exists(&pool, "notebooks", "notebook_type")
+        .await
+        .expect("Failed to check schema")
+    {
+        sqlx::query("ALTER TABLE notebooks ADD COLUMN notebook_type TEXT NOT NULL DEFAULT 'stack'")
+            .execute(&pool)
+            .await
+            .expect("Failed to add notebook_type column");
+        notebook_type_added = true;
     }
 
     sqlx::query(
@@ -106,7 +121,44 @@ pub async fn init_db(app_dir: &Path) -> SqlitePool {
     .await
     .expect("Failed to create notes table");
 
-    if sort_order_added {
+    let mut structure_changed = sort_order_added || notebook_type_added;
+    let rows: Vec<(i64, Option<i64>)> = sqlx::query_as("SELECT id, parent_id FROM notebooks")
+        .fetch_all(&pool)
+        .await
+        .expect("Failed to read notebooks for normalization");
+    let mut parent_map = HashMap::new();
+    for (id, parent_id) in &rows {
+        parent_map.insert(*id, *parent_id);
+    }
+
+    for (id, parent_id) in rows {
+        let mut root_id = id;
+        let mut current = parent_id;
+        while let Some(pid) = current {
+            root_id = pid;
+            current = parent_map.get(&pid).copied().flatten();
+        }
+
+        if parent_id.is_none() {
+            sqlx::query("UPDATE notebooks SET notebook_type = 'stack' WHERE id = ?")
+                .bind(id)
+                .execute(&pool)
+                .await
+                .expect("Failed to set stack type");
+        } else {
+            sqlx::query("UPDATE notebooks SET notebook_type = 'notebook', parent_id = ? WHERE id = ?")
+                .bind(root_id)
+                .bind(id)
+                .execute(&pool)
+                .await
+                .expect("Failed to normalize notebook type");
+            if parent_id != Some(root_id) {
+                structure_changed = true;
+            }
+        }
+    }
+
+    if structure_changed {
         let parents: Vec<(Option<i64>,)> = sqlx::query_as("SELECT DISTINCT parent_id FROM notebooks")
             .fetch_all(&pool)
             .await
@@ -153,6 +205,19 @@ impl SqliteRepository {
 
     pub async fn create_notebook(&self, name: &str, parent_id: Option<i64>) -> Result<i64, sqlx::Error> {
         let now = chrono::Utc::now().timestamp();
+        let notebook_type = if parent_id.is_some() { "notebook" } else { "stack" };
+        if let Some(pid) = parent_id {
+            let parent_type: Option<(String,)> =
+                sqlx::query_as("SELECT notebook_type FROM notebooks WHERE id = ?")
+                    .bind(pid)
+                    .fetch_optional(&self.pool)
+                    .await?;
+            if let Some((ptype,)) = parent_type {
+                if ptype != "stack" {
+                    return Err(sqlx::Error::RowNotFound);
+                }
+            }
+        }
         let max_order: Option<(Option<i64>,)> = if let Some(pid) = parent_id {
             sqlx::query_as("SELECT MAX(sort_order) FROM notebooks WHERE parent_id = ?")
                 .bind(pid)
@@ -164,10 +229,11 @@ impl SqliteRepository {
                 .await?
         };
         let next_order = max_order.and_then(|(v,)| v).unwrap_or(-1) + 1;
-        let res = sqlx::query("INSERT INTO notebooks (name, created_at, parent_id, sort_order) VALUES (?, ?, ?, ?)")
+        let res = sqlx::query("INSERT INTO notebooks (name, created_at, parent_id, notebook_type, sort_order) VALUES (?, ?, ?, ?, ?)")
             .bind(name)
             .bind(now)
             .bind(parent_id)
+            .bind(notebook_type)
             .bind(next_order)
             .execute(&self.pool)
             .await?;
@@ -187,15 +253,34 @@ impl SqliteRepository {
     ) -> Result<(), sqlx::Error> {
         let mut tx = self.pool.begin().await?;
 
-        let current: Option<(Option<i64>, i64)> =
-            sqlx::query_as("SELECT parent_id, sort_order FROM notebooks WHERE id = ?")
+        let current: Option<(Option<i64>, i64, String)> =
+            sqlx::query_as("SELECT parent_id, sort_order, notebook_type FROM notebooks WHERE id = ?")
                 .bind(notebook_id)
                 .fetch_optional(&mut *tx)
                 .await?;
-        let (current_parent_id, _current_order) = match current {
+        let (current_parent_id, _current_order, current_type) = match current {
             Some(data) => data,
             None => return Ok(()),
         };
+
+        if current_type == "stack" && target_parent_id.is_some() {
+            return Ok(());
+        }
+        if current_type == "notebook" {
+            if target_parent_id.is_none() {
+                return Ok(());
+            }
+            let parent_type: Option<(String,)> =
+                sqlx::query_as("SELECT notebook_type FROM notebooks WHERE id = ?")
+                    .bind(target_parent_id)
+                    .fetch_optional(&mut *tx)
+                    .await?;
+            if let Some((ptype,)) = parent_type {
+                if ptype != "stack" {
+                    return Ok(());
+                }
+            }
+        }
 
         let source_ids: Vec<i64> = if let Some(pid) = current_parent_id {
             sqlx::query_as("SELECT id FROM notebooks WHERE parent_id = ? AND id != ? ORDER BY sort_order ASC, name ASC")
