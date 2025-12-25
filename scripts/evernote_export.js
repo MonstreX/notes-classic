@@ -110,14 +110,21 @@ function buildAssetPath(assetsRoot, hash, ext) {
   return { relPath, absPath };
 }
 
-function copyResourceFile(resourcesRoot, assetsRoot, noteId, attachment) {
-  if (!resourcesRoot || !assetsRoot) return null;
+function copyResourceFile(resourcesRoots, assetsRoot, noteId, attachment) {
+  if (!resourcesRoots || resourcesRoots.length === 0 || !assetsRoot) return null;
   const hash = attachment.dataHash;
   if (!hash || !noteId) return null;
-
-  const sourcePath = path.join(resourcesRoot, noteId, hash);
-  if (!fs.existsSync(sourcePath)) {
-    return { sourcePath, exists: false };
+  let sourcePath = null;
+  for (const root of resourcesRoots) {
+    const candidate = path.join(root, noteId, hash);
+    if (fs.existsSync(candidate)) {
+      sourcePath = candidate;
+      break;
+    }
+  }
+  if (!sourcePath) {
+    const fallback = path.join(resourcesRoots[0], noteId, hash);
+    return { sourcePath: fallback, exists: false };
   }
 
   const extFromName = sanitizeExt(path.extname(attachment.filename || ""));
@@ -133,9 +140,20 @@ function toPosixPath(value) {
   return value.split(path.sep).join("/");
 }
 
+function resolveResourcesRoots(resourcesRoot) {
+  if (!resourcesRoot) return null;
+  if (!fs.existsSync(resourcesRoot)) return [resourcesRoot];
+  const entries = fs.readdirSync(resourcesRoot, { withFileTypes: true });
+  const userDirs = entries.filter((entry) => entry.isDirectory() && entry.name.toLowerCase().startsWith("user"));
+  if (userDirs.length > 0) {
+    return userDirs.map((entry) => path.join(resourcesRoot, entry.name));
+  }
+  return [resourcesRoot];
+}
+
 function rewriteEnml(enml, assetMap, assetsBase) {
   if (!enml) return enml;
-  return enml.replace(/<en-media([^>]*?)hash=\"([0-9a-f]+)\"([^>]*)>/gi, (match, before, hash, after) => {
+  return enml.replace(/<en-media[^>]*?hash=\"([0-9a-f]+)\"[^>]*?(?:><\/en-media>|\\s*\/>)/gi, (match, hash) => {
     const rel = assetMap.get(hash);
     if (!rel) return match;
     const src = assetsBase ? `${assetsBase}/${rel}` : rel;
@@ -153,6 +171,8 @@ async function main() {
     console.error("Both --resources and --assets must be provided together.");
     process.exit(1);
   }
+
+  const resourcesRoots = resolveResourcesRoots(args.resources);
 
   const wasmPath = path.resolve(process.cwd(), "node_modules", "sql.js", "dist", "sql-wasm.wasm");
   const SQL = await initSqlJs({ locateFile: () => wasmPath });
@@ -208,7 +228,7 @@ async function main() {
 
   for (const attachment of attachmentTable) {
     const noteId = attachment.parent_Note_id || null;
-    const copied = copyResourceFile(args.resources, args.assets, noteId, attachment);
+    const copied = copyResourceFile(resourcesRoots, args.assets, noteId, attachment);
     if (copied?.relPath && attachment.dataHash) {
       assetMap.set(attachment.dataHash, toPosixPath(copied.relPath));
     }
@@ -249,7 +269,7 @@ async function main() {
       exportedAt: new Date().toISOString(),
       dbPath: args.db,
       rteRoot: args.rte,
-      resourcesRoot: args.resources,
+      resourcesRoot: resourcesRoots ? resourcesRoots.join(";") : null,
       assetsDir: args.assets,
       assetsBase,
       noteCount: notesOut.length,

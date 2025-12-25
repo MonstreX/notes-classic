@@ -2,7 +2,7 @@
 
 mod db;
 
-use db::{Note, Notebook, SqliteRepository};
+use db::{Note, NoteCounts, NoteListItem, Notebook, SqliteRepository};
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -146,11 +146,23 @@ async fn move_note(noteId: i64, notebookId: Option<i64>, state: State<'_, AppSta
 
 #[allow(non_snake_case)]
 #[tauri::command]
-async fn get_notes(notebookId: Option<i64>, state: State<'_, AppState>) -> Result<Vec<Note>, String> {
+async fn get_notes(notebookId: Option<i64>, state: State<'_, AppState>) -> Result<Vec<NoteListItem>, String> {
     let repo = SqliteRepository { pool: state.pool.clone() };
     repo.get_all_notes(notebookId)
         .await
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_note(id: i64, state: State<'_, AppState>) -> Result<Option<Note>, String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    repo.get_note(id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_note_counts(state: State<'_, AppState>) -> Result<NoteCounts, String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    repo.get_note_counts().await.map_err(|e| e.to_string())
 }
 
 #[allow(non_snake_case)]
@@ -245,6 +257,8 @@ fn main() {
             move_notebook,
             move_note,
             get_notes,
+            get_note,
+            get_note_counts,
             upsert_note,
             delete_note,
             set_notes_list_view,

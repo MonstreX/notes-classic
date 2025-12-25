@@ -21,7 +21,14 @@ interface Notebook {
   sortOrder: number;
   externalId?: string | null;
 }
-interface Note {
+interface NoteListItem {
+  id: number;
+  title: string;
+  content: string;
+  updatedAt: number;
+  notebookId: number | null;
+}
+interface NoteDetail {
   id: number;
   title: string;
   content: string;
@@ -31,6 +38,10 @@ interface Note {
   meta?: string | null;
   contentHash?: string | null;
   contentSize?: number | null;
+}
+interface NoteCounts {
+  total: number;
+  perNotebook: { notebookId: number; count: number }[];
 }
 type NotesListView = "detailed" | "compact";
 
@@ -121,8 +132,9 @@ function NotebookItem({ notebook, noteCount, isSelected, level, onSelect, onAddS
 
 function App() {
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [allNotes, setAllNotes] = useState<Note[]>([]);
+  const [notes, setNotes] = useState<NoteListItem[]>([]);
+  const [noteCounts, setNoteCounts] = useState<Map<number, number>>(new Map());
+  const [totalNotes, setTotalNotes] = useState(0);
   const [notesListView, setNotesListView] = useState<NotesListView>("detailed");
   
   // UI State
@@ -134,6 +146,7 @@ function App() {
   const [searchTerm, setSearchTerm] = useState("");
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [activeNote, setActiveNote] = useState<NoteDetail | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [activeDragNoteId, setActiveDragNoteId] = useState<number | null>(null);
   const [activeDragNotebookId, setActiveDragNotebookId] = useState<number | null>(null);
@@ -141,7 +154,8 @@ function App() {
 
   const isResizingSidebar = useRef(false);
   const isResizingList = useRef(false);
-  const notesRef = useRef<Note[]>([]);
+  const notesRef = useRef<NoteListItem[]>([]);
+  const activeNoteRef = useRef<NoteDetail | null>(null);
   const { show } = useContextMenu({ id: NOTE_CONTEXT_MENU_ID });
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
@@ -225,27 +239,53 @@ function App() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [nbs, filteredNotes, allNotesList] = await Promise.all([
+      const [nbs, filteredNotes, counts] = await Promise.all([
         invoke<Notebook[]>("get_notebooks"),
-        invoke<Note[]>("get_notes", { notebookId: selectedNotebookId }),
-        invoke<Note[]>("get_notes", { notebookId: null }),
+        invoke<NoteListItem[]>("get_notes", { notebookId: selectedNotebookId }),
+        invoke<NoteCounts>("get_note_counts"),
       ]);
       setNotebooks(nbs);
       setNotes(filteredNotes);
-      setAllNotes(allNotesList);
+      const map = new Map<number, number>();
+      counts.perNotebook.forEach(item => {
+        map.set(item.notebookId, item.count);
+      });
+      setNoteCounts(map);
+      setTotalNotes(counts.total);
     } catch (err) { console.error("Fetch Error:", err); }
   }, [selectedNotebookId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
   useEffect(() => {
-    const note = notes.find(n => n.id === selectedNoteId);
-    if (note) { setTitle(note.title); setContent(note.content); }
-  }, [selectedNoteId, notes]);
+    if (!selectedNoteId) {
+      setActiveNote(null);
+      setTitle("");
+      setContent("");
+      return;
+    }
+    invoke<NoteDetail | null>("get_note", { id: selectedNoteId })
+      .then((note) => {
+        if (!note) {
+          setActiveNote(null);
+          setTitle("");
+          setContent("");
+          return;
+        }
+        setActiveNote(note);
+        setTitle(note.title);
+        setContent(note.content);
+      })
+      .catch(() => {});
+  }, [selectedNoteId]);
 
   useEffect(() => {
     notesRef.current = notes;
   }, [notes]);
+
+  useEffect(() => {
+    activeNoteRef.current = activeNote;
+  }, [activeNote]);
 
   const getOrderedChildren = useCallback((parentId: number | null) => {
     const typeFilter = parentId === null ? "stack" : "notebook";
@@ -255,22 +295,18 @@ function App() {
   }, [notebooks]);
 
   const notebookNoteCounts = useMemo(() => {
-    const notebookCounts = new Map<number, number>();
-    for (const note of allNotes) {
-      if (note.notebookId === null) continue;
-      notebookCounts.set(note.notebookId, (notebookCounts.get(note.notebookId) ?? 0) + 1);
-    }
+    const notebookCounts = new Map<number, number>(noteCounts);
     const stackCounts = new Map<number, number>();
     for (const nb of notebooks) {
       if (nb.notebookType === "stack") stackCounts.set(nb.id, 0);
     }
     for (const nb of notebooks) {
       if (nb.notebookType !== "notebook" || nb.parentId === null) continue;
-      const count = notebookCounts.get(nb.id) ?? 0;
+      const count = noteCounts.get(nb.id) ?? 0;
       stackCounts.set(nb.parentId, (stackCounts.get(nb.parentId) ?? 0) + count);
     }
     return { notebookCounts, stackCounts };
-  }, [allNotes, notebooks]);
+  }, [noteCounts, notebooks]);
 
   const isDescendant = useCallback((candidateParentId: number | null, notebookId: number) => {
     if (candidateParentId === null) return false;
@@ -300,10 +336,12 @@ function App() {
   useEffect(() => {
     if (!selectedNoteId) return;
     const timeout = setTimeout(async () => {
-      const currentNote = notesRef.current.find(n => n.id === selectedNoteId);
-      if (currentNote && (title !== currentNote.title || content !== currentNote.content)) {
+      const currentNote = activeNoteRef.current;
+      if (!currentNote || currentNote.id !== selectedNoteId) return;
+      if (title !== currentNote.title || content !== currentNote.content) {
         await invoke("upsert_note", { id: selectedNoteId, title, content, notebookId: currentNote.notebookId });
-        setNotes(prev => prev.map(n => n.id === selectedNoteId ? { ...n, title, content, updatedAt: Date.now()/1000 } : n));
+        setActiveNote(prev => prev ? { ...prev, title, content, updatedAt: Date.now() / 1000 } : prev);
+        setNotes(prev => prev.map(n => n.id === selectedNoteId ? { ...n, title, content, updatedAt: Date.now() / 1000 } : n));
       }
     }, 1000);
     return () => clearTimeout(timeout);
@@ -561,7 +599,7 @@ function App() {
     );
   };
 
-  const renderNoteCard = (note: Note, isOverlay: boolean, isDragging: boolean) => {
+  const renderNoteCard = (note: NoteListItem, isOverlay: boolean, isDragging: boolean) => {
     if (notesListView === "compact") {
       return (
         <div
@@ -610,13 +648,13 @@ function App() {
     );
   };
 
-  const renderDragPreview = (note: Note) => (
+  const renderDragPreview = (note: NoteListItem) => (
     <div className="px-4 py-2 bg-white border border-gray-200 rounded shadow-sm text-sm text-black opacity-70">
       {note.title || "Untitled"}
     </div>
   );
 
-  const NoteRow = ({ note }: { note: Note }) => {
+  const NoteRow = ({ note }: { note: NoteListItem }) => {
     const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
       id: `note-${note.id}`,
       data: { type: "note", noteId: note.id },
@@ -691,7 +729,7 @@ function App() {
           </button>
           
           <nav className="flex-1 overflow-y-auto custom-scrollbar pr-1">
-            <AllNotesDropTarget isNoteDragging={activeDragNoteId !== null} noteCount={allNotes.length} />
+    <AllNotesDropTarget isNoteDragging={activeDragNoteId !== null} noteCount={totalNotes} />
             
             <div className="mt-4 pt-4 pb-2 px-3 flex justify-between items-center text-gray-500 uppercase text-[10px] font-bold tracking-widest shrink-0">
               <span>Notebooks</span>

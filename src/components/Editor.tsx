@@ -8,6 +8,7 @@ import TableCell from '@tiptap/extension-table-cell';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import Placeholder from '@tiptap/extension-placeholder';
+import Image from '@tiptap/extension-image';
 import { common, createLowlight } from 'lowlight';
 import React, { useEffect } from 'react';
 import Toolbar from './Toolbar';
@@ -38,6 +39,10 @@ const Editor: React.FC<EditorProps> = ({ content, onChange, onInit }) => {
       TaskList,
       TaskItem.configure({
         nested: true,
+      }),
+      Image.configure({
+        inline: false,
+        allowBase64: false,
       }),
       Placeholder.configure({
         placeholder: 'Start writing...',

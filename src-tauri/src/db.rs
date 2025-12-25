@@ -33,6 +33,30 @@ pub struct Note {
     pub content_size: Option<i64>,
 }
 
+#[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteListItem {
+    pub id: i64,
+    pub title: String,
+    pub content: String,
+    pub updated_at: i64,
+    pub notebook_id: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteCountItem {
+    pub notebook_id: i64,
+    pub count: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteCounts {
+    pub total: i64,
+    pub per_notebook: Vec<NoteCountItem>,
+}
+
 async fn column_exists(pool: &SqlitePool, table: &str, column: &str) -> Result<bool, sqlx::Error> {
     let table = table.replace('\'', "''");
     let query = format!("SELECT name FROM pragma_table_info('{}') WHERE name = ?", table);
@@ -136,6 +160,16 @@ pub async fn init_db(data_dir: &Path) -> SqlitePool {
     .execute(&pool)
     .await
     .expect("Failed to create notes table");
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_notes_notebook_id ON notes(notebook_id)")
+        .execute(&pool)
+        .await
+        .expect("Failed to create notes notebook index");
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_notes_updated_at ON notes(updated_at)")
+        .execute(&pool)
+        .await
+        .expect("Failed to create notes updated index");
 
     if !column_exists(&pool, "notes", "external_id")
         .await
@@ -471,16 +505,16 @@ impl SqliteRepository {
         Ok(())
     }
 
-    pub async fn get_all_notes(&self, notebook_id: Option<i64>) -> Result<Vec<Note>, sqlx::Error> {
+    pub async fn get_all_notes(&self, notebook_id: Option<i64>) -> Result<Vec<NoteListItem>, sqlx::Error> {
         if let Some(id) = notebook_id {
-            sqlx::query_as::<_, Note>(
+            sqlx::query_as::<_, NoteListItem>(
                 "WITH RECURSIVE descendant_notebooks(id) AS (
                     SELECT id FROM notebooks WHERE id = ?
                     UNION ALL
                     SELECT n.id FROM notebooks n
                     JOIN descendant_notebooks dn ON n.parent_id = dn.id
                 )
-                SELECT * FROM notes
+                SELECT id, title, substr(content, 1, 4000) AS content, updated_at, notebook_id FROM notes
                 WHERE notebook_id IN (SELECT id FROM descendant_notebooks)
                 ORDER BY updated_at DESC",
             )
@@ -488,10 +522,31 @@ impl SqliteRepository {
             .fetch_all(&self.pool)
             .await
         } else {
-            sqlx::query_as::<_, Note>("SELECT * FROM notes ORDER BY updated_at DESC")
+            sqlx::query_as::<_, NoteListItem>(
+                "SELECT id, title, substr(content, 1, 4000) AS content, updated_at, notebook_id FROM notes ORDER BY updated_at DESC",
+            )
                 .fetch_all(&self.pool)
                 .await
         }
+    }
+
+    pub async fn get_note(&self, id: i64) -> Result<Option<Note>, sqlx::Error> {
+        sqlx::query_as::<_, Note>("SELECT * FROM notes WHERE id = ?")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await
+    }
+
+    pub async fn get_note_counts(&self) -> Result<NoteCounts, sqlx::Error> {
+        let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM notes")
+            .fetch_one(&self.pool)
+            .await?;
+        let per_notebook = sqlx::query_as::<_, NoteCountItem>(
+            "SELECT notebook_id, COUNT(*) AS count FROM notes WHERE notebook_id IS NOT NULL GROUP BY notebook_id",
+        )
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(NoteCounts { total: total.0, per_notebook })
     }
 
     pub async fn create_note(&self, title: &str, content: &str, notebook_id: Option<i64>) -> Result<i64, sqlx::Error> {
