@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import JoditEditor from 'jodit-react';
-import 'jodit/build/jodit.min.css';
+import 'jodit/es2015/jodit.min.css';
 
 interface EditorProps {
   content: string;
