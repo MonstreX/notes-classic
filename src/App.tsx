@@ -514,11 +514,11 @@ function App() {
           className={cn(
             "px-6 py-3 border-b border-gray-100 cursor-pointer relative bg-white",
             !isOverlay && "group hover:bg-[#F8F8F8]",
-            selectedNoteId === note.id && !isOverlay && "ring-1 ring-[#00A82D] z-10"
+            selectedNoteId === note.id && !isOverlay && "bg-[#F2F2F2]"
           )}
         >
           <div className="flex items-center justify-between text-black">
-            <h3 className={cn("font-semibold text-sm truncate pr-4", selectedNoteId === note.id && !isOverlay && "text-[#00A82D]")}>
+            <h3 className={cn("font-normal text-sm truncate pr-4", selectedNoteId === note.id && !isOverlay && "text-[#00A82D]")}>
               {note.title || "Untitled"}
             </h3>
             <div className="text-[10px] text-gray-400 uppercase font-medium shrink-0">
