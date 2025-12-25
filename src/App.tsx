@@ -172,6 +172,14 @@ function App() {
     if (p.notesListView === "compact" || p.notesListView === "detailed") setNotesListView(p.notesListView);
   }, []);
 
+  const ensureNotesScheme = useCallback((raw: string) => {
+    if (!raw) return raw;
+    if (raw.includes("notes-file://")) return raw;
+    return raw
+      .replace(/src=\"files\//g, 'src="notes-file://files/')
+      .replace(/src='files\//g, "src='notes-file://files/");
+  }, []);
+
   // Load persistence
   useEffect(() => {
     const loadSettings = async () => {
@@ -271,6 +279,10 @@ function App() {
           setTitle("");
           setContent("");
           return;
+        }
+        const normalized = ensureNotesScheme(note.content);
+        if (normalized !== note.content) {
+          note = { ...note, content: normalized };
         }
         setActiveNote(note);
         setTitle(note.title);

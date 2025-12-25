@@ -7,6 +7,7 @@ use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::{api::dialog::blocking::message, AppHandle, CustomMenuItem, Manager, Menu, MenuItem, State, Submenu};
+use tauri::http::{ResponseBuilder, StatusCode};
 
 const NOTES_VIEW_DETAILED: &str = "view_notes_detailed";
 const NOTES_VIEW_COMPACT: &str = "view_notes_compact";
@@ -16,6 +17,7 @@ const FILE_IMPORT_EVERNOTE: &str = "file_import_evernote";
 struct AppState {
     pool: sqlx::sqlite::SqlitePool,
     settings_dir: PathBuf,
+    data_dir: PathBuf,
 }
 
 fn ensure_dir_writable(dir: &Path) -> Result<(), String> {
@@ -47,6 +49,43 @@ fn resolve_portable_paths(app_handle: &AppHandle) -> Result<(PathBuf, PathBuf), 
     }
 
     Ok((data_dir, settings_dir))
+}
+
+fn notes_file_response(data_dir: &Path, uri: &tauri::http::Uri) -> Result<tauri::http::Response<Vec<u8>>, Box<dyn std::error::Error>> {
+    let host = uri.host().unwrap_or_default();
+    let mut rel = String::new();
+    if !host.is_empty() {
+        rel.push_str(host);
+    }
+    let path = uri.path().trim_start_matches('/');
+    if !path.is_empty() {
+        if !rel.is_empty() {
+            rel.push('/');
+        }
+        rel.push_str(path);
+    }
+    if rel.is_empty() {
+        return Ok(ResponseBuilder::new().status(StatusCode::BAD_REQUEST).body(Vec::new())?);
+    }
+    let full_path = data_dir.join(rel);
+    if !full_path.exists() {
+        return Ok(ResponseBuilder::new().status(StatusCode::NOT_FOUND).body(Vec::new())?);
+    }
+    let bytes = fs::read(&full_path)?;
+    let mime = match full_path.extension().and_then(|ext| ext.to_str()).map(|s| s.to_lowercase()) {
+        Some(ext) if ext == "png" => "image/png",
+        Some(ext) if ext == "jpg" || ext == "jpeg" => "image/jpeg",
+        Some(ext) if ext == "gif" => "image/gif",
+        Some(ext) if ext == "webp" => "image/webp",
+        Some(ext) if ext == "svg" => "image/svg+xml",
+        Some(ext) if ext == "pdf" => "application/pdf",
+        Some(ext) if ext == "txt" => "text/plain",
+        _ => "application/octet-stream",
+    };
+    Ok(ResponseBuilder::new()
+        .status(StatusCode::OK)
+        .header("Content-Type", mime)
+        .body(bytes)?)
 }
 
 fn update_notes_list_menu(app_handle: &AppHandle, view: &str) {
@@ -216,6 +255,10 @@ fn set_notes_list_view(view: String, app_handle: AppHandle) -> Result<(), String
 fn main() {
     let menu = build_menu();
     tauri::Builder::default()
+        .register_uri_scheme_protocol("notes-file", |app, request| {
+            let state = app.state::<AppState>();
+            notes_file_response(&state.data_dir, request.uri())
+        })
         .setup(|app| {
             let app_handle = app.handle();
             let (data_dir, settings_dir) = match resolve_portable_paths(&app_handle) {
@@ -228,7 +271,7 @@ fn main() {
             let pool = tauri::async_runtime::block_on(async {
                 db::init_db(&data_dir).await
             });
-            app.manage(AppState { pool, settings_dir });
+            app.manage(AppState { pool, settings_dir, data_dir });
             Ok(())
         })
         .plugin(tauri_plugin_window_state::Builder::default().build())

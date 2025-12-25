@@ -237,7 +237,7 @@ async function main() {
     const notebookId = notebookIdMap.get(notebookExternalId) ?? null;
     const assetsBase = exportData?.meta?.assetsBase ? String(exportData.meta.assetsBase) : null;
     const contentRaw = note.enmlResolved || note.enml || "";
-    const content = rewriteAssetPaths(contentRaw, assetsBase, "files/evernote");
+    const content = rewriteAssetPaths(contentRaw, assetsBase, "notes-file://files/evernote");
     const contentHash = crypto.createHash("sha256").update(content, "utf8").digest("hex");
     const contentSize = Buffer.byteLength(content, "utf8");
     const meta = {
