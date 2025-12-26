@@ -596,13 +596,6 @@ export const mountEditor = (root: HTMLElement, options: EditorOptions): EditorIn
   editor.events.on("keydown", (event: KeyboardEvent) => {
     if (event.key !== "Enter") return;
     const range = editor.s?.range;
-    console.log("[enter-raw]", {
-      key: event.key,
-      target: (event.target as HTMLElement | null)?.nodeName,
-      startNode: range?.startContainer?.nodeName,
-      startOffset: range?.startOffset,
-      text: editor.s?.current?.()?.textContent ?? "",
-    });
     if (!range || !editor.s?.isCollapsed?.()) return;
     const insideCallout = findCallout(range.startContainer, editor.editor);
     const insideCode = findCodeBlock(range.startContainer, editor.editor);
@@ -615,7 +608,9 @@ export const mountEditor = (root: HTMLElement, options: EditorOptions): EditorIn
       range.setStart(textNode, 0);
       range.setEnd(textNode, textNode.textContent?.length || 0);
       range.deleteContents();
-      editor.s.insertHTML("<hr><p><br></p>");
+      const hr = editor.createInside.element("hr");
+      editor.s.insertNode(hr);
+      editor.s.setCursorAfter(hr);
       editor.s.synchronizeValues();
       event.preventDefault();
       event.stopPropagation();
