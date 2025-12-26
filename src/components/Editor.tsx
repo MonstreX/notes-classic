@@ -1,18 +1,43 @@
 import React, { useMemo } from 'react';
 import JoditEditor from 'jodit-react';
 import 'jodit/es2015/jodit.min.css';
+import hljs from 'highlight.js/lib/core';
+import javascript from 'highlight.js/lib/languages/javascript';
+import xml from 'highlight.js/lib/languages/xml';
+import css from 'highlight.js/lib/languages/css';
+import php from 'highlight.js/lib/languages/php';
+import 'highlight.js/styles/github.css';
 
 interface EditorProps {
   content: string;
   onChange: (content: string) => void;
 }
 
+hljs.registerLanguage('javascript', javascript);
+hljs.registerLanguage('js', javascript);
+hljs.registerLanguage('html', xml);
+hljs.registerLanguage('xml', xml);
+hljs.registerLanguage('css', css);
+hljs.registerLanguage('php', php);
+
 const Editor: React.FC<EditorProps> = ({ content, onChange }) => {
   const config = useMemo(() => {
+
     const findCallout = (node: Node | null, root: HTMLElement) => {
       let current = node;
       while (current && current !== root) {
         if (current.nodeType === 1 && (current as HTMLElement).classList.contains('note-callout')) {
+          return current as HTMLElement;
+        }
+        current = current.parentNode;
+      }
+      return null;
+    };
+
+    const findCodeBlock = (node: Node | null, root: HTMLElement) => {
+      let current = node;
+      while (current && current !== root) {
+        if (current.nodeType === 1 && (current as HTMLElement).classList.contains('note-code')) {
           return current as HTMLElement;
         }
         current = current.parentNode;
@@ -39,9 +64,9 @@ const Editor: React.FC<EditorProps> = ({ content, onChange }) => {
       return !fragmentHasContent(test.cloneContents());
     };
 
-    const isCalloutEmpty = (callout: HTMLElement) => {
-      if (callout.textContent && callout.textContent.trim().length > 0) return false;
-      return !callout.querySelector('img,table,ul,ol,li,hr,pre,blockquote');
+    const isBlockEmpty = (block: HTMLElement) => {
+      if (block.textContent && block.textContent.trim().length > 0) return false;
+      return !block.querySelector('img,table,ul,ol,li,hr,pre,blockquote,code');
     };
 
     return {
@@ -64,6 +89,7 @@ const Editor: React.FC<EditorProps> = ({ content, onChange }) => {
       'ul',
       'ol',
       'callout',
+      'codeblock',
       '|',
       'link',
       'image',
@@ -79,6 +105,7 @@ const Editor: React.FC<EditorProps> = ({ content, onChange }) => {
       'ul',
       'ol',
       'callout',
+      'codeblock',
       '|',
       'link',
       'image',
@@ -93,6 +120,7 @@ const Editor: React.FC<EditorProps> = ({ content, onChange }) => {
       'ul',
       'ol',
       'callout',
+      'codeblock',
       '|',
       'link',
       '|',
@@ -106,6 +134,7 @@ const Editor: React.FC<EditorProps> = ({ content, onChange }) => {
       'ul',
       'ol',
       'callout',
+      'codeblock',
       '|',
       'undo',
       'redo',
@@ -140,6 +169,69 @@ const Editor: React.FC<EditorProps> = ({ content, onChange }) => {
           editor.synchronizeValues();
         },
       },
+      codeblock: {
+        tooltip: 'Code Block',
+        text: '</>',
+        exec: (editor: any) => {
+          if (!editor || !editor.s || editor.s.isCollapsed()) return;
+          const range: Range = editor.s.range;
+          const isInsideBlock = (node: Node | null) => {
+            let current = node;
+            while (current && current !== editor.editor) {
+              if (current.nodeType === 1) {
+                const el = current as HTMLElement;
+                if (el.classList.contains('note-code') || el.classList.contains('note-callout')) {
+                  return true;
+                }
+              }
+              current = current.parentNode;
+            }
+            return false;
+          };
+          if (isInsideBlock(range.startContainer) || isInsideBlock(range.endContainer)) return;
+          const fragment = range.extractContents();
+          const text = fragment.textContent || '';
+          if (!text.trim()) return;
+          const wrapper = editor.createInside.element('div');
+          wrapper.className = 'note-code';
+          wrapper.setAttribute('data-lang', 'auto');
+
+          const toolbar = editor.createInside.element('div');
+          toolbar.className = 'note-code-toolbar';
+          toolbar.setAttribute('contenteditable', 'false');
+
+          const select = editor.createInside.element('select');
+          select.className = 'note-code-select';
+          const langs = ['auto', 'php', 'html', 'js', 'css'];
+          langs.forEach((lang) => {
+            const opt = editor.createInside.element('option');
+            opt.value = lang;
+            opt.textContent = lang.toUpperCase();
+            if (lang === 'auto') opt.selected = true;
+            select.appendChild(opt);
+          });
+
+          const button = editor.createInside.element('button');
+          button.className = 'note-code-copy';
+          button.type = 'button';
+          button.textContent = 'Copy';
+
+          toolbar.appendChild(select);
+          toolbar.appendChild(button);
+
+          const pre = editor.createInside.element('pre');
+          const code = editor.createInside.element('code');
+          code.textContent = text;
+          pre.appendChild(code);
+
+          wrapper.appendChild(toolbar);
+          wrapper.appendChild(pre);
+
+          range.insertNode(wrapper);
+          editor.s.setCursorIn(code);
+          editor.synchronizeValues();
+        },
+      },
     },
     cleanHTML: {
       fillEmptyParagraph: false,
@@ -155,49 +247,62 @@ const Editor: React.FC<EditorProps> = ({ content, onChange }) => {
         if (event.key !== 'Enter' && event.key !== 'Backspace' && event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && event.key !== 'Delete') return;
         if (!editor.s.range || !editor.s.isCollapsed()) return;
         const callout = findCallout(editor.s.range.startContainer, editor.editor);
-        if (!callout) return;
+        const codeBlock = findCodeBlock(editor.s.range.startContainer, editor.editor);
+        const block = codeBlock || callout;
+        if (!block) return;
 
         const range: Range = editor.s.range;
 
         if (event.key === 'Enter') {
-          const block = editor.createInside.element(editor.o.enter || 'p');
-          block.innerHTML = '<br>';
-          range.deleteContents();
-          range.insertNode(block);
-          editor.s.setCursorIn(block);
+          if (codeBlock) {
+            const textNode = editor.createInside.text('\n');
+            range.deleteContents();
+            range.insertNode(textNode);
+            editor.s.setCursorAfter(textNode);
+            editor.synchronizeValues();
+            event.preventDefault();
+            event.stopPropagation();
+            return false;
+          } else {
+            const block = editor.createInside.element(editor.o.enter || 'p');
+            block.innerHTML = '<br>';
+            range.deleteContents();
+            range.insertNode(block);
+            editor.s.setCursorIn(block);
+            editor.synchronizeValues();
+            event.preventDefault();
+            event.stopPropagation();
+            return false;
+          }
+        }
+
+        if (event.key === 'Backspace' && isRangeAtStart(block, range)) {
+          editor.s.setCursorBefore(block);
+          block.remove();
           editor.synchronizeValues();
           event.preventDefault();
           event.stopPropagation();
           return false;
         }
 
-        if (event.key === 'Backspace' && isRangeAtStart(callout, range)) {
-          editor.s.setCursorBefore(callout);
-          callout.remove();
+        if (event.key === 'Delete' && isRangeAtEnd(block, range)) {
+          editor.s.setCursorAfter(block);
+          block.remove();
           editor.synchronizeValues();
           event.preventDefault();
           event.stopPropagation();
           return false;
         }
 
-        if (event.key === 'Delete' && isRangeAtEnd(callout, range)) {
-          editor.s.setCursorAfter(callout);
-          callout.remove();
-          editor.synchronizeValues();
+        if (event.key === 'ArrowDown' && isRangeAtEnd(block, range)) {
+          editor.s.setCursorAfter(block);
           event.preventDefault();
           event.stopPropagation();
           return false;
         }
 
-        if (event.key === 'ArrowDown' && isRangeAtEnd(callout, range)) {
-          editor.s.setCursorAfter(callout);
-          event.preventDefault();
-          event.stopPropagation();
-          return false;
-        }
-
-        if (event.key === 'ArrowUp' && isRangeAtStart(callout, range)) {
-          editor.s.setCursorBefore(callout);
+        if (event.key === 'ArrowUp' && isRangeAtStart(block, range)) {
+          editor.s.setCursorBefore(block);
           event.preventDefault();
           event.stopPropagation();
           return false;
@@ -207,12 +312,80 @@ const Editor: React.FC<EditorProps> = ({ content, onChange }) => {
         const editor: any = this;
         if (!editor || !editor.s || !editor.s.range) return;
         const callout = findCallout(editor.s.range.startContainer, editor.editor);
-        if (!callout) return;
-        if (isCalloutEmpty(callout)) {
-          editor.s.setCursorBefore(callout);
-          callout.remove();
+        const codeBlock = findCodeBlock(editor.s.range.startContainer, editor.editor);
+        const block = codeBlock || callout;
+        if (!block) return;
+        if (isBlockEmpty(block)) {
+          editor.s.setCursorBefore(block);
+          block.remove();
           editor.synchronizeValues();
         }
+      },
+      blur: function () {
+        const editor: any = this;
+        if (!editor || !editor.editor) return;
+        const blocks = editor.editor.querySelectorAll('.note-code');
+        blocks.forEach((block: HTMLElement) => {
+          const code = block.querySelector('code') as HTMLElement | null;
+          if (!code) return;
+          const lang = block.getAttribute('data-lang') || 'auto';
+          if (lang !== 'auto') {
+            code.className = `language-${lang}`;
+            try {
+              hljs.highlightElement(code);
+            } catch (e) {}
+            return;
+          }
+          const text = code.textContent || '';
+          if (!text.trim()) return;
+          try {
+            const result = hljs.highlightAuto(text, ['php', 'html', 'javascript', 'css']);
+            code.innerHTML = result.value;
+          } catch (e) {}
+        });
+      },
+      change: function () {
+        const editor: any = this;
+        if (!editor || !editor.editor) return;
+        const selection = editor.s?.range;
+        const active = selection ? (findCodeBlock(selection.startContainer, editor.editor) || findCallout(selection.startContainer, editor.editor)) : null;
+        if (active && isBlockEmpty(active)) {
+          active.remove();
+          editor.synchronizeValues();
+        }
+      },
+      afterInit: function () {
+        const editor: any = this;
+        if (!editor || !editor.editor) return;
+        editor.editor.addEventListener('change', async (event: Event) => {
+          const target = event.target as HTMLElement | null;
+          if (!target) return;
+          if (target.classList.contains('note-code-select')) {
+            const block = target.closest('.note-code') as HTMLElement | null;
+            if (!block) return;
+            const lang = (target as HTMLSelectElement).value;
+            block.setAttribute('data-lang', lang);
+            const code = block.querySelector('code') as HTMLElement | null;
+            if (code) {
+              code.className = lang === 'auto' ? '' : `language-${lang}`;
+            }
+          }
+        });
+        editor.editor.addEventListener('click', async (event: Event) => {
+          const target = event.target as HTMLElement | null;
+          if (!target) return;
+          if (target.classList.contains('note-code-copy')) {
+            const block = target.closest('.note-code') as HTMLElement | null;
+            if (!block) return;
+            const code = block.querySelector('code') as HTMLElement | null;
+            if (!code) return;
+            const text = code.textContent || '';
+            if (!text) return;
+            try {
+              await navigator.clipboard.writeText(text);
+            } catch (e) {}
+          }
+        });
       },
     },
   };

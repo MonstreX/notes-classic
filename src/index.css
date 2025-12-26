@@ -145,3 +145,51 @@
   font-size: inherit;
   line-height: inherit;
 }
+
+.notes-editor .jodit-container .jodit-wysiwyg .note-code {
+  position: relative;
+  background: #f8f8f8;
+  border: 1px solid #e5e7eb;
+  border-radius: 5px;
+  padding: 12px 12px 8px;
+  margin: 0 0 1em;
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.notes-editor .jodit-container .jodit-wysiwyg .note-code-toolbar {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.notes-editor .jodit-container .jodit-wysiwyg .note-code:hover .note-code-toolbar {
+  opacity: 1;
+}
+
+.notes-editor .jodit-container .jodit-wysiwyg .note-code-toolbar select,
+.notes-editor .jodit-container .jodit-wysiwyg .note-code-toolbar button {
+  font-size: 11px;
+  line-height: 1;
+  padding: 2px 6px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #333;
+}
+
+.notes-editor .jodit-container .jodit-wysiwyg .note-code pre {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.notes-editor .jodit-container .jodit-wysiwyg .note-code code {
+  display: block;
+  white-space: pre-wrap;
+}
