@@ -441,6 +441,31 @@ const createEditorConfig = () => {
         if (!editor || !editor.s) return;
         if (event.key !== "Enter" && event.key !== "Backspace" && event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Delete") return;
         if (!editor.s.range || !editor.s.isCollapsed()) return;
+
+        if (event.key === "Enter") {
+          const insideCallout = findCallout(editor.s.range.startContainer, editor.editor);
+          const insideCode = findCodeBlock(editor.s.range.startContainer, editor.editor);
+          if (!insideCallout && !insideCode) {
+            const startNode = editor.s.range.startContainer;
+            const textNode = startNode.nodeType === Node.TEXT_NODE ? (startNode as Text) : null;
+            if (textNode) {
+              const nodeText = (textNode.textContent || "").replace(/\uFEFF/g, "").replace(/\u00a0/g, " ").trim();
+              const atEnd = editor.s.range.startOffset === (textNode.textContent?.length || 0);
+              if (atEnd && /^-{3,}$/.test(nodeText)) {
+                const range = editor.s.range;
+                range.setStart(textNode, 0);
+                range.setEnd(textNode, textNode.textContent?.length || 0);
+                range.deleteContents();
+                editor.s.insertHTML("<hr><p><br></p>");
+                editor.s.synchronizeValues();
+                event.preventDefault();
+                event.stopPropagation();
+                return false;
+              }
+            }
+          }
+        }
+
         const callout = findCallout(editor.s.range.startContainer, editor.editor);
         const codeBlock = findCodeBlock(editor.s.range.startContainer, editor.editor);
         const block = codeBlock || callout;
@@ -568,6 +593,34 @@ export const mountEditor = (root: HTMLElement, options: EditorOptions): EditorIn
   applyHighlightToEditor(editor);
 
   editor.events.on("change", handleChange);
+  editor.events.on("keydown", (event: KeyboardEvent) => {
+    if (event.key !== "Enter") return;
+    const range = editor.s?.range;
+    console.log("[enter-raw]", {
+      key: event.key,
+      target: (event.target as HTMLElement | null)?.nodeName,
+      startNode: range?.startContainer?.nodeName,
+      startOffset: range?.startOffset,
+      text: editor.s?.current?.()?.textContent ?? "",
+    });
+    if (!range || !editor.s?.isCollapsed?.()) return;
+    const insideCallout = findCallout(range.startContainer, editor.editor);
+    const insideCode = findCodeBlock(range.startContainer, editor.editor);
+    if (insideCallout || insideCode) return;
+    const textNode = range.startContainer.nodeType === Node.TEXT_NODE ? (range.startContainer as Text) : null;
+    if (!textNode) return;
+    const nodeText = (textNode.textContent || "").replace(/\uFEFF/g, "").replace(/\u00a0/g, " ").trim();
+    const atEnd = range.startOffset === (textNode.textContent?.length || 0);
+    if (atEnd && /^-{3,}$/.test(nodeText)) {
+      range.setStart(textNode, 0);
+      range.setEnd(textNode, textNode.textContent?.length || 0);
+      range.deleteContents();
+      editor.s.insertHTML("<hr><p><br></p>");
+      editor.s.synchronizeValues();
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  });
 
   return {
     update: (content: string) => {
