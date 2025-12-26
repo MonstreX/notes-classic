@@ -69,6 +69,26 @@ const Editor: React.FC<EditorProps> = ({ content, onChange }) => {
       return !block.querySelector('img,table,ul,ol,li,hr,pre,blockquote,code');
     };
 
+    const applyHighlight = (block: HTMLElement) => {
+      const code = block.querySelector('code') as HTMLElement | null;
+      if (!code) return;
+      const lang = block.getAttribute('data-lang') || 'auto';
+      const text = code.innerText || code.textContent || '';
+      if (!text.trim()) return;
+      if (lang !== 'auto') {
+        code.className = `language-${lang} hljs`;
+        try {
+          hljs.highlightElement(code);
+        } catch (e) {}
+        return;
+      }
+      try {
+        const result = hljs.highlightAuto(text, ['php', 'html', 'javascript', 'css']);
+        code.innerHTML = result.value;
+        code.className = 'hljs';
+      } catch (e) {}
+    };
+
     return {
     readonly: false,
     toolbarAdaptive: false,
@@ -325,24 +345,7 @@ const Editor: React.FC<EditorProps> = ({ content, onChange }) => {
         const editor: any = this;
         if (!editor || !editor.editor) return;
         const blocks = editor.editor.querySelectorAll('.note-code');
-        blocks.forEach((block: HTMLElement) => {
-          const code = block.querySelector('code') as HTMLElement | null;
-          if (!code) return;
-          const lang = block.getAttribute('data-lang') || 'auto';
-          if (lang !== 'auto') {
-            code.className = `language-${lang}`;
-            try {
-              hljs.highlightElement(code);
-            } catch (e) {}
-            return;
-          }
-          const text = code.textContent || '';
-          if (!text.trim()) return;
-          try {
-            const result = hljs.highlightAuto(text, ['php', 'html', 'javascript', 'css']);
-            code.innerHTML = result.value;
-          } catch (e) {}
-        });
+        blocks.forEach((block: HTMLElement) => applyHighlight(block));
       },
       change: function () {
         const editor: any = this;
@@ -357,6 +360,7 @@ const Editor: React.FC<EditorProps> = ({ content, onChange }) => {
       afterInit: function () {
         const editor: any = this;
         if (!editor || !editor.editor) return;
+        editor.editor.querySelectorAll('.note-code').forEach((block: HTMLElement) => applyHighlight(block));
         editor.editor.addEventListener('change', async (event: Event) => {
           const target = event.target as HTMLElement | null;
           if (!target) return;
@@ -367,8 +371,9 @@ const Editor: React.FC<EditorProps> = ({ content, onChange }) => {
             block.setAttribute('data-lang', lang);
             const code = block.querySelector('code') as HTMLElement | null;
             if (code) {
-              code.className = lang === 'auto' ? '' : `language-${lang}`;
+              code.className = lang === 'auto' ? '' : `language-${lang} hljs`;
             }
+            applyHighlight(block);
           }
         });
         editor.editor.addEventListener('click', async (event: Event) => {
@@ -379,7 +384,7 @@ const Editor: React.FC<EditorProps> = ({ content, onChange }) => {
             if (!block) return;
             const code = block.querySelector('code') as HTMLElement | null;
             if (!code) return;
-            const text = code.textContent || '';
+            const text = (code.innerText || code.textContent || '').replace(/\u00a0/g, ' ');
             if (!text) return;
             try {
               await navigator.clipboard.writeText(text);
