@@ -8,6 +8,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Menu, Item, Submenu, Separator, useContextMenu } from "react-contexify";
 import Editor from "./components/Editor";
 import { mountSidebar, type SidebarHandlers, type SidebarState, type SidebarInstance } from "./vanilla/sidebar";
+import { mountNotesList, type NotesListHandlers, type NotesListState, type NotesListInstance } from "./vanilla/notesList";
 import { openNotebookDialog, openConfirmDialog } from "./vanilla/dialogs";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -50,6 +51,7 @@ const STORAGE_KEY = "notes_classic_v10_stable";
 
 const NOTE_CONTEXT_MENU_ID = "note-context-menu";
 const USE_VANILLA_SIDEBAR = true;
+const USE_VANILLA_NOTES_LIST = true;
 
 const VanillaSidebarHost = React.memo(function VanillaSidebarHost({ state, handlers }: { state: SidebarState; handlers: SidebarHandlers }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -59,6 +61,29 @@ const VanillaSidebarHost = React.memo(function VanillaSidebarHost({ state, handl
     if (!rootRef.current) return;
     if (!instanceRef.current) {
       instanceRef.current = mountSidebar(rootRef.current, handlers);
+    }
+    return () => {
+      instanceRef.current?.destroy();
+      instanceRef.current = null;
+    };
+  }, [handlers]);
+
+  useLayoutEffect(() => {
+    if (!instanceRef.current) return;
+    instanceRef.current.update(state);
+  }, [state]);
+
+  return <div ref={rootRef} className="flex-1 min-h-0 overflow-hidden" />;
+});
+
+const VanillaNotesListHost = React.memo(function VanillaNotesListHost({ state, handlers }: { state: NotesListState; handlers: NotesListHandlers }) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const instanceRef = useRef<NotesListInstance | null>(null);
+
+  useLayoutEffect(() => {
+    if (!rootRef.current) return;
+    if (!instanceRef.current) {
+      instanceRef.current = mountNotesList(rootRef.current, handlers);
     }
     return () => {
       instanceRef.current?.destroy();
@@ -181,6 +206,7 @@ function App() {
   const isResizingSidebar = useRef(false);
   const isResizingList = useRef(false);
   const sidebarHandlersRef = useRef<SidebarHandlers | null>(null);
+  const notesListHandlersRef = useRef<NotesListHandlers | null>(null);
   const notesRef = useRef<NoteListItem[]>([]);
   const activeNoteRef = useRef<NoteDetail | null>(null);
   const { show } = useContextMenu({ id: NOTE_CONTEXT_MENU_ID });
@@ -888,6 +914,17 @@ function App() {
     onMoveNotebook: (activeId, overId, position) => { moveNotebookByDrag(activeId, overId, position); },
   };
 
+  notesListHandlersRef.current = {
+    onSelectNote: (id) => setSelectedNoteId(id),
+    onDeleteNote: (id) => { deleteNote(id); },
+    onSearchChange: (value) => setSearchTerm(value),
+    onNoteContextMenu: (event, id) => {
+      event.preventDefault();
+      show({ event, props: { noteId: id } });
+    },
+    onMoveNote: (noteId, notebookId) => { moveNoteToNotebook(noteId, notebookId); },
+  };
+
   const stableSidebarHandlers = useMemo<SidebarHandlers>(() => ({
     onSelectNotebook: (id) => { sidebarHandlersRef.current?.onSelectNotebook(id); },
     onSelectAll: () => { sidebarHandlersRef.current?.onSelectAll(); },
@@ -897,6 +934,14 @@ function App() {
     onMoveNotebook: (activeId, overId, position) => { sidebarHandlersRef.current?.onMoveNotebook(activeId, overId, position); },
   }), []);
 
+  const stableNotesListHandlers = useMemo<NotesListHandlers>(() => ({
+    onSelectNote: (id) => { notesListHandlersRef.current?.onSelectNote(id); },
+    onDeleteNote: (id) => { notesListHandlersRef.current?.onDeleteNote(id); },
+    onSearchChange: (value) => { notesListHandlersRef.current?.onSearchChange(value); },
+    onNoteContextMenu: (event, id) => { notesListHandlersRef.current?.onNoteContextMenu(event, id); },
+    onMoveNote: (noteId, notebookId) => { notesListHandlersRef.current?.onMoveNote(noteId, notebookId); },
+  }), []);
+
   const sidebarState = useMemo<SidebarState>(() => ({
     notebooks,
     selectedNotebookId,
@@ -904,6 +949,15 @@ function App() {
     noteCounts,
     totalNotes,
   }), [notebooks, selectedNotebookId, expandedNotebooks, noteCounts, totalNotes]);
+
+  const notesListState = useMemo<NotesListState>(() => ({
+    notes,
+    notebooks,
+    selectedNotebookId,
+    selectedNoteId,
+    notesListView,
+    searchTerm,
+  }), [notes, notebooks, selectedNotebookId, selectedNoteId, notesListView, searchTerm]);
 
   if (!isLoaded) return <div className="h-screen w-full bg-[#1A1A1A]" />;
 
@@ -947,24 +1001,30 @@ function App() {
 
       {/* List */}
       <div style={{ width: listWidth }} className="border-r border-gray-200 bg-white flex flex-col shrink-0 relative text-black">
-        <div className="px-6 py-4 border-b border-gray-200 bg-[#F8F8F8] shrink-0">
-          <h2 className="text-xs uppercase tracking-widest text-gray-500 font-bold mb-4 italic truncate">
-            {selectedNotebookId ? notebooks.find(n => n.id === selectedNotebookId)?.name : "All Notes"}
-          </h2>
-          <div className="relative text-black">
-            <Search className="absolute left-3 top-2 text-gray-400" size={14} />
-            <input 
-              type="text" placeholder="Search..." 
-              className="w-full bg-white border border-gray-200 rounded py-1.5 pl-9 pr-4 text-sm outline-none focus:border-[#00A82D]" 
-              value={searchTerm} onChange={e => setSearchTerm(e.target.value)} 
-            />
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto">
-          {notes.filter(n => n.title.toLowerCase().includes(searchTerm.toLowerCase())).map(note => (
-            <NoteRow key={note.id} note={note} />
-          ))}
-        </div>
+        {USE_VANILLA_NOTES_LIST ? (
+          <VanillaNotesListHost state={notesListState} handlers={stableNotesListHandlers} />
+        ) : (
+          <>
+            <div className="px-6 py-4 border-b border-gray-200 bg-[#F8F8F8] shrink-0">
+              <h2 className="text-xs uppercase tracking-widest text-gray-500 font-bold mb-4 italic truncate">
+                {selectedNotebookId ? notebooks.find(n => n.id === selectedNotebookId)?.name : "All Notes"}
+              </h2>
+              <div className="relative text-black">
+                <Search className="absolute left-3 top-2 text-gray-400" size={14} />
+                <input 
+                  type="text" placeholder="Search..." 
+                  className="w-full bg-white border border-gray-200 rounded py-1.5 pl-9 pr-4 text-sm outline-none focus:border-[#00A82D]" 
+                  value={searchTerm} onChange={e => setSearchTerm(e.target.value)} 
+                />
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {notes.filter(n => n.title.toLowerCase().includes(searchTerm.toLowerCase())).map(note => (
+                <NoteRow key={note.id} note={note} />
+              ))}
+            </div>
+          </>
+        )}
         <div onMouseDown={() => { isResizingList.current = true; }} className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-[#00A82D] z-50 transition-colors" />
       </div>
 

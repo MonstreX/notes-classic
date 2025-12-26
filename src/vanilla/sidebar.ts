@@ -192,6 +192,7 @@ const renderSidebar = (state: SidebarState) => {
         class="flex items-center gap-3 text-gray-400 p-2 rounded cursor-pointer mx-1 transition-all ${allSelected ? "bg-[#2A2A2A] text-white" : ""}"
         style="padding-left: 8px;"
         data-action="select-all"
+        data-drop-all="1"
       >
         ${renderAllNotesIcon(allSelected)}
         <span class="text-sm font-medium">All Notes</span>
