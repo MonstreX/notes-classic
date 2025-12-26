@@ -162,10 +162,19 @@ export const mountApp = (root: HTMLElement) => {
 
   const sidebarInstance: SidebarInstance = mountSidebar(sidebarHost, sidebarHandlers);
   const notesListInstance: NotesListInstance = mountNotesList(listHost, notesListHandlers);
+  let editorFocused = false;
   const editorInstance: EditorInstance = mountEditor(editorHost, {
     content: "",
     onChange: actions.setContent,
+    onFocus: () => {
+      editorFocused = true;
+    },
+    onBlur: () => {
+      editorFocused = false;
+    },
   });
+  let lastRenderedNoteId: number | null = null;
+  let lastRenderedContent = "";
 
   let isResizingSidebar = false;
   let isResizingList = false;
@@ -233,7 +242,14 @@ export const mountApp = (root: HTMLElement) => {
     sidebarInstance.update(sidebarState);
     notesListInstance.update(notesListState);
     if (hasNote) {
-      editorInstance.update(state.content);
+      const isSameNote = lastRenderedNoteId === state.selectedNoteId;
+      if (!isSameNote) {
+        editorInstance.update(state.content);
+      } else if (!editorFocused && state.content !== lastRenderedContent) {
+        editorInstance.update(state.content);
+      }
+      lastRenderedNoteId = state.selectedNoteId;
+      lastRenderedContent = state.content;
     }
   };
 

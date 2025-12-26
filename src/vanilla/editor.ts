@@ -24,6 +24,8 @@ export type EditorInstance = {
 type EditorOptions = {
   content: string;
   onChange: (value: string) => void;
+  onFocus?: () => void;
+  onBlur?: () => void;
 };
 
 const findCallout = (node: Node | null, root: HTMLElement) => {
@@ -618,7 +620,16 @@ export const mountEditor = (root: HTMLElement, options: EditorOptions): EditorIn
   setupLinkHandlers(editor);
   applyHighlightToEditor(editor);
 
+  const handleFocus = () => {
+    options.onFocus?.();
+  };
+  const handleBlur = () => {
+    options.onBlur?.();
+  };
+
   editor.events.on("change", handleChange);
+  editor.events.on("focus", handleFocus);
+  editor.events.on("blur", handleBlur);
   editor.events.on("keydown", (event: KeyboardEvent) => {
     if (event.key !== "Enter") return;
     const range = editor.s?.range;
@@ -654,6 +665,8 @@ export const mountEditor = (root: HTMLElement, options: EditorOptions): EditorIn
     },
     destroy: () => {
       editor.events.off("change", handleChange);
+      editor.events.off("focus", handleFocus);
+      editor.events.off("blur", handleBlur);
       editor.destruct();
       container.remove();
     },
