@@ -327,6 +327,7 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
   return {
     update: (state: NotesListState) => {
       currentState = state;
+      cleanupDrag();
       root.innerHTML = renderNotesList(state);
     },
     destroy: () => {

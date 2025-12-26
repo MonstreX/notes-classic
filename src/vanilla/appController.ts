@@ -112,23 +112,40 @@ const fetchData = async () => {
 };
 
 const loadSelectedNote = async () => {
-  const state = appStore.getState();
-  if (!state.selectedNoteId) {
+  const initialState = appStore.getState();
+  if (!initialState.selectedNoteId) {
     appStore.setState({ activeNote: null, title: "", content: "" });
     return;
   }
   try {
-    const note = await invoke<NoteDetail | null>("get_note", { id: state.selectedNoteId });
+    const noteId = initialState.selectedNoteId;
+    const note = await invoke<NoteDetail | null>("get_note", { id: noteId });
     if (!note) {
       appStore.setState({ activeNote: null, title: "", content: "" });
       return;
     }
+    const currentState = appStore.getState();
+    if (currentState.selectedNoteId !== noteId) return;
     const normalized = ensureNotesScheme(normalizeEnmlContent(note.content));
     try {
       const displayContent = await toDisplayContent(normalized);
       const finalNote = displayContent !== note.content ? { ...note, content: displayContent } : note;
+      const hasEdits = currentState.title !== initialState.title || currentState.content !== initialState.content;
+      if (hasEdits) {
+        appStore.setState({
+          activeNote: { ...finalNote, title: currentState.title, content: currentState.content },
+        });
+        return;
+      }
       appStore.setState({ activeNote: finalNote, title: finalNote.title, content: finalNote.content });
     } catch (e) {
+      const hasEdits = currentState.title !== initialState.title || currentState.content !== initialState.content;
+      if (hasEdits) {
+        appStore.setState({
+          activeNote: { ...note, title: currentState.title, content: currentState.content },
+        });
+        return;
+      }
       appStore.setState({ activeNote: note, title: note.title, content: note.content });
     }
   } catch (e) {}
@@ -182,11 +199,40 @@ export const actions = {
       danger: true,
     });
     if (!ok) return;
-    await invoke("delete_note", { id });
     const state = appStore.getState();
-    if (state.selectedNoteId === id) {
-      appStore.setState({ selectedNoteId: null });
+    const isCurrent = state.selectedNoteId === id;
+    const nextNotes = state.notes.filter((note) => note.id !== id);
+
+    if (isCurrent) {
+      if (nextNotes.length > 0) {
+        appStore.setState({ selectedNoteId: nextNotes[0].id });
+      } else if (state.selectedNotebookId !== null) {
+        try {
+          const allNotes = await invoke<NoteListItem[]>("get_notes", { notebookId: null });
+          if (allNotes.length > 0) {
+            appStore.setState({ selectedNotebookId: null, selectedNoteId: allNotes[0].id });
+          } else {
+            appStore.setState({ selectedNoteId: null, activeNote: null, title: "", content: "" });
+          }
+        } catch (e) {
+          appStore.setState({ selectedNoteId: null, activeNote: null, title: "", content: "" });
+        }
+      } else {
+        appStore.setState({ selectedNoteId: null, activeNote: null, title: "", content: "" });
+      }
     }
+
+    await invoke("delete_note", { id });
+    const postState = appStore.getState();
+    appStore.setState({
+      notes: nextNotes,
+      selectedNoteId: postState.selectedNoteId,
+      activeNote: postState.activeNote,
+      title: postState.title,
+      content: postState.content,
+    });
+    document.querySelectorAll("[data-dialog-overlay], .context-menu").forEach((el) => el.remove());
+    document.body.style.cursor = "";
     fetchData();
   },
   createNotebook: async (parentId: number | null) => {

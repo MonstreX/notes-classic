@@ -39,7 +39,7 @@ export const mountApp = (root: HTMLElement) => {
   root.appendChild(loading);
 
   const app = document.createElement("div");
-  app.className = "flex h-screen w-full bg-white text-[#333] font-sans overflow-hidden select-none";
+  app.className = "flex h-screen w-full bg-white text-[#333] font-sans overflow-hidden";
   app.style.display = "none";
   root.appendChild(app);
 

@@ -462,6 +462,16 @@ const createEditorConfig = () => {
     style: {
       minHeight: "500px",
     },
+    allowResizeTags: new Set(["img", "table"]),
+    tableAllowCellResize: true,
+    resizer: {
+      showSize: true,
+      forImageChangeAttributes: true,
+      min_width: 10,
+      min_height: 10,
+      useAspectRatio: new Set(["img"]),
+    },
+    extraPlugins: ["resizer", "resize-cells"],
     events: {
       keydown: function (event: KeyboardEvent) {
         const editor: any = this;

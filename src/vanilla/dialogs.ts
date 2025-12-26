@@ -14,6 +14,7 @@ export const openNotebookDialog = ({ parentId }: NotebookDialogOptions): Promise
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
     overlay.className = "fixed inset-0 z-[9999] flex items-center justify-center bg-black/40";
+    overlay.dataset.dialogOverlay = "1";
 
     const title = parentId === null ? "Create notebook stack" : "Create notebook";
     const subtitle = parentId === null
@@ -106,6 +107,7 @@ export const openConfirmDialog = ({
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
     overlay.className = "fixed inset-0 z-[9999] flex items-center justify-center bg-black/40";
+    overlay.dataset.dialogOverlay = "1";
 
     const buttonClass = danger
       ? "bg-red-500 hover:bg-red-600"

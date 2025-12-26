@@ -16,6 +16,11 @@
 
 .notes-editor {
   padding: 0 40px 40px;
+  user-select: text;
+}
+
+.notes-editor * {
+  user-select: text;
 }
 
 .notes-editor .jodit-toolbar__box {
