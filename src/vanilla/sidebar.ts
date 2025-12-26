@@ -169,14 +169,18 @@ const renderNotebookTree = (
 ): string => {
   return getOrderedChildren(notebooks, parentId)
     .map((nb) => {
+      const isExpanded = state.expandedNotebooks.has(nb.id);
       const children = nb.notebookType === "stack"
         ? renderNotebookTree(notebooks, state, nb.id, level + 1, counts)
         : "";
-      const isExpanded = state.expandedNotebooks.has(nb.id);
       return `
         <div data-notebook-node="${nb.id}">
           ${renderNotebookItem(nb, state, level, counts)}
-          ${nb.notebookType === "stack" && isExpanded ? children : ""}
+          ${
+            nb.notebookType === "stack"
+              ? `<div class="notebook-children" data-expanded="${isExpanded ? "true" : "false"}">${children}</div>`
+              : ""
+          }
         </div>
       `;
     })
@@ -226,6 +230,7 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
   let dragLine: HTMLDivElement | null = null;
   let dragOverId: number | null = null;
   let dragPosition: "before" | "after" | "inside" | null = null;
+  let prevExpanded = new Set<number>();
 
   const ensureRootPosition = () => {
     if (getComputedStyle(root).position === "static") {
@@ -462,6 +467,44 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
       if (scrollEl && getComputedStyle(scrollEl).position === "static") {
         scrollEl.style.position = "relative";
       }
+
+      const nextExpanded = new Set(state.expandedNotebooks);
+      const childrenEls = root.querySelectorAll<HTMLElement>(".notebook-children");
+      childrenEls.forEach((el) => {
+        const node = el.closest<HTMLElement>("[data-notebook-node]");
+        if (!node) return;
+        const id = Number(node.dataset.notebookNode);
+        if (!Number.isFinite(id)) return;
+        const isExpanded = nextExpanded.has(id);
+        const wasExpanded = prevExpanded.has(id);
+
+        if (isExpanded) {
+          if (!wasExpanded) {
+            el.style.maxHeight = "0px";
+            el.style.opacity = "0";
+            requestAnimationFrame(() => {
+              el.style.maxHeight = `${el.scrollHeight}px`;
+              el.style.opacity = "1";
+            });
+          } else {
+            el.style.maxHeight = `${el.scrollHeight}px`;
+            el.style.opacity = "1";
+          }
+        } else {
+          if (wasExpanded) {
+            el.style.maxHeight = `${el.scrollHeight}px`;
+            el.style.opacity = "1";
+            requestAnimationFrame(() => {
+              el.style.maxHeight = "0px";
+              el.style.opacity = "0";
+            });
+          } else {
+            el.style.maxHeight = "0px";
+            el.style.opacity = "0";
+          }
+        }
+      });
+      prevExpanded = nextExpanded;
     },
     destroy: () => {
       root.removeEventListener("click", handleClick);

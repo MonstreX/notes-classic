@@ -193,3 +193,13 @@
   display: block;
   white-space: pre;
 }
+
+.notebook-children {
+  overflow: hidden;
+  pointer-events: none;
+  transition: max-height 200ms ease, opacity 150ms ease;
+}
+
+.notebook-children[data-expanded="true"] {
+  pointer-events: auto;
+}
