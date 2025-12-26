@@ -1,4 +1,5 @@
 import { Jodit } from "jodit";
+import "jodit/esm/plugins/all.js";
 import hljs from "highlight.js/lib/core";
 import javascript from "highlight.js/lib/languages/javascript";
 import xml from "highlight.js/lib/languages/xml";
