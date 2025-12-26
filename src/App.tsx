@@ -187,6 +187,7 @@ function App() {
   const [totalNotes, setTotalNotes] = useState(0);
   const [notesListView, setNotesListView] = useState<NotesListView>("detailed");
   const imageSrcMapRef = useRef<Map<string, string>>(new Map());
+  const dataFileCacheRef = useRef<Map<string, string>>(new Map());
   
   // UI State
   const [selectedNotebookId, setSelectedNotebookId] = useState<number | null>(null);
@@ -269,9 +270,15 @@ function App() {
     const uniqueRel = Array.from(new Set(matches.map(m => m[2])));
     const resolved = new Map<string, string>();
     await Promise.all(uniqueRel.map(async (rel) => {
+      const cached = dataFileCacheRef.current.get(rel);
+      if (cached) {
+        resolved.set(rel, cached);
+        return;
+      }
       try {
         const dataUrl = await invoke<string>("read_data_file", { path: `files/${rel}` });
         resolved.set(rel, dataUrl);
+        dataFileCacheRef.current.set(rel, dataUrl);
         imageSrcMapRef.current.set(dataUrl, `notes-file://files/${rel}`);
       } catch (e) {}
     }));

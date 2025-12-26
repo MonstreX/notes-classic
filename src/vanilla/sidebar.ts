@@ -216,6 +216,8 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
   let ignoreClick = false;
   let dragActive = false;
   let dragStarted = false;
+  let dragHoldTimer: number | null = null;
+  let dragHoldReady = false;
   let dragStartX = 0;
   let dragStartY = 0;
   let dragId = 0;
@@ -236,6 +238,11 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
   const cleanupDrag = () => {
     dragActive = false;
     dragStarted = false;
+    dragHoldReady = false;
+    if (dragHoldTimer !== null) {
+      window.clearTimeout(dragHoldTimer);
+      dragHoldTimer = null;
+    }
     dragOverId = null;
     dragPosition = null;
     if (dragOverlay) {
@@ -356,6 +363,10 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
       return;
     }
     if (action === "select-notebook" && id !== null) {
+      const type = actionEl.dataset.notebookType as NotebookType | undefined;
+      if (type === "stack") {
+        handlers.onToggleNotebook(id);
+      }
       handlers.onSelectNotebook(id);
       return;
     }
@@ -391,10 +402,17 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
     if (!type) return;
     dragActive = true;
     dragStarted = false;
+    dragHoldReady = false;
     dragStartX = event.clientX;
     dragStartY = event.clientY;
     dragId = id;
     dragType = type;
+    if (dragHoldTimer !== null) {
+      window.clearTimeout(dragHoldTimer);
+    }
+    dragHoldTimer = window.setTimeout(() => {
+      dragHoldReady = true;
+    }, 180);
   };
 
   const handlePointerMove = (event: PointerEvent) => {
@@ -402,7 +420,8 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
     const dx = event.clientX - dragStartX;
     const dy = event.clientY - dragStartY;
     if (!dragStarted) {
-      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+      if (!dragHoldReady) return;
+      if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
       const nb = findNotebook(dragId);
       if (!nb) {
         cleanupDrag();
