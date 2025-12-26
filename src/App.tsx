@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from "react";
 import { invoke } from "@tauri-apps/api/tauri";
 import { ask } from "@tauri-apps/api/dialog";
 import { listen } from "@tauri-apps/api/event";
@@ -8,6 +8,7 @@ import { DndContext, DragOverlay, PointerSensor, useDraggable, useDroppable, use
 import { CSS } from "@dnd-kit/utilities";
 import { Menu, Item, Submenu, Separator, useContextMenu } from "react-contexify";
 import Editor from "./components/Editor";
+import { mountSidebar, type SidebarHandlers, type SidebarState, type SidebarInstance } from "./vanilla/sidebar";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -48,6 +49,30 @@ type NotesListView = "detailed" | "compact";
 const STORAGE_KEY = "notes_classic_v10_stable";
 
 const NOTE_CONTEXT_MENU_ID = "note-context-menu";
+const USE_VANILLA_SIDEBAR = true;
+
+const VanillaSidebarHost = React.memo(function VanillaSidebarHost({ state, handlers }: { state: SidebarState; handlers: SidebarHandlers }) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const instanceRef = useRef<SidebarInstance | null>(null);
+
+  useLayoutEffect(() => {
+    if (!rootRef.current) return;
+    if (!instanceRef.current) {
+      instanceRef.current = mountSidebar(rootRef.current, handlers);
+    }
+    return () => {
+      instanceRef.current?.destroy();
+      instanceRef.current = null;
+    };
+  }, [handlers]);
+
+  useLayoutEffect(() => {
+    if (!instanceRef.current) return;
+    instanceRef.current.update(state);
+  }, [state]);
+
+  return <div ref={rootRef} className="flex-1" />;
+});
 
 // --- NOTEBOOK ITEM ---
 function NotebookItem({ notebook, noteCount, isSelected, level, onSelect, onAddSub, onDelete, isExpanded, onToggle, dragIndicator, isNoteDragging }: any) {
@@ -155,6 +180,7 @@ function App() {
 
   const isResizingSidebar = useRef(false);
   const isResizingList = useRef(false);
+  const sidebarHandlersRef = useRef<SidebarHandlers | null>(null);
   const notesRef = useRef<NoteListItem[]>([]);
   const activeNoteRef = useRef<NoteDetail | null>(null);
   const { show } = useContextMenu({ id: NOTE_CONTEXT_MENU_ID });
@@ -791,6 +817,34 @@ function App() {
     );
   };
 
+  sidebarHandlersRef.current = {
+    onSelectNotebook: (id) => setSelectedNotebookId(id),
+    onSelectAll: () => setSelectedNotebookId(null),
+    onToggleNotebook: (id) => setExpandedNotebooks(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    }),
+    onCreateNotebook: (parentId) => { createNotebook(parentId); },
+    onDeleteNotebook: (id) => { deleteNotebook(id); },
+  };
+
+  const stableSidebarHandlers = useMemo<SidebarHandlers>(() => ({
+    onSelectNotebook: (id) => { sidebarHandlersRef.current?.onSelectNotebook(id); },
+    onSelectAll: () => { sidebarHandlersRef.current?.onSelectAll(); },
+    onToggleNotebook: (id) => { sidebarHandlersRef.current?.onToggleNotebook(id); },
+    onCreateNotebook: (parentId) => { sidebarHandlersRef.current?.onCreateNotebook(parentId); },
+    onDeleteNotebook: (id) => { sidebarHandlersRef.current?.onDeleteNotebook(id); },
+  }), []);
+
+  const sidebarState = useMemo<SidebarState>(() => ({
+    notebooks,
+    selectedNotebookId,
+    expandedNotebooks,
+    noteCounts,
+    totalNotes,
+  }), [notebooks, selectedNotebookId, expandedNotebooks, noteCounts, totalNotes]);
+
   if (!isLoaded) return <div className="h-screen w-full bg-[#1A1A1A]" />;
 
   return (
@@ -811,6 +865,9 @@ function App() {
             <Plus size={20} strokeWidth={3} /><span>New Note</span>
           </button>
           
+          {USE_VANILLA_SIDEBAR ? (
+            <VanillaSidebarHost state={sidebarState} handlers={stableSidebarHandlers} />
+          ) : (
           <nav className="flex-1 overflow-y-auto custom-scrollbar pr-1">
     <AllNotesDropTarget isNoteDragging={activeDragNoteId !== null} noteCount={totalNotes} />
             
@@ -823,6 +880,7 @@ function App() {
               {getOrderedChildren(null).map(nb => renderNotebookRecursive(nb))}
             </NotebookRootDropTarget>
           </nav>
+          )}
         </div>
         <div onMouseDown={() => { isResizingSidebar.current = true; }} className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-[#00A82D] z-50 transition-colors" />
       </div>
