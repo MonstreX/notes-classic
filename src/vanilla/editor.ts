@@ -189,6 +189,31 @@ const setupCodeToolbarHandlers = (editor: any) => {
   );
 };
 
+const setupTodoHandlers = (editor: any) => {
+  if (!editor || !editor.editor) return;
+  if ((editor as any).__noteTodoSetup) return;
+  (editor as any).__noteTodoSetup = true;
+
+  editor.editor.addEventListener(
+    "click",
+    (event: Event) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      const selection = editor.s?.range;
+      if (!selection || !editor.s.isCollapsed()) return;
+      const li = target.closest("li") as HTMLElement | null;
+      if (!li) return;
+      const list = li.closest("ul") as HTMLElement | null;
+      if (!list || list.getAttribute("data-en-todo") !== "true") return;
+      if (target.closest("a,button,input,select,textarea")) return;
+      const current = li.getAttribute("data-en-checked") === "true";
+      li.setAttribute("data-en-checked", current ? "false" : "true");
+      editor.synchronizeValues();
+    },
+    true
+  );
+};
+
 const createEditorConfig = () => {
   return {
     readonly: false,
@@ -211,6 +236,7 @@ const createEditorConfig = () => {
       "ul",
       "ol",
       "callout",
+      "todo",
       "codeblock",
       "|",
       "link",
@@ -227,6 +253,7 @@ const createEditorConfig = () => {
       "ul",
       "ol",
       "callout",
+      "todo",
       "codeblock",
       "|",
       "link",
@@ -242,6 +269,7 @@ const createEditorConfig = () => {
       "ul",
       "ol",
       "callout",
+      "todo",
       "codeblock",
       "|",
       "link",
@@ -256,6 +284,7 @@ const createEditorConfig = () => {
       "ul",
       "ol",
       "callout",
+      "todo",
       "codeblock",
       "|",
       "undo",
@@ -289,6 +318,49 @@ const createEditorConfig = () => {
           range.insertNode(wrapper);
           editor.s.setCursorAfter(wrapper);
           editor.s.synchronizeValues();
+        },
+      },
+      todo: {
+        tooltip: "Todo List",
+        text: "☐",
+        exec: (editor: any) => {
+          if (!editor || !editor.s) return;
+          const range = editor.s.range;
+          const findList = (node: Node | null) => {
+            let current = node as HTMLElement | null;
+            while (current && current !== editor.editor) {
+              if (current.nodeType === 1) {
+                const tag = current.tagName?.toLowerCase();
+                if (tag === "ul" || tag === "ol") return current;
+              }
+              current = current.parentElement;
+            }
+            return null;
+          };
+
+          let list = findList(range.startContainer);
+          if (!list) {
+            editor.execCommand("insertUnorderedList");
+            list = findList(range.startContainer);
+          }
+          if (!list) return;
+
+          if (list.tagName.toLowerCase() === "ol") {
+            const ul = editor.createInside.element("ul");
+            while (list.firstChild) {
+              ul.appendChild(list.firstChild);
+            }
+            list.parentNode?.replaceChild(ul, list);
+            list = ul;
+          }
+
+          list.setAttribute("data-en-todo", "true");
+          list.querySelectorAll("li").forEach((li) => {
+            if (!li.hasAttribute("data-en-checked")) {
+              li.setAttribute("data-en-checked", "false");
+            }
+          });
+          editor.synchronizeValues();
         },
       },
       codeblock: {
@@ -492,6 +564,7 @@ export const mountEditor = (root: HTMLElement, options: EditorOptions): EditorIn
   };
 
   setupCodeToolbarHandlers(editor);
+  setupTodoHandlers(editor);
   applyHighlightToEditor(editor);
 
   editor.events.on("change", handleChange);

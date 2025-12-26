@@ -71,6 +71,46 @@
   padding: 0;
 }
 
+.notes-editor .jodit-wysiwyg ul[data-en-todo="true"] {
+  list-style: none;
+  margin-left: 0;
+  padding-left: 24px;
+}
+
+.notes-editor .jodit-wysiwyg ul[data-en-todo="true"] > li {
+  position: relative;
+  margin: 0.35em 0;
+}
+
+.notes-editor .jodit-wysiwyg ul[data-en-todo="true"] > li::before {
+  content: "";
+  position: absolute;
+  left: -23px;
+  top: 0.35em;
+  width: 16px;
+  height: 16px;
+  border: 1px solid #9ca3af;
+  border-radius: 3px;
+  background: #ffffff;
+}
+
+.notes-editor .jodit-wysiwyg ul[data-en-todo="true"] > li[data-en-checked="true"]::before {
+  background: #00A82D;
+  border-color: #00A82D;
+}
+
+.notes-editor .jodit-wysiwyg ul[data-en-todo="true"] > li[data-en-checked="true"]::after {
+  content: "";
+  position: absolute;
+  left: -17.5px;
+  top: 0.5em;
+  width: 5px;
+  height: 9px;
+  border: solid #ffffff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
 .notes-editor .jodit-wysiwyg ul {
   list-style: disc;
 }
