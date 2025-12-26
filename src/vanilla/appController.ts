@@ -1,6 +1,6 @@
-import { invoke } from "@tauri-apps/api/tauri";
+import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { open } from "@tauri-apps/api/dialog";
+import { open } from "@tauri-apps/plugin-dialog";
 import { openNotebookDialog, openConfirmDialog } from "./dialogs";
 import type { Notebook, NoteListItem, NoteDetail, NoteCounts } from "./types";
 import { appStore } from "./store";

@@ -8,9 +8,12 @@ use base64::Engine;
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
-use tauri::{api::dialog::blocking::message, AppHandle, CustomMenuItem, Manager, Menu, MenuItem, State, Submenu};
-use tauri::http::status::StatusCode;
-use tauri::http::{Response, ResponseBuilder, Uri};
+use http::{Request, Response, StatusCode, Uri};
+use tauri::menu::{
+    CheckMenuItem, Menu, MenuBuilder, MenuItem, MenuItemKind, PredefinedMenuItem, SubmenuBuilder,
+};
+use tauri::{AppHandle, Emitter, Manager, Runtime, State};
+use tauri_plugin_dialog::DialogExt;
 
 const NOTES_VIEW_DETAILED: &str = "view_notes_detailed";
 const NOTES_VIEW_COMPACT: &str = "view_notes_compact";
@@ -61,9 +64,9 @@ fn resolve_portable_paths(app_handle: &AppHandle) -> Result<(PathBuf, PathBuf), 
     ensure_dir_writable(&settings_dir)?;
 
     let legacy_dir = app_handle
-        .path_resolver()
+        .path()
         .app_data_dir()
-        .ok_or_else(|| "Failed to resolve app data directory".to_string())?;
+        .map_err(|_| "Failed to resolve app data directory".to_string())?;
     let legacy_db = legacy_dir.join("notes_classic.db");
     let new_db = data_dir.join("notes.db");
     if !new_db.exists() && legacy_db.exists() {
@@ -73,8 +76,8 @@ fn resolve_portable_paths(app_handle: &AppHandle) -> Result<(PathBuf, PathBuf), 
     Ok((data_dir, settings_dir))
 }
 
-fn notes_file_response(data_dir: &Path, request: &tauri::http::Request) -> Result<Response, Box<dyn std::error::Error>> {
-    let uri: Uri = request.uri().parse()?;
+fn notes_file_response(data_dir: &Path, request: Request<Vec<u8>>) -> Response<Vec<u8>> {
+    let uri: &Uri = request.uri();
     let host = uri.host().unwrap_or_default();
     let mut rel = String::new();
     if !host.is_empty() {
@@ -88,13 +91,27 @@ fn notes_file_response(data_dir: &Path, request: &tauri::http::Request) -> Resul
         rel.push_str(path);
     }
     if rel.is_empty() {
-        return Ok(ResponseBuilder::new().status(StatusCode::BAD_REQUEST).body(Vec::new())?);
+        return Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .body(Vec::new())
+            .unwrap_or_else(|_| Response::new(Vec::new()));
     }
     let full_path = data_dir.join(rel);
     if !full_path.exists() {
-        return Ok(ResponseBuilder::new().status(StatusCode::NOT_FOUND).body(Vec::new())?);
+        return Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(Vec::new())
+            .unwrap_or_else(|_| Response::new(Vec::new()));
     }
-    let bytes = fs::read(&full_path)?;
+    let bytes = match fs::read(&full_path) {
+        Ok(data) => data,
+        Err(_) => {
+            return Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(Vec::new())
+                .unwrap_or_else(|_| Response::new(Vec::new()))
+        }
+    };
     let mime = match full_path.extension().and_then(|ext| ext.to_str()).map(|s| s.to_lowercase()) {
         Some(ext) if ext == "png" => "image/png",
         Some(ext) if ext == "jpg" || ext == "jpeg" => "image/jpeg",
@@ -105,10 +122,11 @@ fn notes_file_response(data_dir: &Path, request: &tauri::http::Request) -> Resul
         Some(ext) if ext == "txt" => "text/plain",
         _ => "application/octet-stream",
     };
-    Ok(ResponseBuilder::new()
+    Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", mime)
-        .body(bytes)?)
+        .body(bytes)
+        .unwrap_or_else(|_| Response::new(Vec::new()))
 }
 
 #[tauri::command]
@@ -139,57 +157,96 @@ fn read_data_file(path: String, state: State<'_, AppState>) -> Result<String, St
     Ok(format!("data:{};base64,{}", mime, encoded))
 }
 
+fn find_check_menu_item<R: Runtime>(items: Vec<MenuItemKind<R>>, id: &str) -> Option<CheckMenuItem<R>> {
+    for item in items {
+        if item.id() == &id {
+            if let Some(check) = item.as_check_menuitem() {
+                return Some(check.clone());
+            }
+        }
+        if let Some(submenu) = item.as_submenu() {
+            if let Ok(children) = submenu.items() {
+                if let Some(found) = find_check_menu_item(children, id) {
+                    return Some(found);
+                }
+            }
+        }
+    }
+    None
+}
+
 fn update_notes_list_menu(app_handle: &AppHandle, view: &str) {
-    if let Some(window) = app_handle.get_window("main") {
-        let menu = window.menu_handle();
-        let _ = menu.get_item(NOTES_VIEW_DETAILED).set_selected(view == "detailed");
-        let _ = menu.get_item(NOTES_VIEW_COMPACT).set_selected(view == "compact");
+    let Some(menu) = app_handle.menu() else {
+        return;
+    };
+    if let Ok(items) = menu.items() {
+        if let Some(item) = find_check_menu_item(items, NOTES_VIEW_DETAILED) {
+            let _ = item.set_checked(view == "detailed");
+        }
+    }
+    if let Ok(items) = menu.items() {
+        if let Some(item) = find_check_menu_item(items, NOTES_VIEW_COMPACT) {
+            let _ = item.set_checked(view == "compact");
+        }
     }
 }
 
-fn build_menu() -> Menu {
-    let import_menu = Menu::new()
-        .add_item(CustomMenuItem::new("file_import_evernote".to_string(), "Evernote..."));
+fn build_menu<R: Runtime>(app_handle: &AppHandle<R>) -> tauri::Result<Menu<R>> {
+    let import_evernote =
+        MenuItem::with_id(app_handle, FILE_IMPORT_EVERNOTE, "Evernote...", true, None::<&str>)?;
+    let import_submenu = SubmenuBuilder::new(app_handle, "Import")
+        .item(&import_evernote)
+        .build()?;
 
-    let file_menu = Menu::new()
-        .add_item(CustomMenuItem::new("file_new".to_string(), "New"))
-        .add_item(CustomMenuItem::new("file_open".to_string(), "Open..."))
-        .add_item(CustomMenuItem::new("file_save".to_string(), "Save"))
-        .add_item(CustomMenuItem::new("file_save_as".to_string(), "Save As..."))
-        .add_native_item(MenuItem::Separator)
-        .add_submenu(Submenu::new("Import", import_menu))
-        .add_native_item(MenuItem::Separator)
-        .add_item(CustomMenuItem::new("file_settings".to_string(), "Settings"))
-        .add_native_item(MenuItem::Separator)
-        .add_native_item(MenuItem::CloseWindow)
-        .add_native_item(MenuItem::Quit);
+    let file_menu = SubmenuBuilder::new(app_handle, "File")
+        .item(&MenuItem::with_id(app_handle, "file_new", "New", true, None::<&str>)?)
+        .item(&MenuItem::with_id(app_handle, "file_open", "Open...", true, None::<&str>)?)
+        .item(&MenuItem::with_id(app_handle, "file_save", "Save", true, None::<&str>)?)
+        .item(&MenuItem::with_id(app_handle, "file_save_as", "Save As...", true, None::<&str>)?)
+        .separator()
+        .item(&import_submenu)
+        .separator()
+        .item(&MenuItem::with_id(app_handle, "file_settings", "Settings", true, None::<&str>)?)
+        .separator()
+        .item(&PredefinedMenuItem::close_window(app_handle, None)?)
+        .item(&PredefinedMenuItem::quit(app_handle, None)?)
+        .build()?;
 
-    let notes_list_menu = Menu::new()
-        .add_item(CustomMenuItem::new(NOTES_VIEW_DETAILED.to_string(), "Detailed").selected())
-        .add_item(CustomMenuItem::new(NOTES_VIEW_COMPACT.to_string(), "Compact"));
+    let detailed_item =
+        CheckMenuItem::with_id(app_handle, NOTES_VIEW_DETAILED, "Detailed", true, true, None::<&str>)?;
+    let compact_item =
+        CheckMenuItem::with_id(app_handle, NOTES_VIEW_COMPACT, "Compact", true, false, None::<&str>)?;
+    let notes_list_menu = SubmenuBuilder::new(app_handle, "Notes List")
+        .item(&detailed_item)
+        .item(&compact_item)
+        .build()?;
 
-    let view_menu = Menu::new()
-        .add_item(CustomMenuItem::new("view_toggle_sidebar".to_string(), "Toggle Sidebar").disabled())
-        .add_item(CustomMenuItem::new("view_toggle_list".to_string(), "Toggle Notes List").disabled())
-        .add_native_item(MenuItem::Separator)
-        .add_submenu(Submenu::new("Notes List", notes_list_menu))
-        .add_native_item(MenuItem::Separator)
-        .add_item(CustomMenuItem::new("view_actual_size".to_string(), "Actual Size").disabled());
+    let view_menu = SubmenuBuilder::new(app_handle, "View")
+        .item(&MenuItem::with_id(app_handle, "view_toggle_sidebar", "Toggle Sidebar", false, None::<&str>)?)
+        .item(&MenuItem::with_id(app_handle, "view_toggle_list", "Toggle Notes List", false, None::<&str>)?)
+        .separator()
+        .item(&notes_list_menu)
+        .separator()
+        .item(&MenuItem::with_id(app_handle, "view_actual_size", "Actual Size", false, None::<&str>)?)
+        .build()?;
 
-    let note_menu = Menu::new()
-        .add_item(CustomMenuItem::new("note_new".to_string(), "New Note").disabled())
-        .add_item(CustomMenuItem::new("note_delete".to_string(), "Delete Note").disabled())
-        .add_item(CustomMenuItem::new("note_move".to_string(), "Move To...").disabled());
+    let note_menu = SubmenuBuilder::new(app_handle, "Note")
+        .item(&MenuItem::with_id(app_handle, "note_new", "New Note", false, None::<&str>)?)
+        .item(&MenuItem::with_id(app_handle, "note_delete", "Delete Note", false, None::<&str>)?)
+        .item(&MenuItem::with_id(app_handle, "note_move", "Move To...", false, None::<&str>)?)
+        .build()?;
 
-    let tools_menu = Menu::new()
-        .add_item(CustomMenuItem::new("tools_import".to_string(), "Import").disabled())
-        .add_item(CustomMenuItem::new("tools_export".to_string(), "Export").disabled());
+    let tools_menu = SubmenuBuilder::new(app_handle, "Tools")
+        .item(&MenuItem::with_id(app_handle, "tools_import", "Import", false, None::<&str>)?)
+        .item(&MenuItem::with_id(app_handle, "tools_export", "Export", false, None::<&str>)?)
+        .build()?;
 
-    Menu::new()
-        .add_submenu(Submenu::new("File", file_menu))
-        .add_submenu(Submenu::new("View", view_menu))
-        .add_submenu(Submenu::new("Note", note_menu))
-        .add_submenu(Submenu::new("Tools", tools_menu))
+    MenuBuilder::new(app_handle)
+        .item(&file_menu)
+        .item(&view_menu)
+        .item(&note_menu)
+        .item(&tools_menu)
+        .build()
 }
 
 #[tauri::command]
@@ -309,10 +366,9 @@ fn set_notes_list_view(view: String, app_handle: AppHandle) -> Result<(), String
 }
 
 fn main() {
-    let menu = build_menu();
     tauri::Builder::default()
-        .register_uri_scheme_protocol("notes-file", |app, request| {
-            let state = app.state::<AppState>();
+        .register_uri_scheme_protocol("notes-file", |ctx, request| {
+            let state = ctx.app_handle().state::<AppState>();
             notes_file_response(&state.data_dir, request)
         })
         .setup(|app| {
@@ -320,7 +376,11 @@ fn main() {
             let (data_dir, settings_dir) = match resolve_portable_paths(&app_handle) {
                 Ok(paths) => paths,
                 Err(err) => {
-                    message(None::<&tauri::Window>, "Storage Error", err.as_str());
+                    app_handle
+                        .dialog()
+                        .message(err.clone())
+                        .title("Storage Error")
+                        .show(|_| {});
                     return Err(err.into());
                 }
             };
@@ -330,21 +390,23 @@ fn main() {
             app.manage(AppState { pool, settings_dir, data_dir });
             Ok(())
         })
+        .menu(|app_handle| build_menu(app_handle))
         .plugin(tauri_plugin_window_state::Builder::default().build())
-        .menu(menu)
-        .on_menu_event(|event| {
-            let app_handle = event.window().app_handle();
-            match event.menu_item_id() {
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .on_menu_event(|app_handle, event| {
+            match event.id().0.as_str() {
                 FILE_IMPORT_EVERNOTE => {
-                    let _ = app_handle.emit_all("import-evernote", ());
+                    let _ = app_handle.emit("import-evernote", ());
                 }
                 NOTES_VIEW_DETAILED => {
-                    update_notes_list_menu(&app_handle, "detailed");
-                    let _ = app_handle.emit_all("notes-list-view", "detailed");
+                    update_notes_list_menu(app_handle, "detailed");
+                    let _ = app_handle.emit("notes-list-view", "detailed");
                 }
                 NOTES_VIEW_COMPACT => {
-                    update_notes_list_menu(&app_handle, "compact");
-                    let _ = app_handle.emit_all("notes-list-view", "compact");
+                    update_notes_list_menu(app_handle, "compact");
+                    let _ = app_handle.emit("notes-list-view", "compact");
                 }
                 _ => {}
             }

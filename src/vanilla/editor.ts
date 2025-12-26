@@ -5,8 +5,8 @@ import javascript from "highlight.js/lib/languages/javascript";
 import xml from "highlight.js/lib/languages/xml";
 import css from "highlight.js/lib/languages/css";
 import php from "highlight.js/lib/languages/php";
-import { writeText } from "@tauri-apps/api/clipboard";
-import { open } from "@tauri-apps/api/shell";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { open } from "@tauri-apps/plugin-shell";
 
 hljs.registerLanguage("javascript", javascript);
 hljs.registerLanguage("js", javascript);

@@ -1,42 +1,37 @@
 {
+  "$schema": "https://schema.tauri.app/config/2.9.5",
+  "productName": "notes-classic",
+  "version": "0.1.0",
+  "identifier": "com.notes-classic.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
-    "devPath": "http://localhost:5173",
-    "distDir": "../dist",
-    "withGlobalTauri": false
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../dist"
   },
-  "package": {
-    "productName": "notes-classic",
-    "version": "0.1.0"
-  },
-  "tauri": {
-    "allowlist": {
-      "all": false,
-      "shell": {
-        "all": false,
-        "open": true
-      },
-      "dialog": {
-        "all": true,
-        "ask": true,
-        "confirm": true,
-        "message": true
-      }
-    },
-    "bundle": {
-      "active": true,
-      "targets": "all",
-      "identifier": "com.notes-classic.app",
-      "icon": [
-        "icons/app.ico"
-      ]
-    },
+  "app": {
+    "withGlobalTauri": false,
     "security": {
-      "csp": null
+      "csp": null,
+      "capabilities": [
+        {
+          "identifier": "main",
+          "description": "Main window capabilities",
+          "windows": ["main"],
+          "permissions": [
+            "core:default",
+            "core:event:default",
+            "dialog:default",
+            "shell:default",
+            "clipboard-manager:allow-write-text",
+            "window-state:default"
+          ]
+        }
+      ]
     },
     "windows": [
       {
+        "label": "main",
         "fullscreen": false,
         "resizable": true,
         "title": "Notes Classic",
@@ -46,5 +41,11 @@
         "minHeight": 600
       }
     ]
-  }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": ["icons/app.ico"]
+  },
+  "plugins": {}
 }

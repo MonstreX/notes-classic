@@ -7,6 +7,7 @@ dist-tauri/
 # Rust
 src-tauri/target/
 src-tauri/Cargo.lock
+src-tauri/gen/
 
 # IDEs
 .vscode/
