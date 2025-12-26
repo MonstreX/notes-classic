@@ -1,4 +1,6 @@
 
+@import "jodit/es2015/jodit.min.css";
+@import "highlight.js/styles/github.css";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -12,19 +14,25 @@
   }
 }
 
-:root {
-  --contexify-menu-bgColor: #ffffff;
-  --contexify-item-color: #333333;
-  --contexify-activeItem-bgColor: #00A82D;
-  --contexify-activeItem-color: #ffffff;
+.notes-editor .jodit-toolbar__box {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #ffffff;
+  padding: 0 40px;
 }
 
-.ProseMirror {
-  outline: none;
-  min-height: 500px;
-  font-size: 16px !important;
-  line-height: 1.6;
-  color: #333;
+.notes-editor .jodit-container .jodit-wysiwyg {
+  padding: 50px 40px 40px !important;
+}
+
+.notes-editor .jodit-container {
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.notes-editor .jodit-workplace {
+  border: none !important;
 }
 
 .resize-handle {
@@ -46,151 +54,6 @@
 .custom-scrollbar::-webkit-scrollbar-thumb {
   background: #333;
   border-radius: 10px;
-}
-
-.notes-editor .jodit-container {
-  border: none;
-}
-
-.notes-editor .jodit-toolbar__box {
-  position: sticky;
-  top: 0;
-  z-index: 30;
-  background: #ffffff;
-  border-bottom: 1px solid #e5e7eb;
-  margin-top: 0;
-  padding: 4px 8px;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-}
-
-.notes-editor .jodit-toolbar__box::-webkit-scrollbar {
-  height: 4px;
-}
-.notes-editor .jodit-toolbar__box::-webkit-scrollbar-thumb {
-  background: #d1d5db;
-  border-radius: 8px;
-}
-
-.notes-editor .jodit-toolbar__box .jodit-toolbar-button {
-  min-width: 24px;
-  height: 24px;
-  padding: 2px;
-}
-
-.notes-editor .jodit-toolbar__box .jodit-toolbar-button svg {
-  width: 14px;
-  height: 14px;
-}
-
-.notes-editor .jodit-container .jodit-wysiwyg {
-  padding-top: 50px !important;
-}
-
-.notes-editor .jodit-container .jodit-wysiwyg p {
-  margin: 0 0 0.9em 0;
-}
-
-.notes-editor .jodit-container .jodit-wysiwyg ul,
-.notes-editor .jodit-container .jodit-wysiwyg ol {
-  margin: 0 0 0.9em 1.5em;
-  padding-left: 1.2em;
-}
-
-.notes-editor .jodit-container .jodit-wysiwyg ul {
-  list-style: disc;
-}
-
-.notes-editor .jodit-container .jodit-wysiwyg ol {
-  list-style: decimal;
-}
-
-.notes-editor .jodit-container .jodit-wysiwyg li {
-  margin: 0.2em 0;
-}
-
-.notes-editor .jodit-container .jodit-wysiwyg h1,
-.notes-editor .jodit-container .jodit-wysiwyg h2,
-.notes-editor .jodit-container .jodit-wysiwyg h3,
-.notes-editor .jodit-container .jodit-wysiwyg h4,
-.notes-editor .jodit-container .jodit-wysiwyg h5,
-.notes-editor .jodit-container .jodit-wysiwyg h6 {
-  margin: 1.1em 0 0.6em;
-  font-weight: 600;
-}
-
-.notes-editor .jodit-container .jodit-wysiwyg blockquote {
-  margin: 0 0 1em;
-  padding-left: 1em;
-  border-left: 3px solid #e5e7eb;
-  color: #555;
-}
-
-.notes-editor .jodit-container .jodit-wysiwyg img {
-  max-width: 100%;
-  height: auto;
-}
-
-.notes-editor .jodit-container .jodit-wysiwyg .note-callout {
-  background: #f3f3f3;
-  border-radius: 5px;
-  padding: 10px 15px;
-  margin: 0 0 1em;
-  font-size: 13px;
-  line-height: 1.2;
-}
-
-.notes-editor .jodit-container .jodit-wysiwyg .note-callout * {
-  font-size: inherit;
-  line-height: inherit;
-}
-
-.notes-editor .jodit-container .jodit-wysiwyg .note-code {
-  position: relative;
-  background: #f8f8f8;
-  border: 1px solid #e5e7eb;
-  border-radius: 5px;
-  padding: 12px 12px 8px;
-  margin: 0 0 1em;
-  font-family: Consolas, 'Courier New', monospace;
-  font-size: 12px;
-  line-height: 1.4;
-}
-
-.notes-editor .jodit-container .jodit-wysiwyg .note-code-toolbar {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-
-.notes-editor .jodit-container .jodit-wysiwyg .note-code:hover .note-code-toolbar {
-  opacity: 1;
-}
-
-.notes-editor .jodit-container .jodit-wysiwyg .note-code-toolbar select,
-.notes-editor .jodit-container .jodit-wysiwyg .note-code-toolbar button {
-  font-size: 11px;
-  line-height: 1;
-  padding: 2px 6px;
-  border: 1px solid #d1d5db;
-  border-radius: 4px;
-  background: #ffffff;
-  color: #333;
-}
-
-.notes-editor .jodit-container .jodit-wysiwyg .note-code pre {
-  margin: 0;
-  white-space: pre;
-}
-
-.notes-editor .jodit-container .jodit-wysiwyg .note-code code {
-  display: block;
-  white-space: pre;
 }
 
 .notebook-children {
