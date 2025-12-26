@@ -1,0 +1,11 @@
+@use "./base/reset";
+@use "./base/typography";
+@use "./layout/app";
+@use "./components/sidebar";
+@use "./components/editor";
+@use "./components/context-menu";
+@use "./utilities/scrollbar";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

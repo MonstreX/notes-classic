@@ -35,38 +35,38 @@ const createIcon = (path: string, className: string) => {
 
 export const mountApp = (root: HTMLElement) => {
   const loading = document.createElement("div");
-  loading.className = "h-screen w-full bg-[#1A1A1A]";
+  loading.className = "app-loading";
   root.appendChild(loading);
 
   const app = document.createElement("div");
-  app.className = "flex h-screen w-full bg-white text-[#333] font-sans overflow-hidden";
+  app.className = "app-shell";
   app.style.display = "none";
   root.appendChild(app);
 
   const sidebar = document.createElement("div");
-  sidebar.className = "bg-[#1A1A1A] flex flex-col shrink-0 relative";
+  sidebar.className = "app-shell__sidebar";
   app.appendChild(sidebar);
 
   const sidebarInner = document.createElement("div");
-  sidebarInner.className = "p-4 flex flex-col h-full min-h-0 text-white";
+  sidebarInner.className = "app-shell__sidebar-inner";
   sidebar.appendChild(sidebarInner);
 
   const brandRow = document.createElement("div");
-  brandRow.className = "flex items-center gap-2 mb-6 px-2 shrink-0";
+  brandRow.className = "brand";
   sidebarInner.appendChild(brandRow);
 
   const brandIcon = document.createElement("div");
-  brandIcon.className = "w-8 h-8 bg-[#00A82D] rounded-full flex items-center justify-center font-bold text-xs uppercase";
+  brandIcon.className = "brand__icon";
   brandIcon.textContent = "M";
   brandRow.appendChild(brandIcon);
 
   const brandText = document.createElement("span");
-  brandText.className = "font-semibold text-sm truncate uppercase tracking-widest";
+  brandText.className = "brand__text";
   brandText.textContent = "Notes Classic";
   brandRow.appendChild(brandText);
 
   const newNoteButton = document.createElement("button");
-  newNoteButton.className = "w-fit bg-[#00A82D] hover:bg-[#008f26] text-white flex items-center gap-2 py-2 px-6 rounded-full transition-colors text-sm font-medium mb-8 ml-2 shadow-lg shrink-0";
+  newNoteButton.className = "btn btn--primary btn--pill btn--new-note";
   const plusIcon = createIcon("M12 5v14M5 12h14", "w-5 h-5");
   newNoteButton.appendChild(plusIcon);
   const newNoteLabel = document.createElement("span");
@@ -76,11 +76,11 @@ export const mountApp = (root: HTMLElement) => {
   sidebarInner.appendChild(newNoteButton);
 
   const sidebarHost = document.createElement("div");
-  sidebarHost.className = "flex-1 min-h-0 overflow-hidden";
+  sidebarHost.className = "app-shell__sidebar-host";
   sidebarInner.appendChild(sidebarHost);
 
   const sidebarResize = document.createElement("div");
-  sidebarResize.className = "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-[#00A82D] z-50 transition-colors";
+  sidebarResize.className = "app-shell__resize-handle";
   sidebar.appendChild(sidebarResize);
 
   const list = document.createElement("div");

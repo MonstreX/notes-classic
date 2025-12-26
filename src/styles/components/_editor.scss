@@ -1,19 +1,3 @@
-
-@import "jodit/es2015/jodit.min.css";
-@import "highlight.js/styles/github.css";
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-@layer base {
-  html, body, #root {
-    height: 100%;
-    margin: 0;
-    padding: 0;
-    overflow: hidden;
-  }
-}
-
 .notes-editor {
   padding: 0 40px 40px;
   user-select: text;
@@ -100,8 +84,8 @@
 }
 
 .notes-editor .jodit-wysiwyg ul[data-en-todo="true"] > li[data-en-checked="true"]::before {
-  background: #00A82D;
-  border-color: #00A82D;
+  background: #00a82d;
+  border-color: #00a82d;
 }
 
 .notes-editor .jodit-wysiwyg ul[data-en-todo="true"] > li[data-en-checked="true"]::after {
@@ -233,101 +217,4 @@
 .notes-editor .jodit-wysiwyg .note-code code {
   display: block;
   white-space: pre;
-}
-
-
-.resize-handle {
-  width: 4px;
-  cursor: col-resize;
-  background-color: transparent;
-  transition: background-color 0.2s;
-}
-.resize-handle:hover, .resize-handle.active {
-  background-color: #00A82D;
-}
-
-.custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
-}
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #333;
-  border-radius: 10px;
-}
-
-.notebook-children {
-  overflow: hidden;
-  pointer-events: none;
-  transition: max-height 200ms ease, opacity 150ms ease;
-}
-
-.notebook-children[data-expanded="true"] {
-  pointer-events: auto;
-}
-
-.context-menu {
-  min-width: 180px;
-  background: #ffffff;
-  color: #1f2937;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
-  padding: 6px 0;
-  font-size: 13px;
-}
-
-.context-menu-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 6px 12px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.context-menu-item:hover {
-  background: #f3f4f6;
-}
-
-.context-menu-item.is-danger {
-  color: #b91c1c;
-}
-
-.context-menu-item.is-disabled {
-  color: #9ca3af;
-  cursor: default;
-}
-
-.context-menu-item.is-disabled:hover {
-  background: transparent;
-}
-
-.context-menu-separator {
-  height: 1px;
-  background: #e5e7eb;
-  margin: 4px 0;
-}
-
-.context-menu .submenu {
-  position: absolute;
-  left: 100%;
-  top: 0;
-  display: none;
-  margin-left: 4px;
-}
-
-.context-menu-item.has-submenu {
-  position: relative;
-}
-
-.context-menu-item.has-submenu:hover > .submenu {
-  display: block;
-}
-
-.context-menu-caret {
-  font-size: 10px;
-  opacity: 0.6;
 }

@@ -42,7 +42,7 @@ const renderNotebookIcon = (type: NotebookType, isSelected: boolean) => {
   const stroke = isSelected ? "#00A82D" : "#6B7280";
   if (type === "stack") {
     return `
-      <svg class="shrink-0 w-[18px]" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <svg class="sidebar-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M2 7h20"></path>
         <path d="M2 12h20"></path>
         <path d="M2 17h20"></path>
@@ -50,7 +50,7 @@ const renderNotebookIcon = (type: NotebookType, isSelected: boolean) => {
     `;
   }
   return `
-    <svg class="shrink-0 w-[18px]" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <svg class="sidebar-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20"></path>
       <path d="M4 2h16v20H4z"></path>
     </svg>
@@ -58,7 +58,7 @@ const renderNotebookIcon = (type: NotebookType, isSelected: boolean) => {
 };
 
 const renderChevron = (isExpanded: boolean) => `
-  <svg width="14" height="14" viewBox="0 0 24 24" class="transition-transform ${isExpanded ? "rotate-90" : ""}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <svg width="14" height="14" viewBox="0 0 24 24" class="sidebar-chevron ${isExpanded ? "is-expanded" : ""}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <polyline points="9 18 15 12 9 6"></polyline>
   </svg>
 `;
@@ -83,7 +83,7 @@ const renderTrash = () => `
 const renderAllNotesIcon = (isSelected: boolean) => {
   const stroke = isSelected ? "#00A82D" : "#6B7280";
   return `
-    <svg class="shrink-0" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <svg class="sidebar-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
       <polyline points="14 2 14 8 20 8"></polyline>
       <line x1="16" y1="13" x2="8" y2="13"></line>
@@ -127,9 +127,9 @@ const renderNotebookItem = (
     : (counts.notebookCounts.get(nb.id) ?? 0);
 
   return `
-    <div class="w-full py-0.5 relative">
+    <div class="sidebar-row">
       <div
-        class="flex items-center text-gray-400 p-1 rounded cursor-pointer group transition-all mx-1 hover:bg-[#2A2A2A] ${isSelected ? "bg-[#2A2A2A] text-white" : ""}"
+        class="sidebar-item sidebar-item--compact ${isSelected ? "is-selected" : ""}"
         style="padding-left: ${level * 16 + 8}px;"
         data-action="select-notebook"
         data-notebook-id="${nb.id}"
@@ -137,21 +137,21 @@ const renderNotebookItem = (
         data-notebook-type="${nb.notebookType}"
         data-notebook-level="${level}"
       >
-        <div class="flex items-center gap-3 overflow-hidden flex-1">
+        <div class="sidebar-item__content">
           ${renderNotebookIcon(nb.notebookType, isSelected)}
-          <span class="text-sm truncate font-medium">${escapeHtml(nb.name)}</span>
-          <span class="text-xs text-gray-500 font-medium">${noteCount}</span>
+          <span class="sidebar-item__label">${escapeHtml(nb.name)}</span>
+          <span class="sidebar-item__count">${noteCount}</span>
         </div>
-        <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
+        <div class="sidebar-item__actions">
           ${canHaveChildren ? `
-            <button class="p-1 hover:text-white" data-action="add-notebook" data-notebook-id="${nb.id}" title="Add notebook">
+            <button class="sidebar-action" data-action="add-notebook" data-notebook-id="${nb.id}" title="Add notebook">
               ${renderPlus()}
             </button>
-            <button class="p-1 hover:text-white" data-action="toggle-notebook" data-notebook-id="${nb.id}" title="Expand/Collapse">
+            <button class="sidebar-action" data-action="toggle-notebook" data-notebook-id="${nb.id}" title="Expand/Collapse">
               ${renderChevron(isExpanded)}
             </button>
           ` : ""}
-          <button class="p-1 hover:text-red-500" data-action="delete-notebook" data-notebook-id="${nb.id}" title="Delete notebook">
+          <button class="sidebar-action sidebar-action--danger" data-action="delete-notebook" data-notebook-id="${nb.id}" title="Delete notebook">
             ${renderTrash()}
           </button>
         </div>
@@ -191,24 +191,24 @@ const renderSidebar = (state: SidebarState) => {
   const counts = buildCounts(state.notebooks, state.noteCounts);
   const allSelected = state.selectedNotebookId === null;
   return `
-    <div class="h-full overflow-y-auto custom-scrollbar pr-1" data-sidebar-scroll="1">
+    <div class="sidebar-scroll custom-scrollbar" data-sidebar-scroll="1">
       <div
-        class="flex items-center gap-3 text-gray-400 p-2 rounded cursor-pointer mx-1 transition-all ${allSelected ? "bg-[#2A2A2A] text-white" : ""}"
+        class="sidebar-item ${allSelected ? "is-selected" : ""}"
         style="padding-left: 8px;"
         data-action="select-all"
         data-drop-all="1"
       >
         ${renderAllNotesIcon(allSelected)}
-        <span class="text-sm font-medium">All Notes</span>
-        <span class="text-xs text-gray-500 font-medium">${state.totalNotes}</span>
+        <span class="sidebar-item__label">All Notes</span>
+        <span class="sidebar-item__count">${state.totalNotes}</span>
       </div>
-      <div class="mt-4 pt-4 pb-2 px-3 flex justify-between items-center text-gray-500 uppercase text-[10px] font-bold tracking-widest shrink-0">
+      <div class="sidebar-section">
         <span>Notebooks</span>
-        <button class="cursor-pointer hover:text-white transition-colors" data-action="add-root" title="Create notebook">
+        <button class="sidebar-section__action" data-action="add-root" title="Create notebook">
           ${renderPlus()}
         </button>
       </div>
-      <div class="rounded relative">
+      <div class="sidebar-tree">
         ${renderNotebookTree(state.notebooks, state, null, 0, counts)}
       </div>
     </div>
@@ -267,12 +267,12 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
     dragStarted = true;
     ignoreClick = true;
     dragOverlay = document.createElement("div");
-    dragOverlay.className = "fixed z-[9999] pointer-events-none";
+    dragOverlay.className = "sidebar-drag";
     dragOverlay.style.left = "0";
     dragOverlay.style.top = "0";
     dragOverlay.style.transform = `translate(${clientX + 10}px, ${clientY + 10}px)`;
     dragOverlay.innerHTML = `
-      <div class="px-4 py-2 bg-[#1A1A1A] text-white border border-[#2A2A2A] rounded shadow-sm text-sm opacity-70">
+      <div class="sidebar-drag__item">
         ${escapeHtml(name)}
       </div>
     `;
