@@ -655,6 +655,55 @@ function App() {
     show({ event, props: { noteId } });
   };
 
+  const moveNotebookByDrag = useCallback(async (activeId: number, overId: number, position: "before" | "after" | "inside") => {
+    const activeNotebook = notebooks.find(nb => nb.id === activeId);
+    const overNotebook = notebooks.find(nb => nb.id === overId);
+    if (!activeNotebook || !overNotebook) return;
+    const activeType = activeNotebook.notebookType;
+    const overType = overNotebook.notebookType;
+
+    if (activeType === "stack") {
+      if (overType !== "stack") return;
+      const targetParentId = null;
+      const siblings = getOrderedChildren(null).filter(nb => nb.id !== activeId);
+      let targetIndex = siblings.findIndex(nb => nb.id === overId);
+      if (targetIndex < 0) targetIndex = siblings.length;
+      if (position === "after") targetIndex += 1;
+      if (position === "inside") targetIndex += 1;
+      if (isDescendant(targetParentId, activeId)) return;
+      await invoke("move_notebook", { notebookId: activeId, parentId: targetParentId, index: targetIndex });
+      fetchData();
+      return;
+    }
+
+    if (activeType === "notebook") {
+      let targetParentId: number | null = null;
+      if (overType === "stack") {
+        if (position !== "inside") return;
+        targetParentId = overNotebook.id;
+        const siblings = getOrderedChildren(targetParentId).filter(nb => nb.id !== activeId);
+        const targetIndex = siblings.length;
+        if (isDescendant(targetParentId, activeId)) return;
+        await invoke("move_notebook", { notebookId: activeId, parentId: targetParentId, index: targetIndex });
+        fetchData();
+        return;
+      }
+
+      targetParentId = overNotebook.parentId;
+      if (targetParentId === null) return;
+      const targetParent = notebooks.find(nb => nb.id === targetParentId);
+      if (!targetParent || targetParent.notebookType !== "stack") return;
+      const siblings = getOrderedChildren(targetParentId).filter(nb => nb.id !== activeId);
+      let targetIndex = siblings.findIndex(nb => nb.id === overId);
+      if (targetIndex < 0) targetIndex = siblings.length;
+      if (position === "after") targetIndex += 1;
+      if (position === "inside") targetIndex += 1;
+      if (isDescendant(targetParentId, activeId)) return;
+      await invoke("move_notebook", { notebookId: activeId, parentId: targetParentId, index: targetIndex });
+      fetchData();
+    }
+  }, [fetchData, getOrderedChildren, isDescendant, notebooks]);
+
   const renderNotebookMenuNode = (nb: Notebook) => {
     const children = getOrderedChildren(nb.id);
     if (children.length > 0) {
@@ -827,6 +876,7 @@ function App() {
     }),
     onCreateNotebook: (parentId) => { createNotebook(parentId); },
     onDeleteNotebook: (id) => { deleteNotebook(id); },
+    onMoveNotebook: (activeId, overId, position) => { moveNotebookByDrag(activeId, overId, position); },
   };
 
   const stableSidebarHandlers = useMemo<SidebarHandlers>(() => ({
@@ -835,6 +885,7 @@ function App() {
     onToggleNotebook: (id) => { sidebarHandlersRef.current?.onToggleNotebook(id); },
     onCreateNotebook: (parentId) => { sidebarHandlersRef.current?.onCreateNotebook(parentId); },
     onDeleteNotebook: (id) => { sidebarHandlersRef.current?.onDeleteNotebook(id); },
+    onMoveNotebook: (activeId, overId, position) => { sidebarHandlersRef.current?.onMoveNotebook(activeId, overId, position); },
   }), []);
 
   const sidebarState = useMemo<SidebarState>(() => ({

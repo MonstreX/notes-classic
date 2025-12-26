@@ -22,6 +22,7 @@ export interface SidebarHandlers {
   onToggleNotebook: (id: number) => void;
   onCreateNotebook: (parentId: number | null) => void;
   onDeleteNotebook: (id: number) => void;
+  onMoveNotebook: (activeId: number, overId: number, position: "before" | "after" | "inside") => void;
 }
 
 export interface SidebarInstance {
@@ -132,6 +133,9 @@ const renderNotebookItem = (
         style="padding-left: ${level * 16 + 8}px;"
         data-action="select-notebook"
         data-notebook-id="${nb.id}"
+        data-notebook-row="1"
+        data-notebook-type="${nb.notebookType}"
+        data-notebook-level="${level}"
       >
         <div class="flex items-center gap-3 overflow-hidden flex-1">
           ${renderNotebookIcon(nb.notebookType, isSelected)}
@@ -183,7 +187,7 @@ const renderSidebar = (state: SidebarState) => {
   const counts = buildCounts(state.notebooks, state.noteCounts);
   const allSelected = state.selectedNotebookId === null;
   return `
-    <div class="flex-1 overflow-y-auto custom-scrollbar pr-1">
+    <div class="flex-1 overflow-y-auto custom-scrollbar pr-1" data-sidebar-scroll="1">
       <div
         class="flex items-center gap-3 text-gray-400 p-2 rounded cursor-pointer mx-1 transition-all ${allSelected ? "bg-[#2A2A2A] text-white" : ""}"
         style="padding-left: 8px;"
@@ -207,7 +211,137 @@ const renderSidebar = (state: SidebarState) => {
 };
 
 export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): SidebarInstance => {
+  let currentState: SidebarState | null = null;
+  let ignoreClick = false;
+  let dragActive = false;
+  let dragStarted = false;
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let dragId = 0;
+  let dragType: NotebookType = "notebook";
+  let dragOverlay: HTMLDivElement | null = null;
+  let dragLine: HTMLDivElement | null = null;
+  let dragOverId: number | null = null;
+  let dragPosition: "before" | "after" | "inside" | null = null;
+
+  const ensureRootPosition = () => {
+    if (getComputedStyle(root).position === "static") {
+      root.style.position = "relative";
+    }
+  };
+
+  const getScrollEl = () => root.querySelector<HTMLElement>("[data-sidebar-scroll]");
+
+  const cleanupDrag = () => {
+    dragActive = false;
+    dragStarted = false;
+    dragOverId = null;
+    dragPosition = null;
+    if (dragOverlay) {
+      dragOverlay.remove();
+      dragOverlay = null;
+    }
+    if (dragLine) {
+      dragLine.remove();
+      dragLine = null;
+    }
+    document.body.style.cursor = "";
+  };
+
+  const findNotebook = (id: number) => currentState?.notebooks.find((nb) => nb.id === id) ?? null;
+
+  const startDrag = (name: string, clientX: number, clientY: number) => {
+    dragStarted = true;
+    ignoreClick = true;
+    dragOverlay = document.createElement("div");
+    dragOverlay.className = "fixed z-[9999] pointer-events-none";
+    dragOverlay.style.left = "0";
+    dragOverlay.style.top = "0";
+    dragOverlay.style.transform = `translate(${clientX + 10}px, ${clientY + 10}px)`;
+    dragOverlay.innerHTML = `
+      <div class="px-4 py-2 bg-[#1A1A1A] text-white border border-[#2A2A2A] rounded shadow-sm text-sm opacity-70">
+        ${escapeHtml(name)}
+      </div>
+    `;
+    document.body.appendChild(dragOverlay);
+
+    const scrollEl = getScrollEl();
+    if (scrollEl) {
+      dragLine = document.createElement("div");
+      dragLine.style.position = "absolute";
+      dragLine.style.height = "2px";
+      dragLine.style.background = "#00A82D";
+      dragLine.style.pointerEvents = "none";
+      dragLine.style.borderRadius = "2px";
+      scrollEl.appendChild(dragLine);
+    }
+    document.body.style.cursor = "grabbing";
+  };
+
+  const updateOverlay = (clientX: number, clientY: number) => {
+    if (!dragOverlay) return;
+    dragOverlay.style.transform = `translate(${clientX + 10}px, ${clientY + 10}px)`;
+  };
+
+  const resolveDropTarget = (clientX: number, clientY: number) => {
+    const element = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
+    const row = element?.closest<HTMLElement>("[data-notebook-row]");
+    if (!row || !root.contains(row)) return null;
+    const overId = Number(row.dataset.notebookId);
+    if (!Number.isFinite(overId) || overId === dragId) return null;
+    const overType = row.dataset.notebookType as NotebookType | undefined;
+    if (!overType) return null;
+    const rect = row.getBoundingClientRect();
+    let position: "before" | "after" | "inside" | null = null;
+
+    if (dragType === "stack") {
+      if (overType !== "stack") return null;
+      const midTop = rect.top + rect.height * 0.33;
+      position = clientY < midTop ? "before" : "after";
+    } else {
+      if (overType === "stack") {
+        position = "inside";
+      } else if (overType === "notebook") {
+        const mid = rect.top + rect.height / 2;
+        position = clientY < mid ? "before" : "after";
+      }
+    }
+
+    if (!position) return null;
+    const level = Number(row.dataset.notebookLevel || "0");
+    return { overId, position, rect, level };
+  };
+
+  const updateDropLine = (target: { overId: number; position: "before" | "after" | "inside"; rect: DOMRect; level: number } | null) => {
+    if (!dragLine) return;
+    if (!target) {
+      dragLine.style.display = "none";
+      dragOverId = null;
+      dragPosition = null;
+      return;
+    }
+    const scrollEl = getScrollEl();
+    if (!scrollEl) return;
+    const scrollRect = scrollEl.getBoundingClientRect();
+    const baseIndent = target.level * 16 + 8;
+    const indent = target.position === "inside" ? baseIndent + 16 : baseIndent;
+    const y = (target.position === "before" ? target.rect.top : target.rect.bottom) - scrollRect.top + scrollEl.scrollTop;
+    const left = target.rect.left - scrollRect.left + indent;
+    const right = target.rect.right - scrollRect.left - 8;
+    const width = Math.max(10, right - left);
+    dragLine.style.display = "block";
+    dragLine.style.top = `${y - 1}px`;
+    dragLine.style.left = `${left}px`;
+    dragLine.style.width = `${width}px`;
+    dragOverId = target.overId;
+    dragPosition = target.position;
+  };
+
   const handleClick = (event: Event) => {
+    if (ignoreClick) {
+      ignoreClick = false;
+      return;
+    }
     const target = event.target as HTMLElement | null;
     if (!target) return;
     const actionEl = target.closest<HTMLElement>("[data-action]");
@@ -243,12 +377,79 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
 
   root.addEventListener("click", handleClick);
 
+  const handlePointerDown = (event: PointerEvent) => {
+    if (event.button !== 0) return;
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    if (target.closest("button")) return;
+    const row = target.closest<HTMLElement>("[data-notebook-row]");
+    if (!row || !root.contains(row)) return;
+    const id = Number(row.dataset.notebookId);
+    if (!Number.isFinite(id)) return;
+    const type = row.dataset.notebookType as NotebookType | undefined;
+    if (!type) return;
+    dragActive = true;
+    dragStarted = false;
+    dragStartX = event.clientX;
+    dragStartY = event.clientY;
+    dragId = id;
+    dragType = type;
+  };
+
+  const handlePointerMove = (event: PointerEvent) => {
+    if (!dragActive) return;
+    const dx = event.clientX - dragStartX;
+    const dy = event.clientY - dragStartY;
+    if (!dragStarted) {
+      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+      const nb = findNotebook(dragId);
+      if (!nb) {
+        cleanupDrag();
+        return;
+      }
+      ensureRootPosition();
+      startDrag(nb.name, event.clientX, event.clientY);
+    }
+    updateOverlay(event.clientX, event.clientY);
+    const target = resolveDropTarget(event.clientX, event.clientY);
+    updateDropLine(target);
+    event.preventDefault();
+  };
+
+  const handlePointerUp = () => {
+    if (!dragActive) return;
+    if (dragStarted && dragOverId !== null && dragPosition) {
+      handlers.onMoveNotebook(dragId, dragOverId, dragPosition);
+    }
+    cleanupDrag();
+  };
+
+  const handlePointerCancel = () => {
+    if (!dragActive) return;
+    cleanupDrag();
+  };
+
+  root.addEventListener("pointerdown", handlePointerDown);
+  window.addEventListener("pointermove", handlePointerMove);
+  window.addEventListener("pointerup", handlePointerUp);
+  window.addEventListener("pointercancel", handlePointerCancel);
+
   return {
     update: (state: SidebarState) => {
+      currentState = state;
       root.innerHTML = renderSidebar(state);
+      const scrollEl = getScrollEl();
+      if (scrollEl && getComputedStyle(scrollEl).position === "static") {
+        scrollEl.style.position = "relative";
+      }
     },
     destroy: () => {
       root.removeEventListener("click", handleClick);
+      root.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerCancel);
+      cleanupDrag();
       root.innerHTML = "";
     },
   };
