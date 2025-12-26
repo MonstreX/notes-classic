@@ -5,7 +5,7 @@ import { open } from "@tauri-apps/api/dialog";
 import { Plus, Trash2, Search, FileText, Book, FolderPlus, ChevronRight, BookOpen } from "lucide-react";
 import { DndContext, DragOverlay, PointerSensor, useDraggable, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { Menu, Item, Submenu, Separator, useContextMenu } from "react-contexify";
+import { openNoteContextMenu, type ContextMenuNode } from "./vanilla/contextMenu";
 import Editor from "./components/Editor";
 import { mountSidebar, type SidebarHandlers, type SidebarState, type SidebarInstance } from "./vanilla/sidebar";
 import { mountNotesList, type NotesListHandlers, type NotesListState, type NotesListInstance } from "./vanilla/notesList";
@@ -49,7 +49,6 @@ type NotesListView = "detailed" | "compact";
 
 const STORAGE_KEY = "notes_classic_v10_stable";
 
-const NOTE_CONTEXT_MENU_ID = "note-context-menu";
 const USE_VANILLA_SIDEBAR = true;
 const USE_VANILLA_NOTES_LIST = true;
 
@@ -210,7 +209,6 @@ function App() {
   const notesListHandlersRef = useRef<NotesListHandlers | null>(null);
   const notesRef = useRef<NoteListItem[]>([]);
   const activeNoteRef = useRef<NoteDetail | null>(null);
-  const { show } = useContextMenu({ id: NOTE_CONTEXT_MENU_ID });
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
   );
@@ -461,6 +459,15 @@ function App() {
     return false;
   }, [notebooks]);
 
+  const buildMenuNodes = useCallback((parentId: number | null): ContextMenuNode[] => {
+    return getOrderedChildren(parentId).map((nb) => ({
+      id: nb.id,
+      name: nb.name,
+      type: nb.notebookType,
+      children: nb.notebookType === "stack" ? buildMenuNodes(nb.id) : [],
+    }));
+  }, [getOrderedChildren]);
+
   // Resize logic
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -692,11 +699,6 @@ function App() {
     }
   }, [fetchData, getOrderedChildren, isDescendant, moveNoteToNotebook, notebooks]);
 
-  const handleNoteContextMenu = (event: React.MouseEvent, noteId: number) => {
-    event.preventDefault();
-    show({ event, props: { noteId } });
-  };
-
   const moveNotebookByDrag = useCallback(async (activeId: number, overId: number, position: "before" | "after" | "inside") => {
     const activeNotebook = notebooks.find(nb => nb.id === activeId);
     const overNotebook = notebooks.find(nb => nb.id === overId);
@@ -745,23 +747,6 @@ function App() {
       fetchData();
     }
   }, [fetchData, getOrderedChildren, isDescendant, notebooks]);
-
-  const renderNotebookMenuNode = (nb: Notebook) => {
-    const children = getOrderedChildren(nb.id);
-    if (children.length > 0) {
-      return (
-        <Submenu key={nb.id} label={nb.name}>
-          <Item onClick={({ props }) => { if (props?.noteId) moveNoteToNotebook(props.noteId, nb.id); }}>Move here</Item>
-          {children.map(child => renderNotebookMenuNode(child))}
-        </Submenu>
-      );
-    }
-    return (
-      <Item key={nb.id} onClick={({ props }) => { if (props?.noteId) moveNoteToNotebook(props.noteId, nb.id); }}>
-        {nb.name}
-      </Item>
-    );
-  };
 
   const AllNotesDropTarget = ({ isNoteDragging, noteCount }: { isNoteDragging: boolean; noteCount: number }) => {
     const { setNodeRef, isOver } = useDroppable({
@@ -867,7 +852,7 @@ function App() {
         style={style}
         {...attributes}
         {...listeners}
-        onContextMenu={(event) => handleNoteContextMenu(event, note.id)}
+        onContextMenu={(event) => event.preventDefault()}
         onClick={() => setSelectedNoteId(note.id)}
         className={cn(
           "relative",
@@ -927,7 +912,15 @@ function App() {
     onSearchChange: (value) => setSearchTerm(value),
     onNoteContextMenu: (event, id) => {
       event.preventDefault();
-      show({ event, props: { noteId: id } });
+      const nodes = buildMenuNodes(null);
+      openNoteContextMenu({
+        x: event.clientX,
+        y: event.clientY,
+        noteId: id,
+        nodes,
+        onDelete: deleteNote,
+        onMove: moveNoteToNotebook,
+      });
     },
     onMoveNote: (noteId, notebookId) => { moveNoteToNotebook(noteId, notebookId); },
   };
@@ -1053,18 +1046,6 @@ function App() {
           </div>
         )}
       </div>
-      <Menu id={NOTE_CONTEXT_MENU_ID}>
-        <Item onClick={({ props }) => { if (props?.noteId) deleteNote(props.noteId); }}>
-          Delete Note
-        </Item>
-        <Separator />
-        <Submenu label="Move To">
-          <Item onClick={({ props }) => { if (props?.noteId) moveNoteToNotebook(props.noteId, null); }}>
-            All Notes
-          </Item>
-          {getOrderedChildren(null).map(nb => renderNotebookMenuNode(nb))}
-        </Submenu>
-      </Menu>
       <DragOverlay>
         {activeDragNoteId
           ? (() => {
