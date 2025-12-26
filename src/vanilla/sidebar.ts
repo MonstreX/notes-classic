@@ -187,7 +187,7 @@ const renderSidebar = (state: SidebarState) => {
   const counts = buildCounts(state.notebooks, state.noteCounts);
   const allSelected = state.selectedNotebookId === null;
   return `
-    <div class="flex-1 overflow-y-auto custom-scrollbar pr-1" data-sidebar-scroll="1">
+    <div class="h-full overflow-y-auto custom-scrollbar pr-1" data-sidebar-scroll="1">
       <div
         class="flex items-center gap-3 text-gray-400 p-2 rounded cursor-pointer mx-1 transition-all ${allSelected ? "bg-[#2A2A2A] text-white" : ""}"
         style="padding-left: 8px;"

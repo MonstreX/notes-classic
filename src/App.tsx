@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from "react";
 import { invoke } from "@tauri-apps/api/tauri";
-import { ask } from "@tauri-apps/api/dialog";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/api/dialog";
 import { Plus, Trash2, Search, FileText, Book, FolderPlus, ChevronRight, BookOpen } from "lucide-react";
@@ -9,6 +8,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Menu, Item, Submenu, Separator, useContextMenu } from "react-contexify";
 import Editor from "./components/Editor";
 import { mountSidebar, type SidebarHandlers, type SidebarState, type SidebarInstance } from "./vanilla/sidebar";
+import { openNotebookDialog, openConfirmDialog } from "./vanilla/dialogs";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -71,7 +71,7 @@ const VanillaSidebarHost = React.memo(function VanillaSidebarHost({ state, handl
     instanceRef.current.update(state);
   }, [state]);
 
-  return <div ref={rootRef} className="flex-1" />;
+  return <div ref={rootRef} className="flex-1 min-h-0 overflow-hidden" />;
 });
 
 // --- NOTEBOOK ITEM ---
@@ -465,27 +465,36 @@ function App() {
   };
 
   const deleteNote = async (id: number) => {
-    if (await ask("Delete note?", { title: "Confirm Deletion", type: "warning" })) {
-      await invoke("delete_note", { id });
-      if (selectedNoteId === id) setSelectedNoteId(null);
-      fetchData();
-    }
+    const ok = await openConfirmDialog({
+      title: "Delete note",
+      message: "Are you sure you want to delete this note?",
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
+    await invoke("delete_note", { id });
+    if (selectedNoteId === id) setSelectedNoteId(null);
+    fetchData();
   };
 
   const createNotebook = async (parentId: number | null = null) => {
-    const name = window.prompt("Notebook name:");
-    if (name) {
-      await invoke("create_notebook", { name, parentId });
-      fetchData();
-    }
+    const name = await openNotebookDialog({ parentId });
+    if (!name) return;
+    await invoke("create_notebook", { name, parentId });
+    fetchData();
   };
 
   const deleteNotebook = async (id: number) => {
-    if (await ask("Delete notebook and its sub-notebooks?", { title: "Confirm Deletion", type: "warning" })) {
-      await invoke("delete_notebook", { id });
-      if (selectedNotebookId === id) setSelectedNotebookId(null);
-      fetchData();
-    }
+    const ok = await openConfirmDialog({
+      title: "Delete notebook",
+      message: "Delete this notebook and its sub-notebooks?",
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
+    await invoke("delete_notebook", { id });
+    if (selectedNotebookId === id) setSelectedNotebookId(null);
+    fetchData();
   };
 
   const moveNoteToNotebook = useCallback(async (noteId: number, notebookId: number | null) => {
@@ -903,7 +912,7 @@ function App() {
       <div className="flex h-screen w-full bg-white text-[#333] font-sans overflow-hidden select-none">
       {/* Sidebar */}
       <div style={{ width: sidebarWidth }} className="bg-[#1A1A1A] flex flex-col shrink-0 relative">
-        <div className="p-4 flex flex-col h-full text-white">
+        <div className="p-4 flex flex-col h-full min-h-0 text-white">
           <div className="flex items-center gap-2 mb-6 px-2 shrink-0">
             <div className="w-8 h-8 bg-[#00A82D] rounded-full flex items-center justify-center font-bold text-xs uppercase">M</div>
             <span className="font-semibold text-sm truncate uppercase tracking-widest">Notes Classic</span>
@@ -1006,6 +1015,7 @@ function App() {
               })()
             : null}
       </DragOverlay>
+
     </div>
     </DndContext>
   );
