@@ -132,13 +132,14 @@
 
 .notes-editor .jodit-wysiwyg hr {
   border: none;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid #d3d3d3;
   margin: 1.2em 0;
 }
 
 .notes-editor .jodit-wysiwyg a {
   color: #0b6ee0;
   text-decoration: underline;
+  cursor: pointer;
 }
 
 .notes-editor .jodit-wysiwyg img {

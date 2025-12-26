@@ -5,6 +5,7 @@ import xml from "highlight.js/lib/languages/xml";
 import css from "highlight.js/lib/languages/css";
 import php from "highlight.js/lib/languages/php";
 import { writeText } from "@tauri-apps/api/clipboard";
+import { open } from "@tauri-apps/api/shell";
 
 hljs.registerLanguage("javascript", javascript);
 hljs.registerLanguage("js", javascript);
@@ -209,6 +210,30 @@ const setupTodoHandlers = (editor: any) => {
       const current = li.getAttribute("data-en-checked") === "true";
       li.setAttribute("data-en-checked", current ? "false" : "true");
       editor.synchronizeValues();
+    },
+    true
+  );
+};
+
+const setupLinkHandlers = (editor: any) => {
+  if (!editor || !editor.editor) return;
+  if ((editor as any).__noteLinkSetup) return;
+  (editor as any).__noteLinkSetup = true;
+
+  editor.editor.addEventListener(
+    "click",
+    async (event: Event) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      const anchor = target.closest("a[href]") as HTMLAnchorElement | null;
+      if (!anchor) return;
+      const href = anchor.getAttribute("href");
+      if (!href) return;
+      event.preventDefault();
+      event.stopPropagation();
+      try {
+        await open(href);
+      } catch (e) {}
     },
     true
   );
@@ -590,6 +615,7 @@ export const mountEditor = (root: HTMLElement, options: EditorOptions): EditorIn
 
   setupCodeToolbarHandlers(editor);
   setupTodoHandlers(editor);
+  setupLinkHandlers(editor);
   applyHighlightToEditor(editor);
 
   editor.events.on("change", handleChange);
