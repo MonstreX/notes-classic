@@ -186,10 +186,10 @@
 
 .notes-editor .jodit-container .jodit-wysiwyg .note-code pre {
   margin: 0;
-  white-space: pre-wrap;
+  white-space: pre;
 }
 
 .notes-editor .jodit-container .jodit-wysiwyg .note-code code {
   display: block;
-  white-space: pre-wrap;
+  white-space: pre;
 }
