@@ -14,16 +14,19 @@
   }
 }
 
+.notes-editor {
+  padding: 0 40px 40px;
+}
+
 .notes-editor .jodit-toolbar__box {
   position: sticky;
   top: 0;
   z-index: 5;
   background: #ffffff;
-  padding: 0 40px;
 }
 
 .notes-editor .jodit-container .jodit-wysiwyg {
-  padding: 50px 40px 40px !important;
+  padding: 50px 0 0 !important;
 }
 
 .notes-editor .jodit-container {
