@@ -38,6 +38,16 @@
   border: none !important;
 }
 
+.notes-editor .jodit-ui-group_line_true {
+  border-bottom: none !important;
+  box-shadow: none !important;
+}
+
+.notes-editor .jodit-toolbar__box:not(:empty) {
+  border-bottom: none !important;
+  border-radius: 0 !important;
+}
+
 .resize-handle {
   width: 4px;
   cursor: col-resize;
