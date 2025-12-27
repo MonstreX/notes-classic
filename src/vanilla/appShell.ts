@@ -100,6 +100,31 @@ export const mountApp = (root: HTMLElement) => {
   const editorShell = document.createElement("div");
   editorShell.className = "app-shell__editor-shell";
   editorPane.appendChild(editorShell);
+  editorShell.style.position = "relative";
+
+  const metaBar = document.createElement("div");
+  metaBar.className = "app-shell__meta";
+  const metaStackIcon = createIcon(
+    "M2 7h20M2 12h20M2 17h20",
+    "app-shell__meta-icon"
+  );
+  const metaStackText = document.createElement("span");
+  metaStackText.className = "app-shell__meta-text";
+  const metaSep = document.createElement("span");
+  metaSep.className = "app-shell__meta-sep";
+  metaSep.textContent = "|";
+  const metaNotebookIcon = createIcon(
+    "M4 19.5A2.5 2.5 0 0 0 6.5 22H20M4 2h16v20H4z",
+    "app-shell__meta-icon"
+  );
+  const metaNotebookText = document.createElement("span");
+  metaNotebookText.className = "app-shell__meta-text";
+  metaBar.appendChild(metaStackIcon);
+  metaBar.appendChild(metaStackText);
+  metaBar.appendChild(metaSep);
+  metaBar.appendChild(metaNotebookIcon);
+  metaBar.appendChild(metaNotebookText);
+  editorShell.appendChild(metaBar);
 
   const titleBar = document.createElement("div");
   titleBar.className = "app-shell__titlebar";
@@ -341,6 +366,20 @@ export const mountApp = (root: HTMLElement) => {
     setEditorLoadingVisible(hasNote && (state.isNoteLoading || isEditorUpdating));
     editorShell.style.display = hasNote ? "flex" : "none";
     emptyState.style.display = hasNote ? "none" : "flex";
+    if (hasNote && state.selectedNotebookId !== null) {
+      const notebook = state.notebooks.find((nb) => nb.id === state.selectedNotebookId);
+      const stack = notebook?.parentId ? state.notebooks.find((nb) => nb.id === notebook.parentId) : null;
+      metaStackText.textContent = stack?.name ?? "";
+      metaNotebookText.textContent = notebook?.name ?? "";
+      metaSep.style.display = stack ? "inline" : "none";
+      metaStackIcon.style.display = stack ? "inline-flex" : "none";
+      metaStackText.style.display = stack ? "inline" : "none";
+      metaNotebookIcon.style.display = notebook ? "inline-flex" : "none";
+      metaNotebookText.style.display = notebook ? "inline" : "none";
+      metaBar.style.display = notebook ? "flex" : "none";
+    } else {
+      metaBar.style.display = "none";
+    }
 
     const sidebarState: SidebarState = {
       notebooks: state.notebooks,

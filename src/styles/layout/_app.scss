@@ -99,6 +99,36 @@
   height: 100%;
 }
 
+.app-shell__meta {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 16px;
+  color: #9ca3af;
+  font-size: 14px;
+  z-index: 11;
+}
+
+.app-shell__meta-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.app-shell__meta-text {
+  white-space: nowrap;
+}
+
+.app-shell__meta-sep {
+  color: #c4c4c4;
+  margin: 0 4px;
+}
+
 .app-shell__titlebar {
   position: absolute;
   top: 29px;
