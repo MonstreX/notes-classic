@@ -166,11 +166,14 @@ export const mountApp = (root: HTMLElement) => {
   `;
   const metaNotebookText = document.createElement("span");
   metaNotebookText.className = "app-shell__meta-text";
+  const metaUpdated = document.createElement("span");
+  metaUpdated.className = "app-shell__meta-updated";
   metaBar.appendChild(metaStackIcon);
   metaBar.appendChild(metaStackText);
   metaBar.appendChild(metaSep);
   metaBar.appendChild(metaNotebookIcon);
   metaBar.appendChild(metaNotebookText);
+  metaBar.appendChild(metaUpdated);
   editorShell.appendChild(metaBar);
 
   const titleBar = document.createElement("div");
@@ -418,6 +421,12 @@ export const mountApp = (root: HTMLElement) => {
       const stack = notebook?.parentId ? state.notebooks.find((nb) => nb.id === notebook.parentId) : null;
       metaStackText.textContent = stack?.name ?? "";
       metaNotebookText.textContent = notebook?.name ?? "";
+      if (state.activeNote?.updatedAt) {
+        const date = new Date(state.activeNote.updatedAt * 1000);
+        metaUpdated.textContent = date.toLocaleDateString();
+      } else {
+        metaUpdated.textContent = "";
+      }
       metaSep.classList.toggle("is-hidden", !stack);
       metaStackIcon.classList.toggle("is-hidden", !stack);
       metaStackText.classList.toggle("is-hidden", !stack);
@@ -431,6 +440,7 @@ export const mountApp = (root: HTMLElement) => {
       metaNotebookText.classList.add("is-hidden");
       metaStackText.textContent = "";
       metaNotebookText.textContent = "";
+      metaUpdated.textContent = "";
     }
 
     const sidebarState: SidebarState = {
