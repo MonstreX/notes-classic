@@ -100,10 +100,6 @@
 }
 
 .app-shell__meta {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
   height: 30px;
   display: flex;
   align-items: center;
@@ -111,7 +107,6 @@
   padding-left: 16px;
   color: #9ca3af;
   font-size: 14px;
-  z-index: 11;
 }
 
 .app-shell__meta-icon {
