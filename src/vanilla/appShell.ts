@@ -197,6 +197,18 @@ export const mountApp = (root: HTMLElement) => {
 
   const tagsBar = document.createElement("div");
   tagsBar.className = "app-shell__tags";
+  const tagsIcon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  tagsIcon.setAttribute("viewBox", "0 0 24 24");
+  tagsIcon.setAttribute("fill", "none");
+  tagsIcon.setAttribute("stroke", "currentColor");
+  tagsIcon.setAttribute("stroke-width", "2");
+  tagsIcon.setAttribute("stroke-linecap", "round");
+  tagsIcon.setAttribute("stroke-linejoin", "round");
+  tagsIcon.setAttribute("class", "app-shell__tags-icon");
+  tagsIcon.innerHTML = `
+    <path d="M20.59 13.41 11 3.83A2 2 0 0 0 9.59 3H4a1 1 0 0 0-1 1v5.59A2 2 0 0 0 3.83 11l9.59 9.59a2 2 0 0 0 2.83 0l4.34-4.34a2 2 0 0 0 0-2.83Z"/>
+    <circle cx="7.5" cy="7.5" r="1.5"/>
+  `;
   const tagsList = document.createElement("div");
   tagsList.className = "app-shell__tags-list";
   const tagsInputWrap = document.createElement("div");
@@ -209,6 +221,7 @@ export const mountApp = (root: HTMLElement) => {
   tagsInput.placeholder = "Add tag...";
   tagsInputWrap.appendChild(tagsSuggest);
   tagsInputWrap.appendChild(tagsInput);
+  tagsBar.appendChild(tagsIcon);
   tagsBar.appendChild(tagsList);
   tagsBar.appendChild(tagsInputWrap);
   editorShell.appendChild(tagsBar);
@@ -342,6 +355,7 @@ export const mountApp = (root: HTMLElement) => {
       return;
     }
     tagSuggestions = state.tags
+      .filter((tag) => !assigned.has(tag.id))
       .filter((tag) => tag.name.toLowerCase().startsWith(query))
       .slice(0, 8);
     if (!preserveIndex) {
@@ -357,9 +371,8 @@ export const mountApp = (root: HTMLElement) => {
     tagsSuggest.innerHTML = tagSuggestions
       .map((tag, index) => {
         const label = tag.name;
-        const isAssigned = assigned.has(tag.id);
         return `
-          <button class="app-shell__tags-suggest-item ${index == tagSuggestIndex ? "is-active" : ""} ${isAssigned ? "is-disabled" : ""}" data-tag-id="${tag.id}">
+          <button class="app-shell__tags-suggest-item ${index == tagSuggestIndex ? "is-active" : ""}" data-tag-id="${tag.id}">
             ${label}
           </button>
         `;
@@ -399,10 +412,20 @@ export const mountApp = (root: HTMLElement) => {
       updateTagSuggestions(true);
       return;
     }
-    if (event.key === "Enter" || event.key === "Tab") {
+    if (event.key === "Enter") {
       if (!tagsInput.value.trim()) return;
       event.preventDefault();
-      applyTagSuggestion(tagSuggestions[tagSuggestIndex]);
+      if (tagSuggestions.length > 0) {
+        applyTagSuggestion(tagSuggestions[tagSuggestIndex]);
+      } else {
+        applyTagSuggestion();
+      }
+      return;
+    }
+    if (event.key === "Tab") {
+      if (!tagsInput.value.trim()) return;
+      event.preventDefault();
+      applyTagSuggestion();
       return;
     }
     if (event.key === "Escape") {

@@ -138,7 +138,7 @@
 }
 
 .app-shell__tags {
-  min-height: 40px;
+  min-height: 50px;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -146,6 +146,13 @@
   border-top: 1px solid #e5e7eb;
   background: var(--color-white);
   flex-wrap: wrap;
+}
+
+.app-shell__tags-icon {
+  width: 20px;
+  height: 20px;
+  color: #9ca3af;
+  flex-shrink: 0;
 }
 
 .app-shell__tags-list {
@@ -184,6 +191,7 @@
 .app-shell__tags-input {
   position: relative;
   min-width: 140px;
+  max-width: 170px;
   flex: 1 1 160px;
 }
 
@@ -229,10 +237,6 @@
   background: #f3f4f6;
 }
 
-.app-shell__tags-suggest-item.is-disabled {
-  opacity: 0.5;
-  cursor: default;
-}
 
 .app-shell__titlebar {
   position: relative;
