@@ -27,7 +27,7 @@ import {
   setNotesListView,
   updateNote,
 } from "./services/notes";
-import { addNoteTag, createTag as createTagService, deleteTag as deleteTagService, getNoteTags, getTags, removeNoteTag } from "./services/tags";
+import { addNoteTag, createTag as createTagService, deleteTag as deleteTagService, getNoteTags, getTags, removeNoteTag, updateTagParent } from "./services/tags";
 
 const stripTags = (value: string) => value.replace(/<[^>]*>/g, "");
 const buildExcerpt = (value: string) => stripTags(value || "");
@@ -285,6 +285,16 @@ export const actions = {
       logError("[tag] delete failed", e);
     }
   },
+  moveTag: async (tagId: number, parentId: number | null) => {
+    const state = appStore.getState();
+    if (tagId === parentId) return;
+    if (isTagDescendant(state.tags, parentId, tagId)) return;
+    await updateTagParent(tagId, parentId);
+    const tags = await getTags();
+    const nextExpandedTags = new Set(state.expandedTags);
+    if (parentId !== null) nextExpandedTags.add(parentId);
+    appStore.setState({ tags, expandedTags: nextExpandedTags });
+  },
   removeTagFromNote: async (tagId: number) => {
     const state = appStore.getState();
     const noteId = state.selectedNoteId;
@@ -519,4 +529,16 @@ export const initApp = async () => {
     if (searchTimer !== null) window.clearTimeout(searchTimer);
     cleanupSettings();
   };
+};
+
+const isTagDescendant = (tags: Tag[], candidateParentId: number | null, tagId: number) => {
+  if (candidateParentId === null) return false;
+  const parentMap = new Map<number, number | null>();
+  tags.forEach((tag) => parentMap.set(tag.id, tag.parentId));
+  let current = candidateParentId;
+  while (current !== null) {
+    if (current === tagId) return true;
+    current = parentMap.get(current) ?? null;
+  }
+  return false;
 };

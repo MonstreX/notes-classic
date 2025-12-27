@@ -863,6 +863,21 @@ impl SqliteRepository {
         Ok(())
     }
 
+    pub async fn update_tag_parent(
+        &self,
+        tag_id: i64,
+        parent_id: Option<i64>,
+    ) -> Result<(), sqlx::Error> {
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query("UPDATE tags SET parent_id = ?, updated_at = ? WHERE id = ?")
+            .bind(parent_id)
+            .bind(now)
+            .bind(tag_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
     pub async fn remove_note_tag(&self, note_id: i64, tag_id: i64) -> Result<(), sqlx::Error> {
         sqlx::query("DELETE FROM note_tags WHERE note_id = ? AND tag_id = ?")
             .bind(note_id)

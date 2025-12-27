@@ -222,6 +222,7 @@ export const mountApp = (root: HTMLElement) => {
         onDelete: actions.deleteNotebook,
       });
     },
+    onMoveTag: (tagId, parentId) => actions.moveTag(tagId, parentId),
     onMoveNotebook: (activeId, overId, position) => actions.moveNotebookByDrag(activeId, overId, position),
   };
 

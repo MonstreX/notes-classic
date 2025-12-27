@@ -35,6 +35,13 @@
   color: var(--color-white);
 }
 
+.sidebar-item.is-drag-over {
+  background: var(--color-bg-dark-2);
+  color: var(--color-white);
+  outline: 1px solid #00a82d;
+  outline-offset: -1px;
+}
+
 .sidebar-item__content {
   display: flex;
   align-items: center;
@@ -140,6 +147,13 @@
   color: var(--color-white);
 }
 
+.sidebar-section.is-drag-over {
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 6px;
+  outline: 1px solid #00a82d;
+  outline-offset: -1px;
+}
+
 .sidebar-tree {
   border-radius: 6px;
   position: relative;
@@ -189,4 +203,9 @@
 
 .sidebar-tree--tags[data-expanded="false"] {
   pointer-events: none;
+}
+
+.sidebar-tree--tags.is-drag-over {
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 6px;
 }
