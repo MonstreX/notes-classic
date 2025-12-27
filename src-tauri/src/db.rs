@@ -4,6 +4,27 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
+fn strip_html(input: &str) -> String {
+    let mut output = String::with_capacity(input.len());
+    let mut in_tag = false;
+    for ch in input.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ => {
+                if !in_tag {
+                    output.push(ch);
+                }
+            }
+        }
+    }
+    output
+        .replace('\u{00a0}', " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Notebook {
@@ -161,6 +182,54 @@ pub async fn init_db(data_dir: &Path) -> SqlitePool {
     .await
     .expect("Failed to create notes table");
 
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS notes_text (
+            note_id INTEGER PRIMARY KEY,
+            title TEXT NOT NULL,
+            plain_text TEXT NOT NULL,
+            FOREIGN KEY(note_id) REFERENCES notes(id) ON DELETE CASCADE
+        )",
+    )
+    .execute(&pool)
+    .await
+    .expect("Failed to create notes_text table");
+
+    sqlx::query(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts
+         USING fts5(title, plain_text, content='notes_text', content_rowid='note_id')",
+    )
+    .execute(&pool)
+    .await
+    .expect("Failed to create notes_fts table");
+
+    sqlx::query(
+        "CREATE TRIGGER IF NOT EXISTS notes_text_ai AFTER INSERT ON notes_text BEGIN
+            INSERT INTO notes_fts(rowid, title, plain_text) VALUES (new.note_id, new.title, new.plain_text);
+         END;",
+    )
+    .execute(&pool)
+    .await
+    .expect("Failed to create notes_text_ai trigger");
+
+    sqlx::query(
+        "CREATE TRIGGER IF NOT EXISTS notes_text_ad AFTER DELETE ON notes_text BEGIN
+            INSERT INTO notes_fts(notes_fts, rowid, title, plain_text) VALUES ('delete', old.note_id, old.title, old.plain_text);
+         END;",
+    )
+    .execute(&pool)
+    .await
+    .expect("Failed to create notes_text_ad trigger");
+
+    sqlx::query(
+        "CREATE TRIGGER IF NOT EXISTS notes_text_au AFTER UPDATE ON notes_text BEGIN
+            INSERT INTO notes_fts(notes_fts, rowid, title, plain_text) VALUES ('delete', old.note_id, old.title, old.plain_text);
+            INSERT INTO notes_fts(rowid, title, plain_text) VALUES (new.note_id, new.title, new.plain_text);
+         END;",
+    )
+    .execute(&pool)
+    .await
+    .expect("Failed to create notes_text_au trigger");
+
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_notes_notebook_id ON notes(notebook_id)")
         .execute(&pool)
         .await
@@ -208,7 +277,7 @@ pub async fn init_db(data_dir: &Path) -> SqlitePool {
         sqlx::query("ALTER TABLE notes ADD COLUMN content_size INTEGER")
             .execute(&pool)
             .await
-            .expect("Failed to add content_size column");
+        .expect("Failed to add content_size column");
     }
 
     sqlx::query(
@@ -338,6 +407,39 @@ pub async fn init_db(data_dir: &Path) -> SqlitePool {
         }
     }
 
+    let text_count: Option<(i64,)> = sqlx::query_as("SELECT COUNT(*) FROM notes_text")
+        .fetch_optional(&pool)
+        .await
+        .expect("Failed to read notes_text count");
+    let notes_count: Option<(i64,)> = sqlx::query_as("SELECT COUNT(*) FROM notes")
+        .fetch_optional(&pool)
+        .await
+        .expect("Failed to read notes count");
+    let needs_text = match (text_count, notes_count) {
+        (Some((text,)), Some((notes,))) => text < notes,
+        _ => true,
+    };
+    if needs_text {
+        let notes: Vec<(i64, String, String)> = sqlx::query_as("SELECT id, title, content FROM notes")
+            .fetch_all(&pool)
+            .await
+            .expect("Failed to read notes for text index");
+        for (id, title, content) in notes {
+            let plain = strip_html(&content);
+            sqlx::query(
+                "INSERT INTO notes_text (note_id, title, plain_text)
+                 VALUES (?, ?, ?)
+                 ON CONFLICT(note_id) DO UPDATE SET title = excluded.title, plain_text = excluded.plain_text",
+            )
+            .bind(id)
+            .bind(title)
+            .bind(plain)
+            .execute(&pool)
+            .await
+            .expect("Failed to backfill notes_text");
+        }
+    }
+
     pool
 }
 
@@ -346,6 +448,21 @@ pub struct SqliteRepository {
 }
 
 impl SqliteRepository {
+    async fn upsert_note_text(&self, note_id: i64, title: &str, content: &str) -> Result<(), sqlx::Error> {
+        let plain = strip_html(content);
+        sqlx::query(
+            "INSERT INTO notes_text (note_id, title, plain_text)
+             VALUES (?, ?, ?)
+             ON CONFLICT(note_id) DO UPDATE SET title = excluded.title, plain_text = excluded.plain_text",
+        )
+        .bind(note_id)
+        .bind(title)
+        .bind(plain)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
     pub async fn get_notebooks(&self) -> Result<Vec<Notebook>, sqlx::Error> {
         sqlx::query_as::<_, Notebook>(
             "SELECT * FROM notebooks ORDER BY parent_id IS NOT NULL, parent_id, sort_order ASC, name ASC",
@@ -559,7 +676,9 @@ impl SqliteRepository {
             .bind(notebook_id)
             .execute(&self.pool)
             .await?;
-        Ok(result.last_insert_rowid())
+        let id = result.last_insert_rowid();
+        self.upsert_note_text(id, title, content).await?;
+        Ok(id)
     }
 
     pub async fn update_note_notebook(&self, note_id: i64, notebook_id: Option<i64>) -> Result<(), sqlx::Error> {
@@ -581,7 +700,50 @@ impl SqliteRepository {
             .bind(id)
             .execute(&self.pool)
             .await?;
+        self.upsert_note_text(id, title, content).await?;
         Ok(())
+    }
+
+    pub async fn search_notes(
+        &self,
+        query: &str,
+        notebook_id: Option<i64>,
+    ) -> Result<Vec<NoteListItem>, sqlx::Error> {
+        if let Some(id) = notebook_id {
+            sqlx::query_as::<_, NoteListItem>(
+                "WITH RECURSIVE descendant_notebooks(id) AS (
+                    SELECT id FROM notebooks WHERE id = ?
+                    UNION ALL
+                    SELECT n.id FROM notebooks n
+                    JOIN descendant_notebooks dn ON n.parent_id = dn.id
+                )
+                SELECT n.id, n.title,
+                       snippet(notes_fts, 1, '', '', '…', 20) AS content,
+                       n.updated_at, n.notebook_id
+                FROM notes_fts
+                JOIN notes n ON n.id = notes_fts.rowid
+                WHERE notes_fts MATCH ?
+                  AND n.notebook_id IN (SELECT id FROM descendant_notebooks)
+                ORDER BY n.updated_at DESC, n.created_at DESC, n.id DESC",
+            )
+            .bind(id)
+            .bind(query)
+            .fetch_all(&self.pool)
+            .await
+        } else {
+            sqlx::query_as::<_, NoteListItem>(
+                "SELECT n.id, n.title,
+                        snippet(notes_fts, 1, '', '', '…', 20) AS content,
+                        n.updated_at, n.notebook_id
+                 FROM notes_fts
+                 JOIN notes n ON n.id = notes_fts.rowid
+                 WHERE notes_fts MATCH ?
+                 ORDER BY n.updated_at DESC, n.created_at DESC, n.id DESC",
+            )
+            .bind(query)
+            .fetch_all(&self.pool)
+            .await
+        }
     }
 
     pub async fn delete_note(&self, id: i64) -> Result<(), sqlx::Error> {

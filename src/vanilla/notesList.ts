@@ -117,13 +117,9 @@ const renderNoteRow = (note: NotesListItem, state: NotesListState) => {
 };
 
 const renderList = (state: NotesListState) => {
-  const search = state.searchTerm.trim().toLowerCase();
-  const filtered = search
-    ? state.notes.filter((note) => note.title.toLowerCase().includes(search))
-    : state.notes;
   return `
     <div class="notes-list__items" data-notes-scroll="1">
-      ${filtered.map((note) => renderNoteRow(note, state)).join("")}
+      ${state.notes.map((note) => renderNoteRow(note, state)).join("")}
     </div>
   `;
 };

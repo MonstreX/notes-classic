@@ -22,12 +22,23 @@ import {
   getNotebooks,
   moveNotebook,
   moveNote,
+  searchNotes,
   setNotesListView,
   updateNote,
 } from "./services/notes";
 
 const stripTags = (value: string) => value.replace(/<[^>]*>/g, "");
 const buildExcerpt = (value: string) => stripTags(value || "");
+
+const buildSearchQuery = (value: string) => {
+  const tokens = value
+    .replace(/["']/g, " ")
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+  if (tokens.length === 0) return "";
+  return tokens.map((token) => `${token}*`).join(" AND ");
+};
 
 const getOrderedChildren = (notebooks: Notebook[], parentId: number | null) => {
   const typeFilter = parentId === null ? "stack" : "notebook";
@@ -52,9 +63,14 @@ const fetchData = async () => {
   const state = appStore.getState();
   if (!state.isLoaded) return;
   try {
+    const searchTerm = state.searchTerm.trim();
+    const searchQuery = buildSearchQuery(searchTerm);
+    const notesPromise = searchQuery.length > 0
+      ? searchNotes(searchQuery, state.selectedNotebookId)
+      : getNotes(state.selectedNotebookId);
     const [nbs, filteredNotes, counts] = await Promise.all([
       getNotebooks(),
-      getNotes(state.selectedNotebookId),
+      notesPromise,
       getNoteCounts(),
     ]);
     const notesWithExcerpt = filteredNotes.map((note) => ({
@@ -66,8 +82,8 @@ const fetchData = async () => {
       map.set(item.notebookId, item.count);
     });
     let nextSelectedNoteId = state.selectedNoteId;
-    if (state.selectedNotebookId !== null) {
-      const hasSelected = notesWithExcerpt.some((note) => note.id === state.selectedNoteId);
+    const hasSelected = notesWithExcerpt.some((note) => note.id === state.selectedNoteId);
+    if (state.selectedNotebookId !== null || searchQuery.length > 0) {
       nextSelectedNoteId = hasSelected ? state.selectedNoteId : (notesWithExcerpt[0]?.id ?? null);
     }
     const selectionChanged = nextSelectedNoteId !== state.selectedNoteId;
@@ -91,6 +107,7 @@ const fetchData = async () => {
 };
 
 let noteLoadToken = 0;
+let searchTimer: number | null = null;
 
 const loadSelectedNote = async () => {
   const initialState = appStore.getState();
@@ -345,6 +362,13 @@ export const initApp = async () => {
       fetchData();
     }
 
+    if (nextState.searchTerm !== prevState.searchTerm) {
+      if (searchTimer !== null) window.clearTimeout(searchTimer);
+      searchTimer = window.setTimeout(() => {
+        fetchData();
+      }, 200);
+    }
+
     if (nextState.notesListView !== prevState.notesListView) {
       setNotesListView(nextState.notesListView).catch(() => {});
     }
@@ -364,6 +388,7 @@ export const initApp = async () => {
     unlistenImport();
     unsubscribe();
     if (saveTimer !== null) window.clearTimeout(saveTimer);
+    if (searchTimer !== null) window.clearTimeout(searchTimer);
     cleanupSettings();
   };
 };
