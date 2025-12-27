@@ -8,6 +8,6 @@
 @use "./components/context-menu";
 @use "./utilities/scrollbar";
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+.is-hidden {
+  display: none;
+}

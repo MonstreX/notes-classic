@@ -21,7 +21,9 @@ export interface SidebarHandlers {
   onSelectAll: () => void;
   onToggleNotebook: (id: number) => void;
   onCreateNotebook: (parentId: number | null) => void;
+  onCreateNoteInNotebook: (id: number) => void;
   onDeleteNotebook: (id: number) => void;
+  onNotebookContextMenu: (event: MouseEvent, id: number) => void;
   onMoveNotebook: (activeId: number, overId: number, position: "before" | "after" | "inside") => void;
 }
 
@@ -67,16 +69,6 @@ const renderPlus = () => `
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <line x1="12" y1="5" x2="12" y2="19"></line>
     <line x1="5" y1="12" x2="19" y2="12"></line>
-  </svg>
-`;
-
-const renderTrash = () => `
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <polyline points="3 6 5 6 21 6"></polyline>
-    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
-    <path d="M10 11v6"></path>
-    <path d="M14 11v6"></path>
-    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
   </svg>
 `;
 
@@ -150,10 +142,11 @@ const renderNotebookItem = (
             <button class="sidebar-action" data-action="toggle-notebook" data-notebook-id="${nb.id}" title="Expand/Collapse">
               ${renderChevron(isExpanded)}
             </button>
-          ` : ""}
-          <button class="sidebar-action sidebar-action--danger" data-action="delete-notebook" data-notebook-id="${nb.id}" title="Delete notebook">
-            ${renderTrash()}
-          </button>
+          ` : `
+            <button class="sidebar-action" data-action="add-note" data-notebook-id="${nb.id}" title="Add note">
+              ${renderPlus()}
+            </button>
+          `}
         </div>
       </div>
     </div>
@@ -390,12 +383,24 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
       handlers.onCreateNotebook(null);
       return;
     }
-    if (action === "delete-notebook" && id !== null) {
-      handlers.onDeleteNotebook(id);
+    if (action === "add-note" && id !== null) {
+      handlers.onCreateNoteInNotebook(id);
+      return;
     }
   };
 
+  const handleContextMenu = (event: MouseEvent) => {
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    const row = target.closest<HTMLElement>("[data-notebook-row]");
+    if (!row) return;
+    const id = Number(row.dataset.notebookId);
+    if (!Number.isFinite(id)) return;
+    handlers.onNotebookContextMenu(event, id);
+  };
+
   root.addEventListener("click", handleClick);
+  root.addEventListener("contextmenu", handleContextMenu);
 
   const handlePointerDown = (event: PointerEvent) => {
     if (event.button !== 0) return;
@@ -557,6 +562,7 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
     },
     destroy: () => {
       root.removeEventListener("click", handleClick);
+      root.removeEventListener("contextmenu", handleContextMenu);
       root.removeEventListener("pointerdown", handlePointerDown);
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);

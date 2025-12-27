@@ -4,72 +4,16 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { openNotebookDialog, openConfirmDialog } from "./dialogs";
 import type { Notebook, NoteListItem, NoteDetail, NoteCounts } from "./types";
 import { appStore } from "./store";
-
-const STORAGE_KEY = "notes_classic_v10_stable";
-
-const imageSrcMap = new Map<string, string>();
-const dataFileCache = new Map<string, string>();
+import {
+  ensureNotesScheme,
+  normalizeEnmlContent,
+  toDisplayContent,
+  toStorageContent,
+} from "./services/content";
+import { cleanupSettings, loadSettings, persistSettings } from "./services/settings";
 
 const stripTags = (value: string) => value.replace(/<[^>]*>/g, "");
 const buildExcerpt = (value: string) => stripTags(value || "");
-
-const normalizeEnmlContent = (raw: string) => {
-  if (!raw) return raw;
-  let out = raw.replace(/<en-note[^>]*>/gi, "<div>");
-  out = out.replace(/<\/en-note>/gi, "</div>");
-  out = out.replace(/<br><\/br>/gi, "<br>");
-  return out;
-};
-
-const ensureNotesScheme = (raw: string) => {
-  if (!raw) return raw;
-  if (raw.includes("notes-file://")) return raw;
-  return raw
-    .replace(/src=\"files\//g, 'src="notes-file://files/')
-    .replace(/src='files\//g, "src='notes-file://files/");
-};
-
-const toDisplayContent = async (raw: string) => {
-  if (!raw) return raw;
-  const matches = Array.from(raw.matchAll(/src=(\"|')notes-file:\/\/files\/(?:evernote\/)?([^\"']+)\1/g));
-  if (matches.length === 0) return raw;
-
-  const uniqueRel = Array.from(new Set(matches.map((m) => m[2])));
-  const resolved = new Map<string, string>();
-  await Promise.all(
-    uniqueRel.map(async (rel) => {
-      const cached = dataFileCache.get(rel);
-      if (cached) {
-        resolved.set(rel, cached);
-        return;
-      }
-      try {
-        const dataUrl = await invoke<string>("read_data_file", { path: `files/${rel}` });
-        resolved.set(rel, dataUrl);
-        dataFileCache.set(rel, dataUrl);
-        imageSrcMap.set(dataUrl, `notes-file://files/${rel}`);
-      } catch (e) {}
-    })
-  );
-
-  return raw.replace(/src=(\"|')notes-file:\/\/files\/(?:evernote\/)?([^\"']+)\1/g, (match, quote, rel) => {
-    const dataUrl = resolved.get(rel);
-    if (!dataUrl) return match;
-    return `src=${quote}${dataUrl}${quote}`;
-  });
-};
-
-const toStorageContent = (raw: string) => {
-  if (!raw) return raw;
-  const normalized = raw.replace(/src=(\"|')(asset|tauri):\/\/[^\"']*?\/files\/(?:evernote\/)?([^\"']+)\1/g, (match, quote, _scheme, rel) => {
-    return `src=${quote}notes-file://files/${rel}${quote}`;
-  });
-  return normalized.replace(/src=(\"|')(data:[^\"']+)\1/g, (match, quote, dataUrl) => {
-    const original = imageSrcMap.get(dataUrl);
-    if (!original) return match;
-    return `src=${quote}${original}${quote}`;
-  });
-};
 
 const getOrderedChildren = (notebooks: Notebook[], parentId: number | null) => {
   const typeFilter = parentId === null ? "stack" : "notebook";
@@ -208,7 +152,13 @@ export const actions = {
     const state = appStore.getState();
     const id = await invoke<number>("upsert_note", { id: null, title: "New Note", content: "", notebookId: state.selectedNotebookId });
     await fetchData();
-    appStore.setState({ selectedNoteId: id });
+    await actions.selectNote(id);
+  },
+  createNoteInNotebook: async (notebookId: number) => {
+    appStore.setState({ selectedNotebookId: notebookId });
+    const id = await invoke<number>("upsert_note", { id: null, title: "New Note", content: "", notebookId });
+    await fetchData();
+    await actions.selectNote(id);
   },
   deleteNote: async (id: number) => {
     const ok = await openConfirmDialog({
@@ -335,85 +285,9 @@ export const actions = {
 };
 
 let prevState = appStore.getState();
-let saveSettingsTimer: number | null = null;
-
-const persistSettings = (state: ReturnType<typeof appStore.getState>) => {
-  if (saveSettingsTimer !== null) window.clearTimeout(saveSettingsTimer);
-  saveSettingsTimer = window.setTimeout(() => {
-    const payload = {
-      sidebarWidth: state.sidebarWidth,
-      listWidth: state.listWidth,
-      selectedNotebookId: state.selectedNotebookId,
-      selectedNoteId: state.selectedNoteId,
-      expandedNotebooks: Array.from(state.expandedNotebooks),
-      notesListView: state.notesListView,
-    };
-    invoke("set_settings", { settings: payload }).catch(() => {});
-  }, 200);
-};
-
 export const initApp = async () => {
-  const loadSettings = async () => {
-    try {
-      const stored = await invoke<any>("get_settings");
-      if (stored) {
-        appStore.update((draft) => {
-          if (stored.sidebarWidth) draft.sidebarWidth = stored.sidebarWidth;
-          if (stored.listWidth) draft.listWidth = stored.listWidth;
-          if (stored.selectedNotebookId !== undefined) {
-            const parsed = stored.selectedNotebookId === null ? null : Number(stored.selectedNotebookId);
-            draft.selectedNotebookId = Number.isFinite(parsed as number) ? (parsed as number) : null;
-          }
-          if (stored.selectedNoteId !== undefined) {
-            const parsed = stored.selectedNoteId === null ? null : Number(stored.selectedNoteId);
-            draft.selectedNoteId = Number.isFinite(parsed as number) ? (parsed as number) : null;
-          }
-          if (stored.expandedNotebooks) {
-            const ids = Array.isArray(stored.expandedNotebooks)
-              ? stored.expandedNotebooks.map((id: any) => Number(id)).filter((id: number) => Number.isFinite(id))
-              : [];
-            draft.expandedNotebooks = new Set(ids);
-          }
-          if (stored.notesListView === "compact" || stored.notesListView === "detailed") {
-            draft.notesListView = stored.notesListView;
-          }
-        });
-      } else {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-          try {
-            const p = JSON.parse(saved);
-            appStore.update((draft) => {
-              if (p.sidebarWidth) draft.sidebarWidth = p.sidebarWidth;
-              if (p.listWidth) draft.listWidth = p.listWidth;
-              if (p.selectedNotebookId !== undefined) {
-                const parsed = p.selectedNotebookId === null ? null : Number(p.selectedNotebookId);
-                draft.selectedNotebookId = Number.isFinite(parsed as number) ? (parsed as number) : null;
-              }
-              if (p.selectedNoteId !== undefined) {
-                const parsed = p.selectedNoteId === null ? null : Number(p.selectedNoteId);
-                draft.selectedNoteId = Number.isFinite(parsed as number) ? (parsed as number) : null;
-              }
-              if (p.expandedNotebooks) {
-                const ids = Array.isArray(p.expandedNotebooks)
-                  ? p.expandedNotebooks.map((id: any) => Number(id)).filter((id: number) => Number.isFinite(id))
-                  : [];
-                draft.expandedNotebooks = new Set(ids);
-              }
-              if (p.notesListView === "compact" || p.notesListView === "detailed") {
-                draft.notesListView = p.notesListView;
-              }
-            });
-            await invoke("set_settings", { settings: p });
-            localStorage.removeItem(STORAGE_KEY);
-          } catch (e) {}
-        }
-      }
-    } catch (e) {}
-    appStore.setState({ isLoaded: true });
-  };
-
   await loadSettings();
+  appStore.setState({ isLoaded: true });
   await fetchData();
 
   const unlistenView = await listen<string>("notes-list-view", (event) => {
@@ -473,6 +347,6 @@ export const initApp = async () => {
     unlistenImport();
     unsubscribe();
     if (saveTimer !== null) window.clearTimeout(saveTimer);
-    if (saveSettingsTimer !== null) window.clearTimeout(saveSettingsTimer);
+    cleanupSettings();
   };
 };

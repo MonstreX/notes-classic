@@ -1,4 +1,4 @@
-import { openNoteContextMenu, type ContextMenuNode } from "./contextMenu";
+import { openNoteContextMenu, openNotebookContextMenu, type ContextMenuNode } from "./contextMenu";
 import { mountEditor, type EditorInstance } from "./editor";
 import { mountNotesList, type NotesListHandlers, type NotesListInstance, type NotesListState } from "./notesList";
 import { mountSidebar, type SidebarHandlers, type SidebarInstance, type SidebarState } from "./sidebar";
@@ -67,7 +67,7 @@ export const mountApp = (root: HTMLElement) => {
 
   const newNoteButton = document.createElement("button");
   newNoteButton.className = "btn btn--primary btn--pill btn--new-note";
-  const plusIcon = createIcon("M12 5v14M5 12h14", "w-5 h-5");
+  const plusIcon = createIcon("M12 5v14M5 12h14", "btn__icon");
   newNoteButton.appendChild(plusIcon);
   const newNoteLabel = document.createElement("span");
   newNoteLabel.textContent = "New Note";
@@ -84,31 +84,31 @@ export const mountApp = (root: HTMLElement) => {
   sidebar.appendChild(sidebarResize);
 
   const list = document.createElement("div");
-  list.className = "border-r border-gray-200 bg-white flex flex-col shrink-0 relative text-black";
+  list.className = "app-shell__list";
   app.appendChild(list);
 
   const listHost = document.createElement("div");
-  listHost.className = "flex-1 min-h-0 overflow-hidden";
+  listHost.className = "app-shell__list-host";
   list.appendChild(listHost);
 
   const listResize = document.createElement("div");
-  listResize.className = "absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-[#00A82D] z-50 transition-colors";
+  listResize.className = "app-shell__resize-handle app-shell__resize-handle--list";
   list.appendChild(listResize);
 
   const editorPane = document.createElement("div");
-  editorPane.className = "flex-1 flex flex-col bg-white overflow-hidden text-black min-h-0";
+  editorPane.className = "app-shell__editor";
   app.appendChild(editorPane);
 
   const editorShell = document.createElement("div");
-  editorShell.className = "flex flex-col h-full";
+  editorShell.className = "app-shell__editor-shell";
   editorPane.appendChild(editorShell);
 
   const titleBar = document.createElement("div");
-  titleBar.className = "px-10 py-6 shrink-0 bg-white shadow-sm z-10";
+  titleBar.className = "app-shell__titlebar";
   editorShell.appendChild(titleBar);
 
   const titleInput = document.createElement("input");
-  titleInput.className = "w-full text-4xl font-light border-none focus:ring-0 outline-none";
+  titleInput.className = "app-shell__title-input";
   titleInput.placeholder = "Title";
   titleInput.addEventListener("input", () => {
     if (appStore.getState().selectedNoteId) {
@@ -118,15 +118,15 @@ export const mountApp = (root: HTMLElement) => {
   titleBar.appendChild(titleInput);
 
   const editorHost = document.createElement("div");
-  editorHost.className = "editor-host flex-1 overflow-hidden min-h-0";
+  editorHost.className = "editor-host app-shell__editor-host";
   editorShell.appendChild(editorHost);
 
   const emptyState = document.createElement("div");
-  emptyState.className = "flex-1 flex flex-col items-center justify-center text-gray-400";
-  const emptyIcon = createIcon("M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM14 3v6h6", "w-20 h-20 mb-6 text-gray-100");
+  emptyState.className = "app-shell__empty";
+  const emptyIcon = createIcon("M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM14 3v6h6", "app-shell__empty-icon");
   emptyState.appendChild(emptyIcon);
   const emptyText = document.createElement("p");
-  emptyText.className = "text-lg font-light";
+  emptyText.className = "app-shell__empty-text";
   emptyText.textContent = "Select a note";
   emptyState.appendChild(emptyText);
   editorPane.appendChild(emptyState);
@@ -136,7 +136,17 @@ export const mountApp = (root: HTMLElement) => {
     onSelectAll: () => actions.selectNotebook(null),
     onToggleNotebook: (id) => actions.toggleNotebook(id),
     onCreateNotebook: (parentId) => actions.createNotebook(parentId),
+    onCreateNoteInNotebook: (id) => actions.createNoteInNotebook(id),
     onDeleteNotebook: (id) => actions.deleteNotebook(id),
+    onNotebookContextMenu: (event, id) => {
+      event.preventDefault();
+      openNotebookContextMenu({
+        x: event.clientX,
+        y: event.clientY,
+        notebookId: id,
+        onDelete: actions.deleteNotebook,
+      });
+    },
     onMoveNotebook: (activeId, overId, position) => actions.moveNotebookByDrag(activeId, overId, position),
   };
 

@@ -630,9 +630,9 @@ const createEditorConfig = () => {
 
 export const mountEditor = (root: HTMLElement, options: EditorOptions): EditorInstance => {
   const container = document.createElement("div");
-  container.className = "notes-editor flex flex-col h-full bg-white";
+  container.className = "notes-editor";
   const editorWrapper = document.createElement("div");
-  editorWrapper.className = "flex-1 overflow-auto";
+  editorWrapper.className = "notes-editor__wrapper";
   const mountPoint = document.createElement("div");
   editorWrapper.appendChild(mountPoint);
   container.appendChild(editorWrapper);

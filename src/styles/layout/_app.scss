@@ -63,6 +63,87 @@
   background: var(--color-accent);
 }
 
+.app-shell__list {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  background: var(--color-white);
+  color: var(--color-text);
+  border-right: 1px solid #e5e7eb;
+}
+
+.app-shell__list-host {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-shell__resize-handle--list {
+  right: 0;
+}
+
+.app-shell__editor {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--color-white);
+  color: var(--color-text);
+  overflow: hidden;
+}
+
+.app-shell__editor-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.app-shell__titlebar {
+  padding: 24px 40px;
+  flex-shrink: 0;
+  background: var(--color-white);
+  box-shadow: 0 1px 0 rgba(17, 24, 39, 0.08);
+  z-index: 10;
+}
+
+.app-shell__title-input {
+  width: 100%;
+  font-size: 36px;
+  font-weight: 300;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: inherit;
+}
+
+.app-shell__editor-host {
+  flex: 1 1 auto;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.app-shell__empty {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted-2);
+}
+
+.app-shell__empty-icon {
+  width: 80px;
+  height: 80px;
+  margin-bottom: 24px;
+  color: #f3f4f6;
+}
+
+.app-shell__empty-text {
+  font-size: 18px;
+  font-weight: 300;
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -103,6 +184,11 @@
   gap: 8px;
   cursor: pointer;
   transition: background-color 0.2s;
+}
+
+.btn__icon {
+  width: 20px;
+  height: 20px;
 }
 
 .btn--primary {

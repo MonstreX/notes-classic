@@ -34,7 +34,7 @@ export const openNotebookDialog = ({ parentId }: NotebookDialogOptions): Promise
             class="dialog__input"
             placeholder="${placeholder}"
           />
-          <div class="dialog__error hidden" data-dialog-error="1"></div>
+          <div class="dialog__error is-hidden" data-dialog-error="1"></div>
         </div>
         <div class="dialog__footer">
           <button class="dialog__button dialog__button--ghost" data-dialog-cancel="1">
@@ -60,7 +60,7 @@ export const openNotebookDialog = ({ parentId }: NotebookDialogOptions): Promise
     const showError = (message: string) => {
       if (!error) return;
       error.textContent = message;
-      error.classList.remove("hidden");
+      error.classList.remove("is-hidden");
     };
 
     const submit = () => {
@@ -77,7 +77,7 @@ export const openNotebookDialog = ({ parentId }: NotebookDialogOptions): Promise
     input?.addEventListener("input", () => {
       if (!error) return;
       error.textContent = "";
-      error.classList.add("hidden");
+      error.classList.add("is-hidden");
     });
     input?.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
@@ -106,7 +106,7 @@ export const openConfirmDialog = ({
 }: ConfirmDialogOptions): Promise<boolean> => {
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
-    overlay.className = "fixed inset-0 z-[9999] flex items-center justify-center bg-black/40";
+    overlay.className = "dialog-overlay";
     overlay.dataset.dialogOverlay = "1";
 
     overlay.innerHTML = `
