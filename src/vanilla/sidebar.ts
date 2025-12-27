@@ -416,10 +416,12 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
     dragActive = true;
     dragStarted = false;
     dragHoldReady = false;
+    document.body.classList.add("is-dragging");
     dragStartX = event.clientX;
     dragStartY = event.clientY;
     dragId = id;
     dragType = type;
+    event.preventDefault();
     if (dragHoldTimer !== null) {
       window.clearTimeout(dragHoldTimer);
     }
@@ -430,6 +432,7 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
 
   const handlePointerMove = (event: PointerEvent) => {
     if (!dragActive) return;
+    event.preventDefault();
     const dx = event.clientX - dragStartX;
     const dy = event.clientY - dragStartY;
     if (!dragStarted) {

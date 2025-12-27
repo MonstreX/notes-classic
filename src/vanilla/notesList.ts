@@ -234,13 +234,16 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
     if (!Number.isFinite(id)) return;
     dragActive = true;
     dragStarted = false;
+    document.body.classList.add("is-dragging");
     dragStartX = event.clientX;
     dragStartY = event.clientY;
     dragNoteId = id;
+    event.preventDefault();
   };
 
   const handlePointerMove = (event: PointerEvent) => {
     if (!dragActive) return;
+    event.preventDefault();
     const dx = event.clientX - dragStartX;
     const dy = event.clientY - dragStartY;
     if (!dragStarted) {
