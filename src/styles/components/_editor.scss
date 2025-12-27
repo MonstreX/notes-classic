@@ -28,22 +28,26 @@
   padding: 40px 0 0 !important;
 }
 
+.notes-editor .jodit-container::-webkit-scrollbar,
 .notes-editor .jodit-workplace::-webkit-scrollbar,
 .notes-editor .jodit-wysiwyg::-webkit-scrollbar {
   width: 4px;
 }
 
+.notes-editor .jodit-container::-webkit-scrollbar-track,
 .notes-editor .jodit-workplace::-webkit-scrollbar-track,
 .notes-editor .jodit-wysiwyg::-webkit-scrollbar-track {
   background: transparent;
 }
 
+.notes-editor .jodit-container::-webkit-scrollbar-thumb,
 .notes-editor .jodit-workplace::-webkit-scrollbar-thumb,
 .notes-editor .jodit-wysiwyg::-webkit-scrollbar-thumb {
   background: #333;
   border-radius: 10px;
 }
 
+.notes-editor .jodit-container,
 .notes-editor .jodit-workplace,
 .notes-editor .jodit-wysiwyg {
   scrollbar-color: #333 transparent;
