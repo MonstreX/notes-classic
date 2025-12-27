@@ -153,7 +153,8 @@ const loadSelectedNote = async () => {
     const currentState = appStore.getState();
     if (currentState.selectedNoteId !== noteId) return;
     const normalized = ensureNotesScheme(normalizeEnmlContent(note.content));
-    const finalNote = normalized !== note.content ? { ...note, content: normalized } : note;
+    const displayContent = await toDisplayContent(normalized);
+    const finalNote = displayContent !== note.content ? { ...note, content: displayContent } : note;
     appStore.setState({ activeNote: finalNote, title: finalNote.title, content: finalNote.content });
   } catch (e) {}
   finally {
