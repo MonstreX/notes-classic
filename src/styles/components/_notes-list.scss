@@ -5,7 +5,10 @@
 }
 
 .notes-list__header {
-  padding: 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 24px 6px;
   border-bottom: 1px solid #e5e7eb;
   background: #f8f8f8;
   flex-shrink: 0;
@@ -69,6 +72,41 @@
 .notes-list__action:hover {
   color: #111827;
   background: #e5e7eb;
+}
+
+.notes-list__sort-menu {
+  position: fixed;
+  min-width: 180px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 10px 16px rgba(0, 0, 0, 0.12);
+  padding: 6px;
+  z-index: 2000;
+}
+
+.notes-list__sort-item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  color: #111827;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.notes-list__sort-item:hover {
+  background: #f3f4f6;
+}
+
+.notes-list__sort-check {
+  color: #00a82d;
+  font-weight: 700;
 }
 
 .notes-list__search {

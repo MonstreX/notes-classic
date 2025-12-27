@@ -171,16 +171,7 @@ export const mountApp = (root: HTMLElement) => {
   const notesListHandlers: NotesListHandlers = {
     onSelectNote: (id) => actions.selectNote(id),
     onDeleteNote: (id) => actions.deleteNote(id),
-    onToggleSort: () => {
-      const state = appStore.getState();
-      const mode = `${state.notesSortBy}_${state.notesSortDir}`;
-      let next: { by: "updated" | "title"; dir: "asc" | "desc" } = { by: "updated", dir: "desc" };
-      if (mode === "updated_desc") next = { by: "updated", dir: "asc" };
-      else if (mode === "updated_asc") next = { by: "title", dir: "asc" };
-      else if (mode === "title_asc") next = { by: "title", dir: "desc" };
-      else if (mode === "title_desc") next = { by: "updated", dir: "desc" };
-      actions.setNotesSort(next.by, next.dir);
-    },
+    onSelectSort: (sortBy, sortDir) => actions.setNotesSort(sortBy, sortDir),
     onToggleView: () => {
       const state = appStore.getState();
       const next = state.notesListView === "compact" ? "detailed" : "compact";

@@ -28,7 +28,7 @@ export interface NotesListState {
 export interface NotesListHandlers {
   onSelectNote: (id: number) => void;
   onDeleteNote: (id: number) => void;
-  onToggleSort: () => void;
+  onSelectSort: (sortBy: "updated" | "title", sortDir: "asc" | "desc") => void;
   onToggleView: () => void;
   onFilterClick: () => void;
   onNoteContextMenu: (event: MouseEvent, id: number) => void;
@@ -338,7 +338,9 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
         return;
       }
       if (action === "sort") {
-        handlers.onToggleSort();
+        if (currentState) {
+          openSortMenu(headerAction, currentState);
+        }
         return;
       }
       if (action === "view") {
@@ -389,6 +391,8 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
   root.addEventListener("click", handleClick);
   root.addEventListener("contextmenu", handleContextMenu);
   window.addEventListener("keydown", handleKeyDown);
+  window.addEventListener("click", handleWindowClick);
+  window.addEventListener("click", handleSortMenuClick);
 
   const updateSelection = (prevId: number | null, nextId: number | null, view: NotesListView) => {
     if (prevId !== null) {
@@ -435,8 +439,75 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
       root.removeEventListener("click", handleClick);
       root.removeEventListener("contextmenu", handleContextMenu);
       window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("click", handleWindowClick);
+      window.removeEventListener("click", handleSortMenuClick);
       cleanupDrag();
+      closeSortMenu();
       root.innerHTML = "";
     },
   };
 };
+  let sortMenu: HTMLDivElement | null = null;
+
+  const closeSortMenu = () => {
+    if (sortMenu) {
+      sortMenu.remove();
+      sortMenu = null;
+    }
+  };
+
+  const buildSortMenu = (state: NotesListState) => {
+    const menu = document.createElement("div");
+    menu.className = "notes-list__sort-menu";
+    menu.innerHTML = `
+      <button class="notes-list__sort-item" data-sort="updated_desc">
+        <span>Newest first</span>
+        <span class="notes-list__sort-check">${state.notesSortBy === "updated" && state.notesSortDir === "desc" ? "✓" : ""}</span>
+      </button>
+      <button class="notes-list__sort-item" data-sort="updated_asc">
+        <span>Oldest first</span>
+        <span class="notes-list__sort-check">${state.notesSortBy === "updated" && state.notesSortDir === "asc" ? "✓" : ""}</span>
+      </button>
+      <button class="notes-list__sort-item" data-sort="title_asc">
+        <span>Name A-Z</span>
+        <span class="notes-list__sort-check">${state.notesSortBy === "title" && state.notesSortDir === "asc" ? "✓" : ""}</span>
+      </button>
+      <button class="notes-list__sort-item" data-sort="title_desc">
+        <span>Name Z-A</span>
+        <span class="notes-list__sort-check">${state.notesSortBy === "title" && state.notesSortDir === "desc" ? "✓" : ""}</span>
+      </button>
+    `;
+    return menu;
+  };
+
+  const openSortMenu = (anchor: HTMLElement, state: NotesListState) => {
+    closeSortMenu();
+    sortMenu = buildSortMenu(state);
+    document.body.appendChild(sortMenu);
+    const rect = anchor.getBoundingClientRect();
+    const menuWidth = sortMenu.offsetWidth;
+    sortMenu.style.top = `${rect.bottom + 6}px`;
+    sortMenu.style.left = `${rect.right - menuWidth}px`;
+  };
+
+  const handleSortMenuClick = (event: MouseEvent) => {
+    if (!sortMenu) return;
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    const item = target.closest<HTMLElement>("[data-sort]");
+    if (!item) return;
+    const sort = item.dataset.sort;
+    if (sort === "updated_desc") handlers.onSelectSort("updated", "desc");
+    if (sort === "updated_asc") handlers.onSelectSort("updated", "asc");
+    if (sort === "title_asc") handlers.onSelectSort("title", "asc");
+    if (sort === "title_desc") handlers.onSelectSort("title", "desc");
+    closeSortMenu();
+  };
+
+  const handleWindowClick = (event: MouseEvent) => {
+    if (!sortMenu) return;
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    if (sortMenu.contains(target)) return;
+    closeSortMenu();
+  };
