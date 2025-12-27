@@ -16,6 +16,9 @@ export const createNote = (title: string, content: string, notebookId: number | 
 export const updateNote = (id: number, title: string, content: string, notebookId: number | null) =>
   invoke("upsert_note", { id, title, content, notebookId });
 
+export const setNotesListView = (view: "compact" | "detailed") =>
+  invoke("set_notes_list_view", { view });
+
 export const deleteNote = (id: number) => invoke("delete_note", { id });
 
 export const moveNote = (noteId: number, notebookId: number | null) =>

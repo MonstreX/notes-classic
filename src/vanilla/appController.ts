@@ -1,4 +1,3 @@
-import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openNotebookDialog, openConfirmDialog } from "./dialogs";
@@ -22,6 +21,7 @@ import {
   getNotebooks,
   moveNotebook,
   moveNote,
+  setNotesListView,
   updateNote,
 } from "./services/notes";
 
@@ -342,7 +342,7 @@ export const initApp = async () => {
     }
 
     if (nextState.notesListView !== prevState.notesListView) {
-      invoke("set_notes_list_view", { view: nextState.notesListView }).catch(() => {});
+      setNotesListView(nextState.notesListView).catch(() => {});
     }
 
     if (

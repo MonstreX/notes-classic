@@ -3,8 +3,6 @@
 mod db;
 
 use db::{Note, NoteCounts, NoteListItem, Notebook, SqliteRepository};
-use base64::engine::general_purpose::STANDARD as base64_engine;
-use base64::Engine;
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -35,14 +33,10 @@ fn ensure_dir_writable(dir: &Path) -> Result<(), String> {
 }
 
 fn resolve_portable_paths(app_handle: &AppHandle) -> Result<(PathBuf, PathBuf), String> {
-    if let Ok(cwd) = std::env::current_dir() {
-        println!("[paths] cwd={}", cwd.to_string_lossy());
-    }
     let exe_dir = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|p| p.to_path_buf()))
         .ok_or_else(|| "Failed to resolve executable directory".to_string())?;
-    println!("[paths] exe_dir={}", exe_dir.to_string_lossy());
     let mut data_dir = exe_dir.join("data");
     let mut settings_dir = exe_dir.join("settings");
 
@@ -131,34 +125,6 @@ fn notes_file_response(data_dir: &Path, request: Request<Vec<u8>>) -> Response<V
         .header("Content-Type", mime)
         .body(bytes)
         .unwrap_or_else(|_| Response::new(Vec::new()))
-}
-
-#[tauri::command]
-fn read_data_file(path: String, state: State<'_, AppState>) -> Result<String, String> {
-    if path.contains("..") {
-        return Err("Invalid path".to_string());
-    }
-    let rel = PathBuf::from(path);
-    if rel.is_absolute() {
-        return Err("Invalid path".to_string());
-    }
-    let full_path = state.data_dir.join(&rel);
-    if !full_path.exists() {
-        return Err("File not found".to_string());
-    }
-    let bytes = fs::read(&full_path).map_err(|e| e.to_string())?;
-    let mime = match full_path.extension().and_then(|ext| ext.to_str()).map(|s| s.to_lowercase()) {
-        Some(ext) if ext == "png" => "image/png",
-        Some(ext) if ext == "jpg" || ext == "jpeg" => "image/jpeg",
-        Some(ext) if ext == "gif" => "image/gif",
-        Some(ext) if ext == "webp" => "image/webp",
-        Some(ext) if ext == "svg" => "image/svg+xml",
-        Some(ext) if ext == "pdf" => "application/pdf",
-        Some(ext) if ext == "txt" => "text/plain",
-        _ => "application/octet-stream",
-    };
-    let encoded = base64_engine.encode(bytes);
-    Ok(format!("data:{};base64,{}", mime, encoded))
 }
 
 fn find_check_menu_item<R: Runtime>(items: Vec<MenuItemKind<R>>, id: &str) -> Option<CheckMenuItem<R>> {
@@ -425,7 +391,6 @@ fn main() {
             get_note,
             get_note_counts,
             get_data_dir,
-            read_data_file,
             upsert_note,
             delete_note,
             set_notes_list_view,
