@@ -59,7 +59,7 @@ export const mountApp = (root: HTMLElement) => {
   );
   searchButton.appendChild(searchIcon);
   const searchLabel = document.createElement("span");
-  searchLabel.textContent = "Поиск";
+  searchLabel.textContent = "Search";
   searchButton.appendChild(searchLabel);
   sidebarInner.appendChild(searchButton);
 
@@ -126,13 +126,13 @@ export const mountApp = (root: HTMLElement) => {
   searchPanel.className = "search-modal__panel";
   const searchTitle = document.createElement("div");
   searchTitle.className = "search-modal__title";
-  searchTitle.textContent = "Поиск";
+  searchTitle.textContent = "Search";
   const searchField = document.createElement("div");
   searchField.className = "search-modal__field";
   const searchInput = document.createElement("input");
   searchInput.className = "search-modal__input";
   searchInput.type = "text";
-  searchInput.placeholder = "Поиск...";
+  searchInput.placeholder = "Search...";
   searchField.appendChild(searchInput);
   searchPanel.appendChild(searchTitle);
   searchPanel.appendChild(searchField);
