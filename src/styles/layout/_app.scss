@@ -100,10 +100,11 @@
 }
 
 .app-shell__titlebar {
+  position: absolute;
+  top: 29px;
   padding: 24px 40px;
   flex-shrink: 0;
   background: var(--color-white);
-  box-shadow: 0 1px 0 rgba(17, 24, 39, 0.08);
   z-index: 10;
 }
 
