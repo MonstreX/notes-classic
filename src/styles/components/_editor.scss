@@ -54,6 +54,24 @@
   scrollbar-width: thin;
 }
 
+.notes-editor *::-webkit-scrollbar {
+  width: 4px;
+}
+
+.notes-editor *::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.notes-editor *::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 10px;
+}
+
+.notes-editor * {
+  scrollbar-color: #333 transparent;
+  scrollbar-width: thin;
+}
+
 .notes-editor .jodit-container {
   border: none !important;
   box-shadow: none !important;
