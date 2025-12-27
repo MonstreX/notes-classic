@@ -203,8 +203,11 @@ export const actions = {
   setSidebarWidth: (value: number) => appStore.setState({ sidebarWidth: value }),
   setListWidth: (value: number) => appStore.setState({ listWidth: value }),
   setNotesListView: (value: "compact" | "detailed") => appStore.setState({ notesListView: value }),
-  setNotesSort: (sortBy: "updated" | "title", sortDir: "asc" | "desc") =>
-    appStore.setState({ notesSortBy: sortBy, notesSortDir: sortDir }),
+  setNotesSort: (sortBy: "updated" | "title", sortDir: "asc" | "desc") => {
+    const state = appStore.getState();
+    const sorted = sortNotes(state.notes, sortBy, sortDir);
+    appStore.setState({ notesSortBy: sortBy, notesSortDir: sortDir, notes: sorted });
+  },
   createNote: async () => {
     const state = appStore.getState();
     const id = await createNote("New Note", "", state.selectedNotebookId);

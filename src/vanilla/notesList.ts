@@ -191,6 +191,79 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
   let dragOverEl: HTMLElement | null = null;
   let dragOverNotebookId: number | null = null;
   let dragHasTarget = false;
+  let sortMenu: HTMLDivElement | null = null;
+  let sortMenuClickBound = false;
+
+  const closeSortMenu = () => {
+    if (!sortMenu) return;
+    if (sortMenuClickBound) {
+      sortMenu.removeEventListener("click", handleSortMenuClick);
+      sortMenuClickBound = false;
+    }
+    sortMenu.remove();
+    sortMenu = null;
+  };
+
+  const buildSortMenu = (state: NotesListState) => {
+    const menu = document.createElement("div");
+    menu.className = "notes-list__sort-menu";
+    menu.innerHTML = `
+      <button class="notes-list__sort-item" data-sort="updated_desc">
+        <span>Newest first</span>
+        <span class="notes-list__sort-check">${state.notesSortBy === "updated" && state.notesSortDir === "desc" ? "✓" : ""}</span>
+      </button>
+      <button class="notes-list__sort-item" data-sort="updated_asc">
+        <span>Oldest first</span>
+        <span class="notes-list__sort-check">${state.notesSortBy === "updated" && state.notesSortDir === "asc" ? "✓" : ""}</span>
+      </button>
+      <button class="notes-list__sort-item" data-sort="title_asc">
+        <span>Name A-Z</span>
+        <span class="notes-list__sort-check">${state.notesSortBy === "title" && state.notesSortDir === "asc" ? "✓" : ""}</span>
+      </button>
+      <button class="notes-list__sort-item" data-sort="title_desc">
+        <span>Name Z-A</span>
+        <span class="notes-list__sort-check">${state.notesSortBy === "title" && state.notesSortDir === "desc" ? "✓" : ""}</span>
+      </button>
+    `;
+    return menu;
+  };
+
+  const openSortMenu = (anchor: HTMLElement, state: NotesListState) => {
+    closeSortMenu();
+    sortMenu = buildSortMenu(state);
+    sortMenu.addEventListener("click", handleSortMenuClick);
+    sortMenuClickBound = true;
+    document.body.appendChild(sortMenu);
+    const rect = anchor.getBoundingClientRect();
+    const menuWidth = sortMenu.offsetWidth;
+    sortMenu.style.top = `${rect.bottom + 6}px`;
+    sortMenu.style.left = `${rect.right - menuWidth}px`;
+  };
+
+  const handleSortMenuClick = (event: MouseEvent) => {
+    if (!sortMenu) return;
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    const item = target.closest<HTMLElement>("[data-sort]");
+    if (!item) return;
+    const sort = item.dataset.sort;
+    if (sort === "updated_desc") handlers.onSelectSort("updated", "desc");
+    if (sort === "updated_asc") handlers.onSelectSort("updated", "asc");
+    if (sort === "title_asc") handlers.onSelectSort("title", "asc");
+    if (sort === "title_desc") handlers.onSelectSort("title", "desc");
+    closeSortMenu();
+  };
+
+  const handleWindowClick = (event: MouseEvent) => {
+    if (!sortMenu) return;
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    if (target.closest<HTMLElement>("[data-action=\"sort\"]")) {
+      return;
+    }
+    if (sortMenu.contains(target)) return;
+    closeSortMenu();
+  };
 
   const cleanupDrag = () => {
     dragActive = false;
@@ -393,7 +466,6 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
   root.addEventListener("contextmenu", handleContextMenu);
   window.addEventListener("keydown", handleKeyDown);
   window.addEventListener("click", handleWindowClick);
-  window.addEventListener("click", handleSortMenuClick);
 
   const updateSelection = (prevId: number | null, nextId: number | null, view: NotesListView) => {
     if (prevId !== null) {
@@ -441,77 +513,9 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
       root.removeEventListener("contextmenu", handleContextMenu);
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("click", handleWindowClick);
-      window.removeEventListener("click", handleSortMenuClick);
       cleanupDrag();
       closeSortMenu();
       root.innerHTML = "";
     },
   };
 };
-  let sortMenu: HTMLDivElement | null = null;
-
-  const closeSortMenu = () => {
-    if (sortMenu) {
-      sortMenu.remove();
-      sortMenu = null;
-    }
-  };
-
-  const buildSortMenu = (state: NotesListState) => {
-    const menu = document.createElement("div");
-    menu.className = "notes-list__sort-menu";
-    menu.innerHTML = `
-      <button class="notes-list__sort-item" data-sort="updated_desc">
-        <span>Newest first</span>
-        <span class="notes-list__sort-check">${state.notesSortBy === "updated" && state.notesSortDir === "desc" ? "✓" : ""}</span>
-      </button>
-      <button class="notes-list__sort-item" data-sort="updated_asc">
-        <span>Oldest first</span>
-        <span class="notes-list__sort-check">${state.notesSortBy === "updated" && state.notesSortDir === "asc" ? "✓" : ""}</span>
-      </button>
-      <button class="notes-list__sort-item" data-sort="title_asc">
-        <span>Name A-Z</span>
-        <span class="notes-list__sort-check">${state.notesSortBy === "title" && state.notesSortDir === "asc" ? "✓" : ""}</span>
-      </button>
-      <button class="notes-list__sort-item" data-sort="title_desc">
-        <span>Name Z-A</span>
-        <span class="notes-list__sort-check">${state.notesSortBy === "title" && state.notesSortDir === "desc" ? "✓" : ""}</span>
-      </button>
-    `;
-    return menu;
-  };
-
-  const openSortMenu = (anchor: HTMLElement, state: NotesListState) => {
-    closeSortMenu();
-    sortMenu = buildSortMenu(state);
-    document.body.appendChild(sortMenu);
-    const rect = anchor.getBoundingClientRect();
-    const menuWidth = sortMenu.offsetWidth;
-    sortMenu.style.top = `${rect.bottom + 6}px`;
-    sortMenu.style.left = `${rect.right - menuWidth}px`;
-  };
-
-  const handleSortMenuClick = (event: MouseEvent) => {
-    if (!sortMenu) return;
-    const target = event.target as HTMLElement | null;
-    if (!target) return;
-    const item = target.closest<HTMLElement>("[data-sort]");
-    if (!item) return;
-    const sort = item.dataset.sort;
-    if (sort === "updated_desc") handlers.onSelectSort("updated", "desc");
-    if (sort === "updated_asc") handlers.onSelectSort("updated", "asc");
-    if (sort === "title_asc") handlers.onSelectSort("title", "asc");
-    if (sort === "title_desc") handlers.onSelectSort("title", "desc");
-    closeSortMenu();
-  };
-
-  const handleWindowClick = (event: MouseEvent) => {
-    if (!sortMenu) return;
-    const target = event.target as HTMLElement | null;
-    if (!target) return;
-    if (target.closest<HTMLElement>("[data-action=\"sort\"]")) {
-      return;
-    }
-    if (sortMenu.contains(target)) return;
-    closeSortMenu();
-  };
