@@ -1,4 +1,4 @@
-import type { Notebook, NoteListItem, NoteDetail, NotesListView, NotesSortBy, NotesSortDir } from "./types";
+import type { Notebook, NoteListItem, NoteDetail, NotesListView, NotesSortBy, NotesSortDir, Tag } from "./types";
 
 export type AppState = {
   notebooks: Notebook[];
@@ -8,6 +8,8 @@ export type AppState = {
   notesListView: NotesListView;
   notesSortBy: NotesSortBy;
   notesSortDir: NotesSortDir;
+  tags: Tag[];
+  noteTags: Tag[];
   selectedNotebookId: number | null;
   selectedNoteId: number | null;
   expandedNotebooks: Set<number>;
@@ -31,6 +33,8 @@ let state: AppState = {
   notesListView: "detailed",
   notesSortBy: "updated",
   notesSortDir: "desc",
+  tags: [],
+  noteTags: [],
   selectedNotebookId: null,
   selectedNoteId: null,
   expandedNotebooks: new Set(),

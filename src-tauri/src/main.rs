@@ -2,7 +2,7 @@
 
 mod db;
 
-use db::{Note, NoteCounts, NoteListItem, Notebook, SqliteRepository};
+use db::{Note, NoteCounts, NoteListItem, Notebook, SqliteRepository, Tag};
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -320,6 +320,40 @@ async fn delete_note(id: i64, state: State<'_, AppState>) -> Result<(), String> 
 }
 
 #[tauri::command]
+async fn get_tags(state: State<'_, AppState>) -> Result<Vec<Tag>, String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    repo.get_tags().await.map_err(|e| e.to_string())
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+async fn get_note_tags(noteId: i64, state: State<'_, AppState>) -> Result<Vec<Tag>, String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    repo.get_note_tags(noteId).await.map_err(|e| e.to_string())
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+async fn create_tag(name: String, parentId: Option<i64>, state: State<'_, AppState>) -> Result<i64, String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    repo.create_tag(&name, parentId).await.map_err(|e| e.to_string())
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+async fn add_note_tag(noteId: i64, tagId: i64, state: State<'_, AppState>) -> Result<(), String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    repo.add_note_tag(noteId, tagId).await.map_err(|e| e.to_string())
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+async fn remove_note_tag(noteId: i64, tagId: i64, state: State<'_, AppState>) -> Result<(), String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    repo.remove_note_tag(noteId, tagId).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn get_settings(state: State<'_, AppState>) -> Result<Option<Value>, String> {
     let settings_path = state.settings_dir.join(SETTINGS_FILE_NAME);
     if !settings_path.exists() {
@@ -403,6 +437,11 @@ fn main() {
             get_data_dir,
             upsert_note,
             delete_note,
+            get_tags,
+            get_note_tags,
+            create_tag,
+            add_note_tag,
+            remove_note_tag,
             set_notes_list_view,
             get_settings,
             set_settings

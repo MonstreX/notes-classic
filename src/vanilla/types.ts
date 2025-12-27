@@ -28,6 +28,12 @@ export interface NoteDetail {
   contentSize?: number | null;
 }
 
+export interface Tag {
+  id: number;
+  name: string;
+  parentId: number | null;
+}
+
 export interface NoteCounts {
   total: number;
   perNotebook: { notebookId: number; count: number }[];

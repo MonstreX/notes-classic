@@ -56,6 +56,17 @@ pub struct Note {
 
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct Tag {
+    pub id: i64,
+    pub name: String,
+    pub parent_id: Option<i64>,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub external_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct NoteListItem {
     pub id: i64,
     pub title: String,
@@ -748,6 +759,71 @@ impl SqliteRepository {
 
     pub async fn delete_note(&self, id: i64) -> Result<(), sqlx::Error> {
         sqlx::query("DELETE FROM notes WHERE id = ?").bind(id).execute(&self.pool).await?;
+        Ok(())
+    }
+
+    pub async fn get_tags(&self) -> Result<Vec<Tag>, sqlx::Error> {
+        sqlx::query_as::<_, Tag>("SELECT * FROM tags ORDER BY parent_id IS NOT NULL, parent_id, name")
+            .fetch_all(&self.pool)
+            .await
+    }
+
+    pub async fn get_note_tags(&self, note_id: i64) -> Result<Vec<Tag>, sqlx::Error> {
+        sqlx::query_as::<_, Tag>(
+            "SELECT t.* FROM tags t
+             JOIN note_tags nt ON nt.tag_id = t.id
+             WHERE nt.note_id = ?
+             ORDER BY t.parent_id IS NOT NULL, t.parent_id, t.name",
+        )
+        .bind(note_id)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn create_tag(&self, name: &str, parent_id: Option<i64>) -> Result<i64, sqlx::Error> {
+        let existing: Option<(i64,)> = if let Some(pid) = parent_id {
+            sqlx::query_as("SELECT id FROM tags WHERE name = ? AND parent_id = ?")
+                .bind(name)
+                .bind(pid)
+                .fetch_optional(&self.pool)
+                .await?
+        } else {
+            sqlx::query_as("SELECT id FROM tags WHERE name = ? AND parent_id IS NULL")
+                .bind(name)
+                .fetch_optional(&self.pool)
+                .await?
+        };
+        if let Some((id,)) = existing {
+            return Ok(id);
+        }
+        let now = chrono::Utc::now().timestamp();
+        let result = sqlx::query(
+            "INSERT INTO tags (name, parent_id, created_at, updated_at) VALUES (?, ?, ?, ?)",
+        )
+        .bind(name)
+        .bind(parent_id)
+        .bind(now)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.last_insert_rowid())
+    }
+
+    pub async fn add_note_tag(&self, note_id: i64, tag_id: i64) -> Result<(), sqlx::Error> {
+        sqlx::query("INSERT OR IGNORE INTO note_tags (note_id, tag_id) VALUES (?, ?)")
+            .bind(note_id)
+            .bind(tag_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn remove_note_tag(&self, note_id: i64, tag_id: i64) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM note_tags WHERE note_id = ? AND tag_id = ?")
+            .bind(note_id)
+            .bind(tag_id)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 }

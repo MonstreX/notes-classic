@@ -4,6 +4,7 @@ import { mountNotesList, type NotesListHandlers, type NotesListInstance, type No
 import { mountSidebar, type SidebarHandlers, type SidebarInstance, type SidebarState } from "./sidebar";
 import { actions, initApp } from "./appController";
 import { appStore } from "./store";
+import type { Tag } from "./types";
 
 const buildMenuNodes = (parentId: number | null, state: ReturnType<typeof appStore.getState>): ContextMenuNode[] => {
   const typeFilter = parentId === null ? "stack" : "notebook";
@@ -194,6 +195,24 @@ export const mountApp = (root: HTMLElement) => {
   editorHost.className = "editor-host app-shell__editor-host";
   editorShell.appendChild(editorHost);
 
+  const tagsBar = document.createElement("div");
+  tagsBar.className = "app-shell__tags";
+  const tagsList = document.createElement("div");
+  tagsList.className = "app-shell__tags-list";
+  const tagsInputWrap = document.createElement("div");
+  tagsInputWrap.className = "app-shell__tags-input";
+  const tagsSuggest = document.createElement("div");
+  tagsSuggest.className = "app-shell__tags-suggest";
+  const tagsInput = document.createElement("input");
+  tagsInput.className = "app-shell__tags-field";
+  tagsInput.type = "text";
+  tagsInput.placeholder = "Add tag...";
+  tagsInputWrap.appendChild(tagsSuggest);
+  tagsInputWrap.appendChild(tagsInput);
+  tagsBar.appendChild(tagsList);
+  tagsBar.appendChild(tagsInputWrap);
+  editorShell.appendChild(tagsBar);
+
   const searchOverlay = document.createElement("div");
   searchOverlay.className = "search-modal";
   searchOverlay.style.display = "none";
@@ -297,6 +316,8 @@ export const mountApp = (root: HTMLElement) => {
   let pendingEditorContent = "";
   let isEditorUpdating = false;
   let isSearchOpen = false;
+  let tagSuggestions: Tag[] = [];
+  let tagSuggestIndex = 0;
 
   const setEditorLoadingVisible = (visible: boolean) => {
     editorLoading.style.display = visible ? "flex" : "none";
@@ -530,3 +551,105 @@ export const mountApp = (root: HTMLElement) => {
     root.removeChild(loading);
   };
 };
+  const buildTagPath = (tag: Tag, map: Map<number, Tag>) => {
+    const parts = [tag.name];
+    let current = tag;
+    while (current.parentId) {
+      const parent = map.get(current.parentId);
+      if (!parent) break;
+      parts.unshift(parent.name);
+      current = parent;
+    }
+    return parts.join(" / ");
+  };
+
+  const updateTagSuggestions = () => {
+    const state = appStore.getState();
+    const query = tagsInput.value.trim().toLowerCase();
+    const assigned = new Set(state.noteTags.map((tag) => tag.id));
+    if (!query) {
+      tagSuggestions = [];
+      tagsSuggest.style.display = "none";
+      tagsSuggest.innerHTML = "";
+      return;
+    }
+    tagSuggestions = state.tags
+      .filter((tag) => !assigned.has(tag.id))
+      .filter((tag) => tag.name.toLowerCase().includes(query))
+      .slice(0, 8);
+    tagSuggestIndex = 0;
+    if (tagSuggestions.length === 0) {
+      tagsSuggest.style.display = "none";
+      tagsSuggest.innerHTML = "";
+      return;
+    }
+    const map = new Map(state.tags.map((tag) => [tag.id, tag]));
+    tagsSuggest.innerHTML = tagSuggestions
+      .map((tag, index) => {
+        const label = buildTagPath(tag, map);
+        return `
+          <button class="app-shell__tags-suggest-item ${index === tagSuggestIndex ? "is-active" : ""}" data-tag-id="${tag.id}">
+            ${label}
+          </button>
+        `;
+      })
+      .join("");
+    tagsSuggest.style.display = "block";
+  };
+
+  const applyTagSuggestion = (tag?: Tag) => {
+    const name = tag?.name ?? tagsInput.value.trim();
+    if (!name) return;
+    actions.addTagToNote(name);
+    tagsInput.value = "";
+    tagSuggestions = [];
+    tagsSuggest.style.display = "none";
+    tagsSuggest.innerHTML = "";
+  };
+
+  tagsInput.addEventListener("input", () => {
+    updateTagSuggestions();
+  });
+
+  tagsInput.addEventListener("keydown", (event) => {
+    if (event.key === "Tab" || event.key === "Enter") {
+      event.preventDefault();
+      const tag = tagSuggestions[tagSuggestIndex];
+      applyTagSuggestion(tag);
+      return;
+    }
+    if (event.key === "ArrowDown" && tagSuggestions.length > 0) {
+      event.preventDefault();
+      tagSuggestIndex = (tagSuggestIndex + 1) % tagSuggestions.length;
+      updateTagSuggestions();
+    }
+    if (event.key === "ArrowUp" && tagSuggestions.length > 0) {
+      event.preventDefault();
+      tagSuggestIndex = (tagSuggestIndex - 1 + tagSuggestions.length) % tagSuggestions.length;
+      updateTagSuggestions();
+    }
+    if (event.key === "Escape") {
+      tagSuggestions = [];
+      tagsSuggest.style.display = "none";
+      tagsSuggest.innerHTML = "";
+    }
+  });
+
+  tagsSuggest.addEventListener("mousedown", (event) => {
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    const item = target.closest<HTMLElement>("[data-tag-id]");
+    if (!item) return;
+    event.preventDefault();
+    const id = Number(item.dataset.tagId);
+    const tag = tagSuggestions.find((t) => t.id === id);
+    if (tag) applyTagSuggestion(tag);
+  });
+    const tagsMap = new Map(state.tags.map((tag) => [tag.id, tag]));
+    tagsList.innerHTML = state.noteTags
+      .map((tag) => `<span class="app-shell__tag">${buildTagPath(tag, tagsMap)}</span>`)
+      .join("");
+    if (!tagsInput.value) {
+      tagsSuggest.style.display = "none";
+      tagsSuggest.innerHTML = "";
+    }

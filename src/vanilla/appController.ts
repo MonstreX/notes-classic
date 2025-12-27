@@ -1,7 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openNotebookDialog, openConfirmDialog } from "./dialogs";
-import type { Notebook } from "./types";
+import type { Notebook, Tag } from "./types";
 import { appStore } from "./store";
 import { logError } from "./logger";
 import {
@@ -26,6 +26,7 @@ import {
   setNotesListView,
   updateNote,
 } from "./services/notes";
+import { addNoteTag, createTag, getNoteTags, getTags } from "./services/tags";
 
 const stripTags = (value: string) => value.replace(/<[^>]*>/g, "");
 const buildExcerpt = (value: string) => stripTags(value || "");
@@ -58,6 +59,13 @@ const buildSearchQuery = (value: string) => {
     .filter((token) => token.length > 0);
   if (tokens.length === 0) return "";
   return tokens.map((token) => `${token}*`).join(" AND ");
+};
+
+const normalizeTagName = (value: string) => value.trim();
+
+const findTagByName = (tags: Tag[], name: string) => {
+  const lower = name.toLowerCase();
+  return tags.find((tag) => tag.name.toLowerCase() === lower) ?? null;
 };
 
 const getOrderedChildren = (notebooks: Notebook[], parentId: number | null) => {
@@ -134,7 +142,7 @@ const loadSelectedNote = async () => {
   const initialState = appStore.getState();
   const noteId = initialState.selectedNoteId;
   if (!noteId) {
-    appStore.setState({ activeNote: null, title: "", content: "", isNoteLoading: false });
+    appStore.setState({ activeNote: null, title: "", content: "", noteTags: [], isNoteLoading: false });
     return;
   }
   noteLoadToken += 1;
@@ -143,7 +151,7 @@ const loadSelectedNote = async () => {
   try {
     const note = await getNote(noteId);
     if (!note) {
-      appStore.setState({ activeNote: null, title: "", content: "" });
+      appStore.setState({ activeNote: null, title: "", content: "", noteTags: [] });
       return;
     }
     const currentState = appStore.getState();
@@ -151,7 +159,8 @@ const loadSelectedNote = async () => {
     const normalized = ensureNotesScheme(normalizeEnmlContent(note.content));
     const displayContent = await toDisplayContent(normalized);
     const finalNote = displayContent !== note.content ? { ...note, content: displayContent } : note;
-    appStore.setState({ activeNote: finalNote, title: finalNote.title, content: finalNote.content });
+    const tags = await getNoteTags(noteId);
+    appStore.setState({ activeNote: finalNote, title: finalNote.title, content: finalNote.content, noteTags: tags });
   } catch (e) {
     logError("[note] load failed", e);
   }
@@ -207,6 +216,22 @@ export const actions = {
     const state = appStore.getState();
     const sorted = sortNotes(state.notes, sortBy, sortDir);
     appStore.setState({ notesSortBy: sortBy, notesSortDir: sortDir, notes: sorted });
+  },
+  addTagToNote: async (name: string) => {
+    const state = appStore.getState();
+    const noteId = state.selectedNoteId;
+    if (!noteId) return;
+    const normalized = normalizeTagName(name);
+    if (!normalized) return;
+    const existing = findTagByName(state.tags, normalized);
+    let tagId = existing?.id;
+    if (!tagId) {
+      tagId = await createTag(normalized, null);
+      appStore.setState({ tags: [...state.tags, { id: tagId, name: normalized, parentId: null }] });
+    }
+    await addNoteTag(noteId, tagId);
+    const updated = await getNoteTags(noteId);
+    appStore.setState({ noteTags: updated });
   },
   createNote: async () => {
     const state = appStore.getState();
@@ -350,6 +375,10 @@ export const initApp = async () => {
   await loadSettings();
   appStore.setState({ isLoaded: true });
   await fetchData();
+  try {
+    const tags = await getTags();
+    appStore.setState({ tags });
+  } catch (e) {}
 
   const unlistenView = await listen<string>("notes-list-view", (event) => {
     if (event.payload === "compact" || event.payload === "detailed") {
