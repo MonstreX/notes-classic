@@ -56,26 +56,22 @@ const renderNotebookIcon = (type: NotebookType) => {
 };
 
 const renderChevron = (isExpanded: boolean) => `
-  <svg width="14" height="14" viewBox="0 0 24 24" class="sidebar-chevron ${isExpanded ? "is-expanded" : ""}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <polyline points="9 18 15 12 9 6"></polyline>
+  <svg class="sidebar-chevron ${isExpanded ? "is-expanded" : ""}" width="14" height="14" aria-hidden="true">
+    <use href="#icon-chevron"></use>
   </svg>
 `;
 
 const renderPlus = () => `
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <line x1="12" y1="5" x2="12" y2="19"></line>
-    <line x1="5" y1="12" x2="19" y2="12"></line>
+  <svg width="14" height="14" aria-hidden="true">
+    <use href="#icon-plus"></use>
   </svg>
 `;
 
 const renderAllNotesIcon = (isSelected: boolean) => {
-  const stroke = isSelected ? "#00A82D" : "#6B7280";
+  const color = isSelected ? "#00A82D" : "#6B7280";
   return `
-    <svg class="sidebar-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-      <polyline points="14 2 14 8 20 8"></polyline>
-      <line x1="16" y1="13" x2="8" y2="13"></line>
-      <line x1="16" y1="17" x2="8" y2="17"></line>
+    <svg class="sidebar-icon" width="18" height="18" aria-hidden="true" style="color: ${color}">
+      <use href="#icon-note"></use>
     </svg>
   `;
 };

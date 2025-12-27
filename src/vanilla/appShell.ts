@@ -19,18 +19,13 @@ const buildMenuNodes = (parentId: number | null, state: ReturnType<typeof appSto
   }));
 };
 
-const createIcon = (path: string, className: string) => {
+const createIcon = (id: string, className: string) => {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", "0 0 24 24");
-  svg.setAttribute("fill", "none");
-  svg.setAttribute("stroke", "currentColor");
-  svg.setAttribute("stroke-width", "2");
-  svg.setAttribute("stroke-linecap", "round");
-  svg.setAttribute("stroke-linejoin", "round");
   svg.setAttribute("class", className);
-  const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
-  p.setAttribute("d", path);
-  svg.appendChild(p);
+  svg.setAttribute("aria-hidden", "true");
+  const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+  use.setAttribute("href", `#${id}`);
+  svg.appendChild(use);
   return svg;
 };
 
@@ -54,10 +49,7 @@ export const mountApp = (root: HTMLElement) => {
 
   const searchButton = document.createElement("button");
   searchButton.className = "btn btn--secondary btn--pill btn--full btn--search";
-  const searchIcon = createIcon(
-    "M11 4a7 7 0 1 0 4.9 12l4.3 4.3 1.4-1.4-4.3-4.3A7 7 0 0 0 11 4z",
-    "btn__icon"
-  );
+  const searchIcon = createIcon("icon-search", "btn__icon");
   searchButton.appendChild(searchIcon);
   const searchLabel = document.createElement("span");
   searchLabel.textContent = "Search";
@@ -66,7 +58,7 @@ export const mountApp = (root: HTMLElement) => {
 
   const newNoteButton = document.createElement("button");
   newNoteButton.className = "btn btn--primary btn--pill btn--full btn--new-note";
-  const plusIcon = createIcon("M12 5v14M5 12h14", "btn__icon");
+  const plusIcon = createIcon("icon-plus", "btn__icon");
   newNoteButton.appendChild(plusIcon);
   const newNoteLabel = document.createElement("span");
   newNoteLabel.textContent = "New Note";
@@ -153,18 +145,7 @@ export const mountApp = (root: HTMLElement) => {
 
   const tagsBar = document.createElement("div");
   tagsBar.className = "app-shell__tags";
-  const tagsIcon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  tagsIcon.setAttribute("viewBox", "0 0 24 24");
-  tagsIcon.setAttribute("fill", "none");
-  tagsIcon.setAttribute("stroke", "currentColor");
-  tagsIcon.setAttribute("stroke-width", "2");
-  tagsIcon.setAttribute("stroke-linecap", "round");
-  tagsIcon.setAttribute("stroke-linejoin", "round");
-  tagsIcon.setAttribute("class", "app-shell__tags-icon");
-  tagsIcon.innerHTML = `
-    <path d="M20.59 13.41 11 3.83A2 2 0 0 0 9.59 3H4a1 1 0 0 0-1 1v5.59A2 2 0 0 0 3.83 11l9.59 9.59a2 2 0 0 0 2.83 0l4.34-4.34a2 2 0 0 0 0-2.83Z"/>
-    <circle cx="7.5" cy="7.5" r="1.5"/>
-  `;
+  const tagsIcon = createIcon("icon-tag", "app-shell__tags-icon");
   const tagsList = document.createElement("div");
   tagsList.className = "app-shell__tags-list";
   const tagsInputWrap = document.createElement("div");
@@ -204,7 +185,7 @@ export const mountApp = (root: HTMLElement) => {
 
   const emptyState = document.createElement("div");
   emptyState.className = "app-shell__empty";
-  const emptyIcon = createIcon("M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM14 3v6h6", "app-shell__empty-icon");
+  const emptyIcon = createIcon("icon-file", "app-shell__empty-icon");
   emptyState.appendChild(emptyIcon);
   const emptyText = document.createElement("p");
   emptyText.className = "app-shell__empty-text";

@@ -60,34 +60,26 @@ const formatDate = (timestamp: number) => {
 };
 
 const renderNotesIcon = () => `
-  <svg class="notes-list__icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-    <polyline points="14 2 14 8 20 8"></polyline>
-    <line x1="16" y1="13" x2="8" y2="13"></line>
-    <line x1="16" y1="17" x2="8" y2="17"></line>
+  <svg class="notes-list__icon" width="18" height="18" aria-hidden="true">
+    <use href="#icon-note"></use>
   </svg>
 `;
 
 const renderFilterIcon = () => `
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <polygon points="22 3 2 3 10 12 10 19 14 21 14 12 22 3"></polygon>
+  <svg class="notes-list__action-icon" width="16" height="16" aria-hidden="true">
+    <use href="#icon-filter"></use>
   </svg>
 `;
 
 const renderSortIcon = () => `
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M11 5h10"></path>
-    <path d="M11 9h7"></path>
-    <path d="M11 13h4"></path>
-    <path d="M3 17V3"></path>
-    <path d="M7 13l-4 4-4-4"></path>
+  <svg class="notes-list__action-icon" width="16" height="16" aria-hidden="true">
+    <use href="#icon-sort"></use>
   </svg>
 `;
 
 const renderViewIcon = () => `
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <rect x="3" y="4" width="18" height="6" rx="2"></rect>
-    <rect x="3" y="14" width="18" height="6" rx="2"></rect>
+  <svg class="notes-list__action-icon" width="16" height="16" aria-hidden="true">
+    <use href="#icon-view"></use>
   </svg>
 `;
 

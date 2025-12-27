@@ -69,6 +69,11 @@
   cursor: pointer;
 }
 
+.notes-list__action-icon {
+  width: 16px;
+  height: 16px;
+}
+
 .notes-list__action:hover {
   color: #111827;
   background: #e5e7eb;
