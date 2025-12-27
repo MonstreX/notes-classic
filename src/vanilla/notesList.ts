@@ -165,7 +165,7 @@ const renderNoteRow = (note: NotesListItem, state: NotesListState) => {
 
 const renderList = (state: NotesListState) => {
   return `
-    <div class="notes-list__items" data-notes-scroll="1">
+    <div class="notes-list__items custom-scrollbar" data-notes-scroll="1">
       ${state.notes.map((note) => renderNoteRow(note, state)).join("")}
     </div>
   `;
