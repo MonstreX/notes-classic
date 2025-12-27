@@ -185,6 +185,12 @@ const renderSidebar = (state: SidebarState) => {
   const allSelected = state.selectedNotebookId === null;
   return `
     <div class="sidebar-scroll custom-scrollbar" data-sidebar-scroll="1">
+      <div class="sidebar-section">
+        <span>Notebooks</span>
+        <button class="sidebar-section__action" data-action="add-root" title="Create notebook">
+          ${renderPlus()}
+        </button>
+      </div>
       <div
         class="sidebar-item ${allSelected ? "is-selected" : ""}"
         style="padding-left: 8px;"
@@ -194,12 +200,6 @@ const renderSidebar = (state: SidebarState) => {
         ${renderAllNotesIcon(allSelected)}
         <span class="sidebar-item__label">All Notes</span>
         <span class="sidebar-item__count">${state.totalNotes}</span>
-      </div>
-      <div class="sidebar-section">
-        <span>Notebooks</span>
-        <button class="sidebar-section__action" data-action="add-root" title="Create notebook">
-          ${renderPlus()}
-        </button>
       </div>
       <div class="sidebar-tree">
         ${renderNotebookTree(state.notebooks, state, null, 0, counts)}

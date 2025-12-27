@@ -215,19 +215,23 @@
 
 .btn--full {
   width: 100%;
-  justify-content: center;
+  justify-content: flex-start;
 }
 
 .btn--new-note {
   padding: 8px 24px;
   font-size: 14px;
   font-weight: 500;
-  margin: 12px 0 24px;
+  margin: 12px 0 16px;
   box-shadow: var(--shadow-lg);
 }
 
 .btn--search {
+  padding: 8px 24px;
+  font-size: 14px;
+  font-weight: 500;
   margin-bottom: 8px;
+  box-shadow: var(--shadow-lg);
 }
 
 .search-modal {
