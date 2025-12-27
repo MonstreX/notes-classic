@@ -217,6 +217,7 @@ const renderSidebar = (state: SidebarState) => {
 
 export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): SidebarInstance => {
   let currentState: SidebarState | null = null;
+  let lastRendered: SidebarState | null = null;
   let ignoreClick = false;
   let dragActive = false;
   let dragStarted = false;
@@ -258,6 +259,7 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
       dragLine.remove();
       dragLine = null;
     }
+    document.body.classList.remove("is-dragging");
     document.body.style.cursor = "";
   };
 
@@ -266,6 +268,7 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
   const startDrag = (name: string, clientX: number, clientY: number) => {
     dragStarted = true;
     ignoreClick = true;
+    document.body.classList.add("is-dragging");
     dragOverlay = document.createElement("div");
     dragOverlay.className = "sidebar-drag";
     dragOverlay.style.left = "0";
@@ -471,52 +474,86 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
   window.addEventListener("pointerup", handlePointerUp);
   window.addEventListener("pointercancel", handlePointerCancel);
 
+  const findSelectionEl = (id: number | null) => {
+    if (id === null) {
+      return root.querySelector<HTMLElement>("[data-action=\"select-all\"]");
+    }
+    return root.querySelector<HTMLElement>(`[data-action="select-notebook"][data-notebook-id="${id}"]`);
+  };
+
+  const updateSelection = (prevId: number | null, nextId: number | null) => {
+    if (prevId === nextId) return;
+    const prevEl = findSelectionEl(prevId);
+    if (prevEl) prevEl.classList.remove("is-selected");
+    const nextEl = findSelectionEl(nextId);
+    if (nextEl) nextEl.classList.add("is-selected");
+  };
+
   return {
     update: (state: SidebarState) => {
+      const prev = lastRendered;
       currentState = state;
-      root.innerHTML = renderSidebar(state);
-      const scrollEl = getScrollEl();
-      if (scrollEl && getComputedStyle(scrollEl).position === "static") {
-        scrollEl.style.position = "relative";
-      }
+      const shouldFullRender =
+        !prev ||
+        prev.notebooks !== state.notebooks ||
+        prev.expandedNotebooks !== state.expandedNotebooks ||
+        prev.noteCounts !== state.noteCounts ||
+        prev.totalNotes !== state.totalNotes;
 
-      const nextExpanded = new Set(state.expandedNotebooks);
-      const childrenEls = root.querySelectorAll<HTMLElement>(".notebook-children");
-      childrenEls.forEach((el) => {
-        const node = el.closest<HTMLElement>("[data-notebook-node]");
-        if (!node) return;
-        const id = Number(node.dataset.notebookNode);
-        if (!Number.isFinite(id)) return;
-        const isExpanded = nextExpanded.has(id);
-        const wasExpanded = prevExpanded.has(id);
-
-        if (isExpanded) {
-          if (!wasExpanded) {
-            el.style.maxHeight = "0px";
-            el.style.opacity = "0";
-            requestAnimationFrame(() => {
-              el.style.maxHeight = `${el.scrollHeight}px`;
-              el.style.opacity = "1";
-            });
-          } else {
-            el.style.maxHeight = `${el.scrollHeight}px`;
-            el.style.opacity = "1";
-          }
-        } else {
-          if (wasExpanded) {
-            el.style.maxHeight = `${el.scrollHeight}px`;
-            el.style.opacity = "1";
-            requestAnimationFrame(() => {
-              el.style.maxHeight = "0px";
-              el.style.opacity = "0";
-            });
-          } else {
-            el.style.maxHeight = "0px";
-            el.style.opacity = "0";
+      if (shouldFullRender) {
+        const scrollTop = getScrollEl()?.scrollTop ?? 0;
+        root.innerHTML = renderSidebar(state);
+        const scrollEl = getScrollEl();
+        if (scrollEl) {
+          scrollEl.scrollTop = scrollTop;
+          if (getComputedStyle(scrollEl).position === "static") {
+            scrollEl.style.position = "relative";
           }
         }
-      });
-      prevExpanded = nextExpanded;
+      } else {
+        updateSelection(prev.selectedNotebookId, state.selectedNotebookId);
+      }
+
+      if (shouldFullRender) {
+        const nextExpanded = new Set(state.expandedNotebooks);
+        const childrenEls = root.querySelectorAll<HTMLElement>(".notebook-children");
+        childrenEls.forEach((el) => {
+          const node = el.closest<HTMLElement>("[data-notebook-node]");
+          if (!node) return;
+          const id = Number(node.dataset.notebookNode);
+          if (!Number.isFinite(id)) return;
+          const isExpanded = nextExpanded.has(id);
+          const wasExpanded = prevExpanded.has(id);
+
+          if (isExpanded) {
+            if (!wasExpanded) {
+              el.style.maxHeight = "0px";
+              el.style.opacity = "0";
+              requestAnimationFrame(() => {
+                el.style.maxHeight = `${el.scrollHeight}px`;
+                el.style.opacity = "1";
+              });
+            } else {
+              el.style.maxHeight = `${el.scrollHeight}px`;
+              el.style.opacity = "1";
+            }
+          } else {
+            if (wasExpanded) {
+              el.style.maxHeight = `${el.scrollHeight}px`;
+              el.style.opacity = "1";
+              requestAnimationFrame(() => {
+                el.style.maxHeight = "0px";
+                el.style.opacity = "0";
+              });
+            } else {
+              el.style.maxHeight = "0px";
+              el.style.opacity = "0";
+            }
+          }
+        });
+        prevExpanded = nextExpanded;
+      }
+      lastRendered = state;
     },
     destroy: () => {
       root.removeEventListener("click", handleClick);
