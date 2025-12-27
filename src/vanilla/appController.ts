@@ -27,7 +27,7 @@ import {
   setNotesListView,
   updateNote,
 } from "./services/notes";
-import { addNoteTag, createTag as createTagService, getNoteTags, getTags, removeNoteTag } from "./services/tags";
+import { addNoteTag, createTag as createTagService, deleteTag as deleteTagService, getNoteTags, getTags, removeNoteTag } from "./services/tags";
 
 const stripTags = (value: string) => value.replace(/<[^>]*>/g, "");
 const buildExcerpt = (value: string) => stripTags(value || "");
@@ -259,6 +259,30 @@ export const actions = {
       const next = new Set(state.expandedTags);
       next.add(parentId);
       appStore.setState({ expandedTags: next });
+    }
+  },
+  deleteTag: async (id: number) => {
+    const ok = await openConfirmDialog({
+      title: "Delete tag",
+      message: "Are you sure you want to delete this tag and its children?",
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await deleteTagService(id);
+      const tags = await getTags();
+      const state = appStore.getState();
+      const nextSelectedTagId = state.selectedTagId === id ? null : state.selectedTagId;
+      const nextExpandedTags = new Set(
+        Array.from(state.expandedTags).filter((tagId) => tagId !== id)
+      );
+      appStore.setState({ tags, selectedTagId: nextSelectedTagId, expandedTags: nextExpandedTags });
+      if (state.selectedTagId === id) {
+        fetchData();
+      }
+    } catch (e) {
+      logError("[tag] delete failed", e);
     }
   },
   removeTagFromNote: async (tagId: number) => {

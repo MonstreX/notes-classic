@@ -831,6 +831,38 @@ impl SqliteRepository {
         Ok(())
     }
 
+    pub async fn delete_tag(&self, tag_id: i64) -> Result<(), sqlx::Error> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query(
+            "WITH RECURSIVE tag_tree(id) AS (
+               SELECT id FROM tags WHERE id = ?
+               UNION ALL
+               SELECT t.id FROM tags t
+               JOIN tag_tree tt ON t.parent_id = tt.id
+             )
+             DELETE FROM note_tags WHERE tag_id IN (SELECT id FROM tag_tree)",
+        )
+        .bind(tag_id)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            "WITH RECURSIVE tag_tree(id) AS (
+               SELECT id FROM tags WHERE id = ?
+               UNION ALL
+               SELECT t.id FROM tags t
+               JOIN tag_tree tt ON t.parent_id = tt.id
+             )
+             DELETE FROM tags WHERE id IN (SELECT id FROM tag_tree)",
+        )
+        .bind(tag_id)
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        Ok(())
+    }
+
     pub async fn remove_note_tag(&self, note_id: i64, tag_id: i64) -> Result<(), sqlx::Error> {
         sqlx::query("DELETE FROM note_tags WHERE note_id = ? AND tag_id = ?")
             .bind(note_id)

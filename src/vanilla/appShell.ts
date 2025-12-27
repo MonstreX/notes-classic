@@ -1,4 +1,4 @@
-import { openNoteContextMenu, openNotebookContextMenu, type ContextMenuNode } from "./contextMenu";
+import { openNoteContextMenu, openNotebookContextMenu, openTagContextMenu, type ContextMenuNode } from "./contextMenu";
 import { mountEditor, type EditorInstance } from "./editor";
 import { mountNotesList, type NotesListHandlers, type NotesListInstance, type NotesListState } from "./notesList";
 import { mountSidebar, type SidebarHandlers, type SidebarInstance, type SidebarState } from "./sidebar";
@@ -204,6 +204,15 @@ export const mountApp = (root: HTMLElement) => {
     onToggleTagsSection: () => actions.toggleTagsSection(),
     onCreateNoteInNotebook: (id) => actions.createNoteInNotebook(id),
     onDeleteNotebook: (id) => actions.deleteNotebook(id),
+    onTagContextMenu: (event, id) => {
+      event.preventDefault();
+      openTagContextMenu({
+        x: event.clientX,
+        y: event.clientY,
+        tagId: id,
+        onDelete: actions.deleteTag,
+      });
+    },
     onNotebookContextMenu: (event, id) => {
       event.preventDefault();
       openNotebookContextMenu({

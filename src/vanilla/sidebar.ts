@@ -33,6 +33,7 @@ export interface SidebarHandlers {
   onToggleTagsSection: () => void;
   onCreateNoteInNotebook: (id: number) => void;
   onDeleteNotebook: (id: number) => void;
+  onTagContextMenu: (event: MouseEvent, id: number) => void;
   onNotebookContextMenu: (event: MouseEvent, id: number) => void;
   onMoveNotebook: (activeId: number, overId: number, position: "before" | "after" | "inside") => void;
 }
@@ -66,7 +67,7 @@ const renderNotebookIcon = (type: NotebookType) => {
 };
 
 const renderTagIcon = () => `
-  <svg class="sidebar-icon" aria-hidden="true">
+  <svg class="sidebar-icon sidebar-icon--tag" aria-hidden="true">
     <use href="#icon-tag"></use>
   </svg>
 `;
@@ -521,6 +522,17 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
   root.addEventListener("click", handleClick);
   root.addEventListener("contextmenu", handleContextMenu);
 
+  const handleTagContextMenu = (event: MouseEvent) => {
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    const row = target.closest<HTMLElement>("[data-tag-row]");
+    if (!row) return;
+    const id = Number(row.dataset.tagId);
+    if (!Number.isFinite(id)) return;
+    handlers.onTagContextMenu(event, id);
+  };
+  root.addEventListener("contextmenu", handleTagContextMenu);
+
   const handlePointerDown = (event: PointerEvent) => {
     if (event.button !== 0) return;
     const target = event.target as HTMLElement | null;
@@ -783,6 +795,7 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
     destroy: () => {
       root.removeEventListener("click", handleClick);
       root.removeEventListener("contextmenu", handleContextMenu);
+      root.removeEventListener("contextmenu", handleTagContextMenu);
       root.removeEventListener("pointerdown", handlePointerDown);
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);

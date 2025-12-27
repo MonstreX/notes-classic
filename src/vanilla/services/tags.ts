@@ -14,3 +14,6 @@ export const addNoteTag = (noteId: number, tagId: number) =>
 
 export const removeNoteTag = (noteId: number, tagId: number) =>
   invoke("remove_note_tag", { noteId, tagId });
+
+export const deleteTag = (tagId: number) =>
+  invoke("delete_tag", { tagId });

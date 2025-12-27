@@ -362,6 +362,13 @@ async fn remove_note_tag(noteId: i64, tagId: i64, state: State<'_, AppState>) ->
     repo.remove_note_tag(noteId, tagId).await.map_err(|e| e.to_string())
 }
 
+#[allow(non_snake_case)]
+#[tauri::command]
+async fn delete_tag(tagId: i64, state: State<'_, AppState>) -> Result<(), String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    repo.delete_tag(tagId).await.map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn get_settings(state: State<'_, AppState>) -> Result<Option<Value>, String> {
     let settings_path = state.settings_dir.join(SETTINGS_FILE_NAME);
@@ -452,6 +459,7 @@ fn main() {
             create_tag,
             add_note_tag,
             remove_note_tag,
+            delete_tag,
             set_notes_list_view,
             get_settings,
             set_settings
