@@ -105,15 +105,6 @@ const renderNoteRow = (note: NotesListItem, state: NotesListState) => {
         <h3 class="notes-list__row-title notes-list__row-title--strong">
           ${escapeHtml(note.title || "Untitled")}
         </h3>
-        <button class="notes-list__delete" data-action="delete-note" data-note-id="${note.id}">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="3 6 5 6 21 6"></polyline>
-            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
-            <path d="M10 11v6"></path>
-            <path d="M14 11v6"></path>
-            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
-          </svg>
-        </button>
       </div>
       <p class="notes-list__excerpt">
         ${escapeHtml(excerpt || "No text")}
@@ -170,7 +161,7 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
       dragOverlay = null;
     }
     if (dragOverEl) {
-      dragOverEl.classList.remove("bg-[#1F2B1F]", "text-white");
+      dragOverEl.classList.remove("notes-list__drop-target");
       dragOverEl = null;
     }
     document.body.style.cursor = "";
@@ -218,7 +209,7 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
 
   const updateDropHighlight = (target: { el: HTMLElement; notebookId: number | null } | null) => {
     if (dragOverEl && dragOverEl !== target?.el) {
-      dragOverEl.classList.remove("bg-[#1F2B1F]", "text-white");
+      dragOverEl.classList.remove("notes-list__drop-target");
       dragOverEl = null;
     }
     if (!target) {
@@ -229,7 +220,7 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
     dragOverEl = target.el;
     dragOverNotebookId = target.notebookId;
     dragHasTarget = true;
-    dragOverEl.classList.add("bg-[#1F2B1F]", "text-white");
+    dragOverEl.classList.add("notes-list__drop-target");
   };
 
   const handlePointerDown = (event: PointerEvent) => {
@@ -314,6 +305,19 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
     }
   };
 
+  const handleKeyDown = (event: KeyboardEvent) => {
+    if (event.key !== "Delete") return;
+    const target = event.target as HTMLElement | null;
+    if (target) {
+      const tag = target.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || target.isContentEditable) return;
+    }
+    const selectedId = currentState?.selectedNoteId ?? null;
+    if (!selectedId) return;
+    event.preventDefault();
+    handlers.onDeleteNote(selectedId);
+  };
+
   const handleContextMenu = (event: MouseEvent) => {
     const target = event.target as HTMLElement | null;
     if (!target) return;
@@ -331,6 +335,7 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
   root.addEventListener("click", handleClick);
   root.addEventListener("input", handleInput);
   root.addEventListener("contextmenu", handleContextMenu);
+  window.addEventListener("keydown", handleKeyDown);
 
   const updateSelection = (prevId: number | null, nextId: number | null, view: NotesListView) => {
     if (prevId !== null) {
@@ -377,6 +382,7 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
       root.removeEventListener("click", handleClick);
       root.removeEventListener("input", handleInput);
       root.removeEventListener("contextmenu", handleContextMenu);
+      window.removeEventListener("keydown", handleKeyDown);
       cleanupDrag();
       root.innerHTML = "";
     },
