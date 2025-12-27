@@ -16,6 +16,7 @@ export type AppState = {
   content: string;
   activeNote: NoteDetail | null;
   isLoaded: boolean;
+  isNoteLoading: boolean;
 };
 
 type Listener = () => void;
@@ -36,6 +37,7 @@ let state: AppState = {
   content: "",
   activeNote: null,
   isLoaded: false,
+  isNoteLoading: false,
 };
 
 const listeners = new Set<Listener>();

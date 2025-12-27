@@ -443,6 +443,18 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
 
   const handlePointerUp = () => {
     if (!dragActive) return;
+    if (!dragStarted && dragId) {
+      ignoreClick = true;
+      const nb = findNotebook(dragId);
+      if (nb) {
+        if (nb.notebookType === "stack") {
+          handlers.onToggleNotebook(dragId);
+        }
+        handlers.onSelectNotebook(dragId);
+      }
+      cleanupDrag();
+      return;
+    }
     if (dragStarted && dragOverId !== null && dragPosition) {
       handlers.onMoveNotebook(dragId, dragOverId, dragPosition);
     }
