@@ -421,6 +421,16 @@ export const mountApp = (root: HTMLElement) => {
       applyTagSuggestion(tag);
     }
   });
+  tagsList.addEventListener("click", (event) => {
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    const button = target.closest<HTMLButtonElement>(".app-shell__tag-remove");
+    if (!button) return;
+    event.preventDefault();
+    const tagId = Number(button.dataset.tagId);
+    if (Number.isNaN(tagId)) return;
+    actions.removeTagFromNote(tagId);
+  });
 
   const setEditorLoadingVisible = (visible: boolean) => {
     editorLoading.style.display = visible ? "flex" : "none";
@@ -578,7 +588,15 @@ export const mountApp = (root: HTMLElement) => {
     if (hasNote) {
       const map = new Map(state.tags.map((tag) => [tag.id, tag]));
       tagsList.innerHTML = state.noteTags
-        .map((tag) => `<span class="app-shell__tag">${buildTagPath(tag, map)}</span>`)
+        .map((tag) => {
+          const label = buildTagPath(tag, map);
+          return `
+            <span class="app-shell__tag">
+              <span class="app-shell__tag-text">${label}</span>
+              <button type="button" class="app-shell__tag-remove" data-tag-id="${tag.id}" aria-label="Remove tag">&times;</button>
+            </span>
+          `;
+        })
         .join("");
     } else {
       tagsList.innerHTML = "";

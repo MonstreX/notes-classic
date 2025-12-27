@@ -156,12 +156,29 @@
 }
 
 .app-shell__tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 4px 10px;
   background: #f3f4f6;
   color: #6b7280;
   border-radius: 9999px;
   font-size: 12px;
   white-space: nowrap;
+}
+
+.app-shell__tag-remove {
+  border: 0;
+  background: transparent;
+  color: #9ca3af;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+}
+
+.app-shell__tag-remove:hover {
+  color: #6b7280;
 }
 
 .app-shell__tags-input {

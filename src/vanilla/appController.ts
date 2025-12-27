@@ -26,7 +26,7 @@ import {
   setNotesListView,
   updateNote,
 } from "./services/notes";
-import { addNoteTag, createTag, getNoteTags, getTags } from "./services/tags";
+import { addNoteTag, createTag, getNoteTags, getTags, removeNoteTag } from "./services/tags";
 
 const stripTags = (value: string) => value.replace(/<[^>]*>/g, "");
 const buildExcerpt = (value: string) => stripTags(value || "");
@@ -232,6 +232,18 @@ export const actions = {
     await addNoteTag(noteId, tagId);
     const updated = await getNoteTags(noteId);
     appStore.setState({ noteTags: updated });
+  },
+  removeTagFromNote: async (tagId: number) => {
+    const state = appStore.getState();
+    const noteId = state.selectedNoteId;
+    if (!noteId) return;
+    try {
+      await removeNoteTag(noteId, tagId);
+      const updated = await getNoteTags(noteId);
+      appStore.setState({ noteTags: updated });
+    } catch (e) {
+      logError("[tag] remove failed", e);
+    }
   },
   createNote: async () => {
     const state = appStore.getState();
