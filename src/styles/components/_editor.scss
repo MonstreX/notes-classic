@@ -43,14 +43,14 @@
 .notes-editor .jodit-container::-webkit-scrollbar-thumb,
 .notes-editor .jodit-workplace::-webkit-scrollbar-thumb,
 .notes-editor .jodit-wysiwyg::-webkit-scrollbar-thumb {
-  background: #333;
+  background: #d7d7d7;
   border-radius: 10px;
 }
 
 .notes-editor .jodit-container,
 .notes-editor .jodit-workplace,
 .notes-editor .jodit-wysiwyg {
-  scrollbar-color: #333 transparent;
+  scrollbar-color: #d7d7d7 transparent;
   scrollbar-width: thin;
 }
 
@@ -63,12 +63,12 @@
 }
 
 .notes-editor *::-webkit-scrollbar-thumb {
-  background: #333;
+  background: #d7d7d7;
   border-radius: 10px;
 }
 
 .notes-editor * {
-  scrollbar-color: #333 transparent;
+  scrollbar-color: #d7d7d7 transparent;
   scrollbar-width: thin;
 }
 
