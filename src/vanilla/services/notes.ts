@@ -6,6 +6,9 @@ export const getNotebooks = () => invoke<Notebook[]>("get_notebooks");
 export const getNotes = (notebookId: number | null) =>
   invoke<NoteListItem[]>("get_notes", { notebookId });
 
+export const getNotesByTag = (tagId: number) =>
+  invoke<NoteListItem[]>("get_notes_by_tag", { tagId });
+
 export const searchNotes = (query: string, notebookId: number | null) =>
   invoke<NoteListItem[]>("search_notes", { query, notebookId });
 

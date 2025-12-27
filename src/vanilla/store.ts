@@ -11,8 +11,11 @@ export type AppState = {
   tags: Tag[];
   noteTags: Tag[];
   selectedNotebookId: number | null;
+  selectedTagId: number | null;
   selectedNoteId: number | null;
   expandedNotebooks: Set<number>;
+  expandedTags: Set<number>;
+  tagsSectionExpanded: boolean;
   sidebarWidth: number;
   listWidth: number;
   searchTerm: string;
@@ -36,8 +39,11 @@ let state: AppState = {
   tags: [],
   noteTags: [],
   selectedNotebookId: null,
+  selectedTagId: null,
   selectedNoteId: null,
   expandedNotebooks: new Set(),
+  expandedTags: new Set(),
+  tagsSectionExpanded: true,
   sidebarWidth: 240,
   listWidth: 350,
   searchTerm: "",

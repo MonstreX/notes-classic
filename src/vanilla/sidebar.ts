@@ -1,3 +1,5 @@
+import type { Tag } from "./types";
+
 export type NotebookType = "stack" | "notebook";
 
 export interface SidebarNotebook {
@@ -10,6 +12,10 @@ export interface SidebarNotebook {
 
 export interface SidebarState {
   notebooks: SidebarNotebook[];
+  tags: Tag[];
+  selectedTagId: number | null;
+  expandedTags: Set<number>;
+  tagsSectionExpanded: boolean;
   selectedNotebookId: number | null;
   expandedNotebooks: Set<number>;
   noteCounts: Map<number, number>;
@@ -19,8 +25,12 @@ export interface SidebarState {
 export interface SidebarHandlers {
   onSelectNotebook: (id: number) => void;
   onSelectAll: () => void;
+  onSelectTag: (id: number) => void;
   onToggleNotebook: (id: number) => void;
+  onToggleTag: (id: number) => void;
   onCreateNotebook: (parentId: number | null) => void;
+  onCreateTag: (parentId: number | null) => void;
+  onToggleTagsSection: () => void;
   onCreateNoteInNotebook: (id: number) => void;
   onDeleteNotebook: (id: number) => void;
   onNotebookContextMenu: (event: MouseEvent, id: number) => void;
@@ -55,6 +65,12 @@ const renderNotebookIcon = (type: NotebookType) => {
   `;
 };
 
+const renderTagIcon = () => `
+  <svg class="sidebar-icon" aria-hidden="true">
+    <use href="#icon-tag"></use>
+  </svg>
+`;
+
 const renderChevron = (isExpanded: boolean) => `
   <svg class="sidebar-chevron ${isExpanded ? "is-expanded" : ""}" width="14" height="14" aria-hidden="true">
     <use href="#icon-chevron"></use>
@@ -74,6 +90,77 @@ const renderAllNotesIcon = (isSelected: boolean) => {
       <use href="#icon-note"></use>
     </svg>
   `;
+};
+
+const getTagChildren = (tags: Tag[], parentId: number | null) =>
+  tags
+    .filter((tag) => tag.parentId === parentId)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+const renderTagItem = (
+  tag: Tag,
+  state: SidebarState,
+  level: number,
+  hasChildren: boolean
+) => {
+  const isSelected = state.selectedTagId === tag.id;
+  const isExpanded = state.expandedTags.has(tag.id);
+  return `
+    <div class="sidebar-row">
+      <div
+        class="sidebar-item sidebar-item--compact ${isSelected ? "is-selected" : ""}"
+        style="padding-left: ${level * 16 + 8}px;"
+        data-action="select-tag"
+        data-tag-id="${tag.id}"
+        data-tag-row="1"
+        data-tag-level="${level}"
+        data-tag-has-children="${hasChildren ? "1" : "0"}"
+      >
+        <div class="sidebar-item__content">
+          ${renderTagIcon()}
+          <span class="sidebar-item__label">${escapeHtml(tag.name)}</span>
+        </div>
+        <div class="sidebar-item__actions">
+          <button class="sidebar-action" data-action="add-tag" data-tag-id="${tag.id}" title="Add tag">
+            ${renderPlus()}
+          </button>
+          ${
+            hasChildren
+              ? `<button class="sidebar-action" data-action="toggle-tag" data-tag-id="${tag.id}" title="Expand/Collapse">
+                  ${renderChevron(isExpanded)}
+                </button>`
+              : ""
+          }
+        </div>
+      </div>
+    </div>
+  `;
+};
+
+const renderTagTree = (
+  tags: Tag[],
+  state: SidebarState,
+  parentId: number | null,
+  level: number
+): string => {
+  return getTagChildren(tags, parentId)
+    .map((tag) => {
+      const children = getTagChildren(tags, tag.id);
+      const isExpanded = state.expandedTags.has(tag.id);
+      return `
+        <div data-tag-node="${tag.id}">
+          ${renderTagItem(tag, state, level, children.length > 0)}
+          ${
+            children.length > 0
+              ? `<div class="tag-children" data-expanded="${isExpanded ? "true" : "false"}">
+                  ${renderTagTree(tags, state, tag.id, level + 1)}
+                </div>`
+              : ""
+          }
+        </div>
+      `;
+    })
+    .join("");
 };
 
 const buildCounts = (notebooks: SidebarNotebook[], noteCounts: Map<number, number>) => {
@@ -122,7 +209,7 @@ const renderNotebookItem = (
         data-notebook-level="${level}"
       >
         <div class="sidebar-item__content">
-          ${renderNotebookIcon(nb.notebookType, isSelected)}
+          ${renderNotebookIcon(nb.notebookType)}
           <span class="sidebar-item__label">${escapeHtml(nb.name)}</span>
           <span class="sidebar-item__count">${noteCount}</span>
         </div>
@@ -174,7 +261,7 @@ const renderNotebookTree = (
 
 const renderSidebar = (state: SidebarState) => {
   const counts = buildCounts(state.notebooks, state.noteCounts);
-  const allSelected = state.selectedNotebookId === null;
+  const allSelected = state.selectedNotebookId === null && state.selectedTagId === null;
   return `
     <div class="sidebar-scroll custom-scrollbar" data-sidebar-scroll="1">
       <div class="sidebar-section">
@@ -195,6 +282,20 @@ const renderSidebar = (state: SidebarState) => {
       </div>
       <div class="sidebar-tree">
         ${renderNotebookTree(state.notebooks, state, null, 0, counts)}
+      </div>
+      <div class="sidebar-section">
+        <span>Tags</span>
+        <div class="sidebar-section__actions">
+          <button class="sidebar-section__action" data-action="add-tag-root" title="Create tag">
+            ${renderPlus()}
+          </button>
+          <button class="sidebar-section__action" data-action="toggle-tags-section" title="Expand/Collapse tags">
+            ${renderChevron(state.tagsSectionExpanded)}
+          </button>
+        </div>
+      </div>
+      <div class="sidebar-tree sidebar-tree--tags" data-expanded="${state.tagsSectionExpanded ? "true" : "false"}">
+        ${renderTagTree(state.tags, state, null, 0)}
       </div>
     </div>
   `;
@@ -217,6 +318,7 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
   let dragOverId: number | null = null;
   let dragPosition: "before" | "after" | "inside" | null = null;
   let prevExpanded = new Set<number>();
+  let prevExpandedTags = new Set<number>();
 
   const ensureRootPosition = () => {
     if (getComputedStyle(root).position === "static") {
@@ -350,6 +452,8 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
     const action = actionEl.dataset.action;
     const idRaw = actionEl.dataset.notebookId;
     const id = idRaw ? Number(idRaw) : null;
+    const tagIdRaw = actionEl.dataset.tagId;
+    const tagId = tagIdRaw ? Number(tagIdRaw) : null;
 
     if (action === "select-all") {
       handlers.onSelectAll();
@@ -377,6 +481,29 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
     }
     if (action === "add-note" && id !== null) {
       handlers.onCreateNoteInNotebook(id);
+      return;
+    }
+    if (action === "toggle-tags-section") {
+      handlers.onToggleTagsSection();
+      return;
+    }
+    if (action === "select-tag" && tagId !== null) {
+      if (actionEl.dataset.tagHasChildren === "1") {
+        handlers.onToggleTag(tagId);
+      }
+      handlers.onSelectTag(tagId);
+      return;
+    }
+    if (action === "toggle-tag" && tagId !== null) {
+      handlers.onToggleTag(tagId);
+      return;
+    }
+    if (action === "add-tag") {
+      handlers.onCreateTag(tagId);
+      return;
+    }
+    if (action === "add-tag-root") {
+      handlers.onCreateTag(null);
       return;
     }
   };
@@ -474,18 +601,36 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
   window.addEventListener("pointerup", handlePointerUp);
   window.addEventListener("pointercancel", handlePointerCancel);
 
-  const findSelectionEl = (id: number | null) => {
+  const findSelectionEl = (id: number | null, allowAll: boolean) => {
     if (id === null) {
+      if (!allowAll) return null;
       return root.querySelector<HTMLElement>("[data-action=\"select-all\"]");
     }
     return root.querySelector<HTMLElement>(`[data-action="select-notebook"][data-notebook-id="${id}"]`);
   };
 
-  const updateSelection = (prevId: number | null, nextId: number | null) => {
+  const findTagSelectionEl = (id: number | null) => {
+    if (id === null) return null;
+    return root.querySelector<HTMLElement>(`[data-action="select-tag"][data-tag-id="${id}"]`);
+  };
+
+  const updateSelection = (prevId: number | null, nextId: number | null, allowAll: boolean) => {
     if (prevId === nextId) return;
-    const prevEl = findSelectionEl(prevId);
+    if (!allowAll) {
+      const allEl = root.querySelector<HTMLElement>("[data-action=\"select-all\"]");
+      if (allEl) allEl.classList.remove("is-selected");
+    }
+    const prevEl = findSelectionEl(prevId, allowAll);
     if (prevEl) prevEl.classList.remove("is-selected");
-    const nextEl = findSelectionEl(nextId);
+    const nextEl = findSelectionEl(nextId, allowAll);
+    if (nextEl) nextEl.classList.add("is-selected");
+  };
+
+  const updateTagSelection = (prevId: number | null, nextId: number | null) => {
+    if (prevId === nextId) return;
+    const prevEl = findTagSelectionEl(prevId);
+    if (prevEl) prevEl.classList.remove("is-selected");
+    const nextEl = findTagSelectionEl(nextId);
     if (nextEl) nextEl.classList.add("is-selected");
   };
 
@@ -496,7 +641,10 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
       const shouldFullRender =
         !prev ||
         prev.notebooks !== state.notebooks ||
+        prev.tags !== state.tags ||
         prev.expandedNotebooks !== state.expandedNotebooks ||
+        prev.expandedTags !== state.expandedTags ||
+        prev.tagsSectionExpanded !== state.tagsSectionExpanded ||
         prev.noteCounts !== state.noteCounts ||
         prev.totalNotes !== state.totalNotes;
 
@@ -509,9 +657,13 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
           if (getComputedStyle(scrollEl).position === "static") {
             scrollEl.style.position = "relative";
           }
+          requestAnimationFrame(() => {
+            scrollEl.scrollTop = scrollTop;
+          });
         }
       } else {
-        updateSelection(prev.selectedNotebookId, state.selectedNotebookId);
+        updateSelection(prev.selectedNotebookId, state.selectedNotebookId, state.selectedTagId === null);
+        updateTagSelection(prev.selectedTagId, state.selectedTagId);
       }
 
       if (shouldFullRender) {
@@ -552,6 +704,79 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
           }
         });
         prevExpanded = nextExpanded;
+      }
+
+      if (shouldFullRender) {
+        const nextExpanded = new Set(state.expandedTags);
+        const childrenEls = root.querySelectorAll<HTMLElement>(".tag-children");
+        childrenEls.forEach((el) => {
+          const node = el.closest<HTMLElement>("[data-tag-node]");
+          if (!node) return;
+          const id = Number(node.dataset.tagNode);
+          if (!Number.isFinite(id)) return;
+          const isExpanded = nextExpanded.has(id);
+          const wasExpanded = prevExpandedTags.has(id);
+
+          if (isExpanded) {
+            if (!wasExpanded) {
+              el.style.maxHeight = "0px";
+              el.style.opacity = "0";
+              requestAnimationFrame(() => {
+                el.style.maxHeight = `${el.scrollHeight}px`;
+                el.style.opacity = "1";
+              });
+            } else {
+              el.style.maxHeight = `${el.scrollHeight}px`;
+              el.style.opacity = "1";
+            }
+          } else {
+            if (wasExpanded) {
+              el.style.maxHeight = `${el.scrollHeight}px`;
+              el.style.opacity = "1";
+              requestAnimationFrame(() => {
+                el.style.maxHeight = "0px";
+                el.style.opacity = "0";
+              });
+            } else {
+              el.style.maxHeight = "0px";
+              el.style.opacity = "0";
+            }
+          }
+        });
+        prevExpandedTags = nextExpanded;
+      }
+
+      if (shouldFullRender) {
+        const tagsTree = root.querySelector<HTMLElement>(".sidebar-tree--tags");
+        if (tagsTree) {
+          const isExpanded = tagsTree.dataset.expanded === "true";
+          const wasExpanded = prev?.tagsSectionExpanded ?? true;
+          if (isExpanded) {
+            if (!wasExpanded) {
+              tagsTree.style.maxHeight = "0px";
+              tagsTree.style.opacity = "0";
+              requestAnimationFrame(() => {
+                tagsTree.style.maxHeight = `${tagsTree.scrollHeight}px`;
+                tagsTree.style.opacity = "1";
+              });
+            } else {
+              tagsTree.style.maxHeight = `${tagsTree.scrollHeight}px`;
+              tagsTree.style.opacity = "1";
+            }
+          } else {
+            if (wasExpanded) {
+              tagsTree.style.maxHeight = `${tagsTree.scrollHeight}px`;
+              tagsTree.style.opacity = "1";
+              requestAnimationFrame(() => {
+                tagsTree.style.maxHeight = "0px";
+                tagsTree.style.opacity = "0";
+              });
+            } else {
+              tagsTree.style.maxHeight = "0px";
+              tagsTree.style.opacity = "0";
+            }
+          }
+        }
       }
       lastRendered = state;
     },

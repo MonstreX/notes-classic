@@ -757,6 +757,19 @@ impl SqliteRepository {
         }
     }
 
+    pub async fn get_notes_by_tag(&self, tag_id: i64) -> Result<Vec<NoteListItem>, sqlx::Error> {
+        sqlx::query_as::<_, NoteListItem>(
+            "SELECT n.id, n.title, n.content, n.updated_at, n.notebook_id
+             FROM notes n
+             JOIN note_tags nt ON nt.note_id = n.id
+             WHERE nt.tag_id = ?
+             ORDER BY n.updated_at DESC, n.created_at DESC, n.id DESC",
+        )
+        .bind(tag_id)
+        .fetch_all(&self.pool)
+        .await
+    }
+
     pub async fn delete_note(&self, id: i64) -> Result<(), sqlx::Error> {
         sqlx::query("DELETE FROM notes WHERE id = ?").bind(id).execute(&self.pool).await?;
         Ok(())

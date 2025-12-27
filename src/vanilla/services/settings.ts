@@ -13,8 +13,11 @@ export const persistSettings = (state: AppState) => {
       sidebarWidth: state.sidebarWidth,
       listWidth: state.listWidth,
       selectedNotebookId: state.selectedNotebookId,
+      selectedTagId: state.selectedTagId,
       selectedNoteId: state.selectedNoteId,
       expandedNotebooks: Array.from(state.expandedNotebooks),
+      expandedTags: Array.from(state.expandedTags),
+      tagsSectionExpanded: state.tagsSectionExpanded,
       notesListView: state.notesListView,
       notesSortBy: state.notesSortBy,
       notesSortDir: state.notesSortDir,
@@ -52,11 +55,24 @@ export const loadSettings = async () => {
           const parsed = stored.selectedNoteId === null ? null : Number(stored.selectedNoteId);
           draft.selectedNoteId = Number.isFinite(parsed as number) ? (parsed as number) : null;
         }
+        if (stored.selectedTagId !== undefined) {
+          const parsed = stored.selectedTagId === null ? null : Number(stored.selectedTagId);
+          draft.selectedTagId = Number.isFinite(parsed as number) ? (parsed as number) : null;
+        }
         if (stored.expandedNotebooks) {
           const ids = Array.isArray(stored.expandedNotebooks)
             ? stored.expandedNotebooks.map((id: any) => Number(id)).filter((id: number) => Number.isFinite(id))
             : [];
           draft.expandedNotebooks = new Set(ids);
+        }
+        if (stored.expandedTags) {
+          const ids = Array.isArray(stored.expandedTags)
+            ? stored.expandedTags.map((id: any) => Number(id)).filter((id: number) => Number.isFinite(id))
+            : [];
+          draft.expandedTags = new Set(ids);
+        }
+        if (stored.tagsSectionExpanded !== undefined) {
+          draft.tagsSectionExpanded = Boolean(stored.tagsSectionExpanded);
         }
         if (stored.notesListView === "compact" || stored.notesListView === "detailed") {
           draft.notesListView = stored.notesListView;
@@ -84,11 +100,24 @@ export const loadSettings = async () => {
           const parsed = legacy.selectedNoteId === null ? null : Number(legacy.selectedNoteId);
           draft.selectedNoteId = Number.isFinite(parsed as number) ? (parsed as number) : null;
         }
+        if (legacy.selectedTagId !== undefined) {
+          const parsed = legacy.selectedTagId === null ? null : Number(legacy.selectedTagId);
+          draft.selectedTagId = Number.isFinite(parsed as number) ? (parsed as number) : null;
+        }
         if (legacy.expandedNotebooks) {
           const ids = Array.isArray(legacy.expandedNotebooks)
             ? legacy.expandedNotebooks.map((id: any) => Number(id)).filter((id: number) => Number.isFinite(id))
             : [];
           draft.expandedNotebooks = new Set(ids);
+        }
+        if (legacy.expandedTags) {
+          const ids = Array.isArray(legacy.expandedTags)
+            ? legacy.expandedTags.map((id: any) => Number(id)).filter((id: number) => Number.isFinite(id))
+            : [];
+          draft.expandedTags = new Set(ids);
+        }
+        if (legacy.tagsSectionExpanded !== undefined) {
+          draft.tagsSectionExpanded = Boolean(legacy.tagsSectionExpanded);
         }
         if (legacy.notesListView === "compact" || legacy.notesListView === "detailed") {
           draft.notesListView = legacy.notesListView;

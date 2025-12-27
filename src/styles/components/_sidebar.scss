@@ -117,6 +117,12 @@
   flex-shrink: 0;
 }
 
+.sidebar-section__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .sidebar-section__action {
   border: 0;
   background: transparent;
@@ -159,4 +165,23 @@
 
 .notebook-children[data-expanded="true"] {
   pointer-events: auto;
+}
+
+.tag-children {
+  overflow: hidden;
+  pointer-events: none;
+  transition: max-height 200ms ease, opacity 150ms ease;
+}
+
+.tag-children[data-expanded="true"] {
+  pointer-events: auto;
+}
+
+.sidebar-tree--tags {
+  overflow: hidden;
+  transition: max-height 200ms ease, opacity 150ms ease;
+}
+
+.sidebar-tree--tags[data-expanded="false"] {
+  pointer-events: none;
 }

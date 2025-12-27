@@ -196,8 +196,12 @@ export const mountApp = (root: HTMLElement) => {
   const sidebarHandlers: SidebarHandlers = {
     onSelectNotebook: (id) => actions.selectNotebook(id),
     onSelectAll: () => actions.selectNotebook(null),
+    onSelectTag: (id) => actions.selectTag(id),
     onToggleNotebook: (id) => actions.toggleNotebook(id),
+    onToggleTag: (id) => actions.toggleTag(id),
     onCreateNotebook: (parentId) => actions.createNotebook(parentId),
+    onCreateTag: (parentId) => actions.createTag(parentId),
+    onToggleTagsSection: () => actions.toggleTagsSection(),
     onCreateNoteInNotebook: (id) => actions.createNoteInNotebook(id),
     onDeleteNotebook: (id) => actions.deleteNotebook(id),
     onNotebookContextMenu: (event, id) => {
@@ -572,6 +576,10 @@ export const mountApp = (root: HTMLElement) => {
 
     const sidebarState: SidebarState = {
       notebooks: state.notebooks,
+      tags: state.tags,
+      selectedTagId: state.selectedTagId,
+      expandedTags: state.expandedTags,
+      tagsSectionExpanded: state.tagsSectionExpanded,
       selectedNotebookId: state.selectedNotebookId,
       expandedNotebooks: state.expandedNotebooks,
       noteCounts: state.noteCounts,
@@ -581,7 +589,9 @@ export const mountApp = (root: HTMLElement) => {
   const notesListState: NotesListState = {
     notes: state.notes,
     notebooks: state.notebooks,
+    tags: state.tags,
     selectedNotebookId: state.selectedNotebookId,
+    selectedTagId: state.selectedTagId,
     selectedNoteId: state.selectedNoteId,
     notesListView: state.notesListView,
     searchTerm: state.searchTerm,
@@ -592,8 +602,12 @@ export const mountApp = (root: HTMLElement) => {
     const shouldUpdateSidebar =
       !lastSidebarState ||
       lastSidebarState.notebooks !== sidebarState.notebooks ||
+      lastSidebarState.tags !== sidebarState.tags ||
       lastSidebarState.selectedNotebookId !== sidebarState.selectedNotebookId ||
+      lastSidebarState.selectedTagId !== sidebarState.selectedTagId ||
       lastSidebarState.expandedNotebooks !== sidebarState.expandedNotebooks ||
+      lastSidebarState.expandedTags !== sidebarState.expandedTags ||
+      lastSidebarState.tagsSectionExpanded !== sidebarState.tagsSectionExpanded ||
       lastSidebarState.noteCounts !== sidebarState.noteCounts ||
       lastSidebarState.totalNotes !== sidebarState.totalNotes;
 
@@ -606,7 +620,9 @@ export const mountApp = (root: HTMLElement) => {
       !lastNotesListState ||
       lastNotesListState.notes !== notesListState.notes ||
       lastNotesListState.notebooks !== notesListState.notebooks ||
+      lastNotesListState.tags !== notesListState.tags ||
       lastNotesListState.selectedNotebookId !== notesListState.selectedNotebookId ||
+      lastNotesListState.selectedTagId !== notesListState.selectedTagId ||
       lastNotesListState.selectedNoteId !== notesListState.selectedNoteId ||
       lastNotesListState.notesListView !== notesListState.notesListView ||
       lastNotesListState.searchTerm !== notesListState.searchTerm;

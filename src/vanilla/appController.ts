@@ -1,6 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import { openNotebookDialog, openConfirmDialog } from "./dialogs";
+import { openNotebookDialog, openTagDialog, openConfirmDialog } from "./dialogs";
 import type { Notebook, Tag } from "./types";
 import { appStore } from "./store";
 import { logError } from "./logger";
@@ -19,6 +19,7 @@ import {
   getNote,
   getNoteCounts,
   getNotes,
+  getNotesByTag,
   getNotebooks,
   moveNotebook,
   moveNote,
@@ -26,7 +27,7 @@ import {
   setNotesListView,
   updateNote,
 } from "./services/notes";
-import { addNoteTag, createTag, getNoteTags, getTags, removeNoteTag } from "./services/tags";
+import { addNoteTag, createTag as createTagService, getNoteTags, getTags, removeNoteTag } from "./services/tags";
 
 const stripTags = (value: string) => value.replace(/<[^>]*>/g, "");
 const buildExcerpt = (value: string) => stripTags(value || "");
@@ -93,9 +94,11 @@ const fetchData = async () => {
   try {
     const searchTerm = state.searchTerm.trim();
     const searchQuery = buildSearchQuery(searchTerm);
-    const notesPromise = searchQuery.length > 0
-      ? searchNotes(searchQuery, state.selectedNotebookId)
-      : getNotes(state.selectedNotebookId);
+    const notesPromise = state.selectedTagId !== null
+      ? getNotesByTag(state.selectedTagId)
+      : searchQuery.length > 0
+        ? searchNotes(searchQuery, state.selectedNotebookId)
+        : getNotes(state.selectedNotebookId);
     const [nbs, filteredNotes, counts] = await Promise.all([
       getNotebooks(),
       notesPromise,
@@ -112,7 +115,7 @@ const fetchData = async () => {
     });
     let nextSelectedNoteId = state.selectedNoteId;
     const hasSelected = notesWithExcerpt.some((note) => note.id === state.selectedNoteId);
-    if (state.selectedNotebookId !== null || searchQuery.length > 0) {
+    if (state.selectedTagId !== null || state.selectedNotebookId !== null || searchQuery.length > 0) {
       nextSelectedNoteId = hasSelected ? state.selectedNoteId : (sortedNotes[0]?.id ?? null);
     }
     const selectionChanged = nextSelectedNoteId !== state.selectedNoteId;
@@ -202,12 +205,23 @@ export const actions = {
     appStore.setState({ selectedNoteId: id, isNoteLoading: true });
     await loadSelectedNote();
   },
-  selectNotebook: (id: number | null) => appStore.setState({ selectedNotebookId: id }),
+  selectNotebook: (id: number | null) => appStore.setState({ selectedNotebookId: id, selectedTagId: null }),
+  selectTag: (id: number) => appStore.setState({ selectedTagId: id, selectedNotebookId: null, searchTerm: "" }),
   toggleNotebook: (id: number) => {
     const current = appStore.getState().expandedNotebooks;
     const next = new Set(current);
     next.has(id) ? next.delete(id) : next.add(id);
     appStore.setState({ expandedNotebooks: next });
+  },
+  toggleTag: (id: number) => {
+    const current = appStore.getState().expandedTags;
+    const next = new Set(current);
+    next.has(id) ? next.delete(id) : next.add(id);
+    appStore.setState({ expandedTags: next });
+  },
+  toggleTagsSection: () => {
+    const current = appStore.getState().tagsSectionExpanded;
+    appStore.setState({ tagsSectionExpanded: !current });
   },
   setSidebarWidth: (value: number) => appStore.setState({ sidebarWidth: value }),
   setListWidth: (value: number) => appStore.setState({ listWidth: value }),
@@ -226,12 +240,26 @@ export const actions = {
     const existing = findTagByName(state.tags, normalized);
     let tagId = existing?.id;
     if (!tagId) {
-      tagId = await createTag(normalized, null);
+      tagId = await createTagService(normalized, null);
       appStore.setState({ tags: [...state.tags, { id: tagId, name: normalized, parentId: null }] });
     }
     await addNoteTag(noteId, tagId);
     const updated = await getNoteTags(noteId);
     appStore.setState({ noteTags: updated });
+  },
+  createTag: async (parentId: number | null) => {
+    const name = await openTagDialog({ parentId });
+    if (!name) return;
+    const normalized = normalizeTagName(name);
+    if (!normalized) return;
+    const id = await createTagService(normalized, parentId);
+    const state = appStore.getState();
+    appStore.setState({ tags: [...state.tags, { id, name: normalized, parentId }] });
+    if (parentId !== null) {
+      const next = new Set(state.expandedTags);
+      next.add(parentId);
+      appStore.setState({ expandedTags: next });
+    }
   },
   removeTagFromNote: async (tagId: number) => {
     const state = appStore.getState();
@@ -419,16 +447,22 @@ export const initApp = async () => {
       nextState.sidebarWidth !== prevState.sidebarWidth ||
       nextState.listWidth !== prevState.listWidth ||
       nextState.selectedNotebookId !== prevState.selectedNotebookId ||
+      nextState.selectedTagId !== prevState.selectedTagId ||
       nextState.selectedNoteId !== prevState.selectedNoteId ||
       nextState.notesListView !== prevState.notesListView ||
       nextState.notesSortBy !== prevState.notesSortBy ||
       nextState.notesSortDir !== prevState.notesSortDir ||
-      nextState.expandedNotebooks !== prevState.expandedNotebooks
+      nextState.expandedNotebooks !== prevState.expandedNotebooks ||
+      nextState.expandedTags !== prevState.expandedTags ||
+      nextState.tagsSectionExpanded !== prevState.tagsSectionExpanded
     ) {
       persistSettings(nextState);
     }
 
-    if (nextState.selectedNotebookId !== prevState.selectedNotebookId) {
+    if (
+      nextState.selectedNotebookId !== prevState.selectedNotebookId ||
+      nextState.selectedTagId !== prevState.selectedTagId
+    ) {
       fetchData();
     }
 

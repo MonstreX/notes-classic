@@ -272,6 +272,15 @@ async fn get_notes(notebookId: Option<i64>, state: State<'_, AppState>) -> Resul
 
 #[allow(non_snake_case)]
 #[tauri::command]
+async fn get_notes_by_tag(tagId: i64, state: State<'_, AppState>) -> Result<Vec<NoteListItem>, String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    repo.get_notes_by_tag(tagId)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
 async fn search_notes(query: String, notebookId: Option<i64>, state: State<'_, AppState>) -> Result<Vec<NoteListItem>, String> {
     let repo = SqliteRepository { pool: state.pool.clone() };
     repo.search_notes(&query, notebookId)
@@ -431,6 +440,7 @@ fn main() {
             move_notebook,
             move_note,
             get_notes,
+            get_notes_by_tag,
             search_notes,
             get_note,
             get_note_counts,

@@ -1,3 +1,5 @@
+import type { Tag } from "./types";
+
 export interface NotesListItem {
   id: number;
   title: string;
@@ -17,7 +19,9 @@ export type NotesListView = "detailed" | "compact";
 export interface NotesListState {
   notes: NotesListItem[];
   notebooks: NotesListNotebook[];
+  tags: Tag[];
   selectedNotebookId: number | null;
+  selectedTagId: number | null;
   selectedNoteId: number | null;
   notesListView: NotesListView;
   searchTerm: string;
@@ -84,9 +88,14 @@ const renderViewIcon = () => `
 `;
 
 const renderHeader = (state: NotesListState) => {
-  const title = state.selectedNotebookId
-    ? state.notebooks.find((n) => n.id === state.selectedNotebookId)?.name || "Notebooks"
-    : "All Notes";
+  const tagTitle = state.selectedTagId
+    ? state.tags.find((tag) => tag.id === state.selectedTagId)?.name || "Tag"
+    : null;
+  const title = tagTitle
+    ? tagTitle
+    : state.selectedNotebookId
+      ? state.notebooks.find((n) => n.id === state.selectedNotebookId)?.name || "Notebooks"
+      : "All Notes";
   const count = state.notes.length;
   const countLabel = `${count} ${count === 1 ? "Note" : "Notes"}`;
   const sortLabel =
