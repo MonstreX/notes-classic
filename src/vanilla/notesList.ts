@@ -21,11 +21,16 @@ export interface NotesListState {
   selectedNoteId: number | null;
   notesListView: NotesListView;
   searchTerm: string;
+  notesSortBy: "updated" | "title";
+  notesSortDir: "asc" | "desc";
 }
 
 export interface NotesListHandlers {
   onSelectNote: (id: number) => void;
   onDeleteNote: (id: number) => void;
+  onToggleSort: () => void;
+  onToggleView: () => void;
+  onFilterClick: () => void;
   onNoteContextMenu: (event: MouseEvent, id: number) => void;
   onMoveNote: (noteId: number, notebookId: number | null) => void;
 }
@@ -54,15 +59,71 @@ const formatDate = (timestamp: number) => {
   }
 };
 
+const renderNotesIcon = () => `
+  <svg class="notes-list__icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+    <polyline points="14 2 14 8 20 8"></polyline>
+    <line x1="16" y1="13" x2="8" y2="13"></line>
+    <line x1="16" y1="17" x2="8" y2="17"></line>
+  </svg>
+`;
+
+const renderFilterIcon = () => `
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <polygon points="22 3 2 3 10 12 10 19 14 21 14 12 22 3"></polygon>
+  </svg>
+`;
+
+const renderSortIcon = () => `
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M11 5h10"></path>
+    <path d="M11 9h7"></path>
+    <path d="M11 13h4"></path>
+    <path d="M3 17V3"></path>
+    <path d="M7 13l-4 4-4-4"></path>
+  </svg>
+`;
+
+const renderViewIcon = () => `
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="4" width="18" height="6" rx="2"></rect>
+    <rect x="3" y="14" width="18" height="6" rx="2"></rect>
+  </svg>
+`;
+
 const renderHeader = (state: NotesListState) => {
   const title = state.selectedNotebookId
     ? state.notebooks.find((n) => n.id === state.selectedNotebookId)?.name || "Notebooks"
     : "All Notes";
+  const count = state.notes.length;
+  const countLabel = `${count} ${count === 1 ? "Note" : "Notes"}`;
+  const sortLabel =
+    state.notesSortBy === "title"
+      ? state.notesSortDir === "asc" ? "Name A-Z" : "Name Z-A"
+      : state.notesSortDir === "asc" ? "Oldest first" : "Newest first";
+  const viewLabel = state.notesListView === "compact" ? "Compact view" : "Detailed view";
   return `
     <div class="notes-list__header">
-      <h2 class="notes-list__title">
-        ${escapeHtml(title)}
-      </h2>
+      <div class="notes-list__header-top">
+        <div class="notes-list__heading">
+          ${renderNotesIcon()}
+          <h2 class="notes-list__title">${escapeHtml(title === "All Notes" ? "Notes" : title)}</h2>
+        </div>
+      </div>
+      <div class="notes-list__header-bottom">
+        <div class="notes-list__count">${countLabel}</div>
+        <div class="notes-list__actions">
+          <button class="notes-list__action" data-action="filter" title="Filter (coming soon)">
+            ${renderFilterIcon()}
+          </button>
+          <button class="notes-list__action" data-action="sort" title="${sortLabel}">
+            ${renderSortIcon()}
+          </button>
+          <button class="notes-list__action" data-action="view" title="${viewLabel}">
+            ${renderViewIcon()}
+          </button>
+        </div>
+      </div>
     </div>
   `;
 };
@@ -269,6 +330,22 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
     }
     const target = event.target as HTMLElement | null;
     if (!target) return;
+    const headerAction = target.closest<HTMLElement>("[data-action]");
+    if (headerAction && headerAction.dataset.action) {
+      const action = headerAction.dataset.action;
+      if (action === "filter") {
+        handlers.onFilterClick();
+        return;
+      }
+      if (action === "sort") {
+        handlers.onToggleSort();
+        return;
+      }
+      if (action === "view") {
+        handlers.onToggleView();
+        return;
+      }
+    }
     const actionEl = target.closest<HTMLElement>("[data-action]");
     if (actionEl?.dataset.action === "delete-note") {
       event.stopPropagation();

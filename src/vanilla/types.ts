@@ -34,3 +34,5 @@ export interface NoteCounts {
 }
 
 export type NotesListView = "detailed" | "compact";
+export type NotesSortBy = "updated" | "title";
+export type NotesSortDir = "asc" | "desc";

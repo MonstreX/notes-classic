@@ -30,6 +30,26 @@ import {
 const stripTags = (value: string) => value.replace(/<[^>]*>/g, "");
 const buildExcerpt = (value: string) => stripTags(value || "");
 
+const sortNotes = (
+  notes: Array<{ id: number; title: string; updatedAt: number }>,
+  sortBy: "updated" | "title",
+  sortDir: "asc" | "desc"
+) => {
+  const dir = sortDir === "asc" ? 1 : -1;
+  return [...notes].sort((a, b) => {
+    let result = 0;
+    if (sortBy === "title") {
+      result = (a.title || "").localeCompare(b.title || "");
+    } else {
+      result = (a.updatedAt || 0) - (b.updatedAt || 0);
+    }
+    if (result === 0) {
+      result = a.id - b.id;
+    }
+    return result * dir;
+  });
+};
+
 const buildSearchQuery = (value: string) => {
   const tokens = value
     .replace(/["']/g, " ")
@@ -77,6 +97,7 @@ const fetchData = async () => {
       ...note,
       excerpt: buildExcerpt(note.content || ""),
     }));
+    const sortedNotes = sortNotes(notesWithExcerpt, state.notesSortBy, state.notesSortDir);
     const map = new Map<number, number>();
     counts.perNotebook.forEach((item) => {
       map.set(item.notebookId, item.count);
@@ -84,12 +105,12 @@ const fetchData = async () => {
     let nextSelectedNoteId = state.selectedNoteId;
     const hasSelected = notesWithExcerpt.some((note) => note.id === state.selectedNoteId);
     if (state.selectedNotebookId !== null || searchQuery.length > 0) {
-      nextSelectedNoteId = hasSelected ? state.selectedNoteId : (notesWithExcerpt[0]?.id ?? null);
+      nextSelectedNoteId = hasSelected ? state.selectedNoteId : (sortedNotes[0]?.id ?? null);
     }
     const selectionChanged = nextSelectedNoteId !== state.selectedNoteId;
     const nextState: Partial<typeof state> = {
       notebooks: nbs,
-      notes: notesWithExcerpt,
+      notes: sortedNotes,
       noteCounts: map,
       totalNotes: counts.total,
       selectedNoteId: nextSelectedNoteId,
@@ -181,6 +202,9 @@ export const actions = {
   },
   setSidebarWidth: (value: number) => appStore.setState({ sidebarWidth: value }),
   setListWidth: (value: number) => appStore.setState({ listWidth: value }),
+  setNotesListView: (value: "compact" | "detailed") => appStore.setState({ notesListView: value }),
+  setNotesSort: (sortBy: "updated" | "title", sortDir: "asc" | "desc") =>
+    appStore.setState({ notesSortBy: sortBy, notesSortDir: sortDir }),
   createNote: async () => {
     const state = appStore.getState();
     const id = await createNote("New Note", "", state.selectedNotebookId);

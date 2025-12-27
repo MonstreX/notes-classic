@@ -16,6 +16,8 @@ export const persistSettings = (state: AppState) => {
       selectedNoteId: state.selectedNoteId,
       expandedNotebooks: Array.from(state.expandedNotebooks),
       notesListView: state.notesListView,
+      notesSortBy: state.notesSortBy,
+      notesSortDir: state.notesSortDir,
     };
     invoke("set_settings", { settings: payload }).catch((e) => {
       logError("[settings] persist failed", e);
@@ -59,6 +61,12 @@ export const loadSettings = async () => {
         if (stored.notesListView === "compact" || stored.notesListView === "detailed") {
           draft.notesListView = stored.notesListView;
         }
+        if (stored.notesSortBy === "updated" || stored.notesSortBy === "title") {
+          draft.notesSortBy = stored.notesSortBy;
+        }
+        if (stored.notesSortDir === "asc" || stored.notesSortDir === "desc") {
+          draft.notesSortDir = stored.notesSortDir;
+        }
       });
       return;
     }
@@ -84,6 +92,12 @@ export const loadSettings = async () => {
         }
         if (legacy.notesListView === "compact" || legacy.notesListView === "detailed") {
           draft.notesListView = legacy.notesListView;
+        }
+        if (legacy.notesSortBy === "updated" || legacy.notesSortBy === "title") {
+          draft.notesSortBy = legacy.notesSortBy;
+        }
+        if (legacy.notesSortDir === "asc" || legacy.notesSortDir === "desc") {
+          draft.notesSortDir = legacy.notesSortDir;
         }
       });
       await invoke("set_settings", { settings: legacy });
