@@ -35,10 +35,14 @@ fn ensure_dir_writable(dir: &Path) -> Result<(), String> {
 }
 
 fn resolve_portable_paths(app_handle: &AppHandle) -> Result<(PathBuf, PathBuf), String> {
+    if let Ok(cwd) = std::env::current_dir() {
+        println!("[paths] cwd={}", cwd.to_string_lossy());
+    }
     let exe_dir = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|p| p.to_path_buf()))
         .ok_or_else(|| "Failed to resolve executable directory".to_string())?;
+    println!("[paths] exe_dir={}", exe_dir.to_string_lossy());
     let mut data_dir = exe_dir.join("data");
     let mut settings_dir = exe_dir.join("settings");
 

@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openNotebookDialog, openConfirmDialog } from "./dialogs";
-import type { Notebook, NoteListItem, NoteDetail, NoteCounts } from "./types";
+import type { Notebook } from "./types";
 import { appStore } from "./store";
 import {
   ensureNotesScheme,
@@ -11,6 +11,19 @@ import {
   toStorageContent,
 } from "./services/content";
 import { cleanupSettings, loadSettings, persistSettings } from "./services/settings";
+import {
+  createNote,
+  createNotebook,
+  deleteNotebook,
+  deleteNote,
+  getNote,
+  getNoteCounts,
+  getNotes,
+  getNotebooks,
+  moveNotebook,
+  moveNote,
+  updateNote,
+} from "./services/notes";
 
 const stripTags = (value: string) => value.replace(/<[^>]*>/g, "");
 const buildExcerpt = (value: string) => stripTags(value || "");
@@ -39,9 +52,9 @@ const fetchData = async () => {
   if (!state.isLoaded) return;
   try {
     const [nbs, filteredNotes, counts] = await Promise.all([
-      invoke<Notebook[]>("get_notebooks"),
-      invoke<NoteListItem[]>("get_notes", { notebookId: state.selectedNotebookId }),
-      invoke<NoteCounts>("get_note_counts"),
+      getNotebooks(),
+      getNotes(state.selectedNotebookId),
+      getNoteCounts(),
     ]);
     const notesWithExcerpt = filteredNotes.map((note) => ({
       ...note,
@@ -89,7 +102,7 @@ const loadSelectedNote = async () => {
   const token = noteLoadToken;
   appStore.setState({ isNoteLoading: true });
   try {
-    const note = await invoke<NoteDetail | null>("get_note", { id: noteId });
+    const note = await getNote(noteId);
     if (!note) {
       appStore.setState({ activeNote: null, title: "", content: "" });
       return;
@@ -118,7 +131,7 @@ const scheduleAutosave = () => {
     if (!currentNote || currentNote.id !== state.selectedNoteId) return;
     if (state.title !== currentNote.title || state.content !== currentNote.content) {
       const storageContent = toStorageContent(state.content);
-      await invoke("upsert_note", { id: state.selectedNoteId, title: state.title, content: storageContent, notebookId: currentNote.notebookId });
+      await updateNote(state.selectedNoteId, state.title, storageContent, currentNote.notebookId);
       const updatedAt = Date.now() / 1000;
       const excerpt = buildExcerpt(state.content);
       appStore.setState({
@@ -150,13 +163,13 @@ export const actions = {
   setListWidth: (value: number) => appStore.setState({ listWidth: value }),
   createNote: async () => {
     const state = appStore.getState();
-    const id = await invoke<number>("upsert_note", { id: null, title: "New Note", content: "", notebookId: state.selectedNotebookId });
+    const id = await createNote("New Note", "", state.selectedNotebookId);
     await fetchData();
     await actions.selectNote(id);
   },
   createNoteInNotebook: async (notebookId: number) => {
     appStore.setState({ selectedNotebookId: notebookId });
-    const id = await invoke<number>("upsert_note", { id: null, title: "New Note", content: "", notebookId });
+    const id = await createNote("New Note", "", notebookId);
     await fetchData();
     await actions.selectNote(id);
   },
@@ -177,7 +190,7 @@ export const actions = {
         appStore.setState({ selectedNoteId: nextNotes[0].id });
       } else if (state.selectedNotebookId !== null) {
         try {
-          const allNotes = await invoke<NoteListItem[]>("get_notes", { notebookId: null });
+          const allNotes = await getNotes(null);
           if (allNotes.length > 0) {
             appStore.setState({ selectedNotebookId: null, selectedNoteId: allNotes[0].id });
           } else {
@@ -191,7 +204,7 @@ export const actions = {
       }
     }
 
-    await invoke("delete_note", { id });
+    await deleteNote(id);
     const postState = appStore.getState();
     appStore.setState({
       notes: nextNotes,
@@ -207,7 +220,7 @@ export const actions = {
   createNotebook: async (parentId: number | null) => {
     const name = await openNotebookDialog({ parentId });
     if (!name) return;
-    await invoke("create_notebook", { name, parentId });
+    await createNotebook(name, parentId);
     fetchData();
   },
   deleteNotebook: async (id: number) => {
@@ -218,7 +231,7 @@ export const actions = {
       danger: true,
     });
     if (!ok) return;
-    await invoke("delete_notebook", { id });
+    await deleteNotebook(id);
     const state = appStore.getState();
     if (state.selectedNotebookId === id) {
       appStore.setState({ selectedNotebookId: null });
@@ -226,7 +239,7 @@ export const actions = {
     fetchData();
   },
   moveNoteToNotebook: async (noteId: number, notebookId: number | null) => {
-    await invoke("move_note", { noteId, notebookId });
+    await moveNote(noteId, notebookId);
     const state = appStore.getState();
     if (state.selectedNotebookId !== null && notebookId !== state.selectedNotebookId) {
       if (state.selectedNoteId === noteId) {
@@ -251,7 +264,7 @@ export const actions = {
       if (targetIndex < 0) targetIndex = siblings.length;
       if (position === "after" || position === "inside") targetIndex += 1;
       if (isDescendant(state.notebooks, targetParentId, activeId)) return;
-      await invoke("move_notebook", { notebookId: activeId, parentId: targetParentId, index: targetIndex });
+      await moveNotebook(activeId, targetParentId, targetIndex);
       fetchData();
       return;
     }
@@ -264,7 +277,7 @@ export const actions = {
         const siblings = getOrderedChildren(state.notebooks, targetParentId).filter((nb) => nb.id !== activeId);
         const targetIndex = siblings.length;
         if (isDescendant(state.notebooks, targetParentId, activeId)) return;
-        await invoke("move_notebook", { notebookId: activeId, parentId: targetParentId, index: targetIndex });
+        await moveNotebook(activeId, targetParentId, targetIndex);
         fetchData();
         return;
       }
@@ -278,7 +291,7 @@ export const actions = {
       if (targetIndex < 0) targetIndex = siblings.length;
       if (position === "after" || position === "inside") targetIndex += 1;
       if (isDescendant(state.notebooks, targetParentId, activeId)) return;
-      await invoke("move_notebook", { notebookId: activeId, parentId: targetParentId, index: targetIndex });
+      await moveNotebook(activeId, targetParentId, targetIndex);
       fetchData();
     }
   },

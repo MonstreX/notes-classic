@@ -42,8 +42,9 @@ const buildAssetUrl = async (relPath: string) => {
 
 export const toDisplayContent = async (raw: string) => {
   if (!raw) return raw;
-  const matches = Array.from(raw.matchAll(/src=(\"|')notes-file:\/\/files\/(?:evernote\/)?([^\"']+)\1/g));
-  if (matches.length === 0) return raw;
+  const normalized = ensureNotesScheme(raw);
+  const matches = Array.from(normalized.matchAll(/src=(\"|')notes-file:\/\/files\/(?:evernote\/)?([^\"']+)\1/g));
+  if (matches.length === 0) return normalized;
 
   const uniqueRel = Array.from(new Set(matches.map((m) => m[2])));
   const resolved = new Map<string, string>();
@@ -56,7 +57,7 @@ export const toDisplayContent = async (raw: string) => {
     })
   );
 
-  return raw.replace(/src=(\"|')notes-file:\/\/files\/(?:evernote\/)?([^\"']+)\1/g, (match, quote, rel) => {
+  return normalized.replace(/src=(\"|')notes-file:\/\/files\/(?:evernote\/)?([^\"']+)\1/g, (match, quote, rel) => {
     const assetUrl = resolved.get(rel);
     if (!assetUrl) return match;
     return `src=${quote}${assetUrl}${quote}`;
