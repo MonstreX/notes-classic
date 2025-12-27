@@ -26,7 +26,6 @@ export interface NotesListState {
 export interface NotesListHandlers {
   onSelectNote: (id: number) => void;
   onDeleteNote: (id: number) => void;
-  onSearchChange: (value: string) => void;
   onNoteContextMenu: (event: MouseEvent, id: number) => void;
   onMoveNote: (noteId: number, notebookId: number | null) => void;
 }
@@ -64,19 +63,6 @@ const renderHeader = (state: NotesListState) => {
       <h2 class="notes-list__title">
         ${escapeHtml(title)}
       </h2>
-      <div class="notes-list__search">
-        <svg class="notes-list__search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="11" cy="11" r="8"></circle>
-          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-        </svg>
-        <input
-          type="text"
-          placeholder="Search..."
-          class="notes-list__search-input"
-          value="${escapeHtml(state.searchTerm)}"
-          data-action="search"
-        />
-      </div>
     </div>
   `;
 };
@@ -296,14 +282,6 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
     if (Number.isFinite(id)) handlers.onSelectNote(id);
   };
 
-  const handleInput = (event: Event) => {
-    const target = event.target as HTMLInputElement | null;
-    if (!target) return;
-    if (target.dataset.action === "search") {
-      handlers.onSearchChange(target.value);
-    }
-  };
-
   const handleKeyDown = (event: KeyboardEvent) => {
     if (event.key !== "Delete") return;
     const target = event.target as HTMLElement | null;
@@ -332,7 +310,6 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
   window.addEventListener("pointerup", handlePointerUp);
   window.addEventListener("pointercancel", handlePointerCancel);
   root.addEventListener("click", handleClick);
-  root.addEventListener("input", handleInput);
   root.addEventListener("contextmenu", handleContextMenu);
   window.addEventListener("keydown", handleKeyDown);
 
@@ -379,7 +356,6 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
       window.removeEventListener("pointerup", handlePointerUp);
       window.removeEventListener("pointercancel", handlePointerCancel);
       root.removeEventListener("click", handleClick);
-      root.removeEventListener("input", handleInput);
       root.removeEventListener("contextmenu", handleContextMenu);
       window.removeEventListener("keydown", handleKeyDown);
       cleanupDrag();

@@ -51,22 +51,20 @@ export const mountApp = (root: HTMLElement) => {
   sidebarInner.className = "app-shell__sidebar-inner";
   sidebar.appendChild(sidebarInner);
 
-  const brandRow = document.createElement("div");
-  brandRow.className = "brand";
-  sidebarInner.appendChild(brandRow);
-
-  const brandIcon = document.createElement("div");
-  brandIcon.className = "brand__icon";
-  brandIcon.textContent = "M";
-  brandRow.appendChild(brandIcon);
-
-  const brandText = document.createElement("span");
-  brandText.className = "brand__text";
-  brandText.textContent = "Notes Classic";
-  brandRow.appendChild(brandText);
+  const searchButton = document.createElement("button");
+  searchButton.className = "btn btn--secondary btn--pill btn--full btn--search";
+  const searchIcon = createIcon(
+    "M11 4a7 7 0 1 0 4.9 12l4.3 4.3 1.4-1.4-4.3-4.3A7 7 0 0 0 11 4z",
+    "btn__icon"
+  );
+  searchButton.appendChild(searchIcon);
+  const searchLabel = document.createElement("span");
+  searchLabel.textContent = "Поиск";
+  searchButton.appendChild(searchLabel);
+  sidebarInner.appendChild(searchButton);
 
   const newNoteButton = document.createElement("button");
-  newNoteButton.className = "btn btn--primary btn--pill btn--new-note";
+  newNoteButton.className = "btn btn--primary btn--pill btn--full btn--new-note";
   const plusIcon = createIcon("M12 5v14M5 12h14", "btn__icon");
   newNoteButton.appendChild(plusIcon);
   const newNoteLabel = document.createElement("span");
@@ -121,6 +119,26 @@ export const mountApp = (root: HTMLElement) => {
   editorHost.className = "editor-host app-shell__editor-host";
   editorShell.appendChild(editorHost);
 
+  const searchOverlay = document.createElement("div");
+  searchOverlay.className = "search-modal";
+  searchOverlay.style.display = "none";
+  const searchPanel = document.createElement("div");
+  searchPanel.className = "search-modal__panel";
+  const searchTitle = document.createElement("div");
+  searchTitle.className = "search-modal__title";
+  searchTitle.textContent = "Поиск";
+  const searchField = document.createElement("div");
+  searchField.className = "search-modal__field";
+  const searchInput = document.createElement("input");
+  searchInput.className = "search-modal__input";
+  searchInput.type = "text";
+  searchInput.placeholder = "Поиск...";
+  searchField.appendChild(searchInput);
+  searchPanel.appendChild(searchTitle);
+  searchPanel.appendChild(searchField);
+  searchOverlay.appendChild(searchPanel);
+  editorPane.appendChild(searchOverlay);
+
   const emptyState = document.createElement("div");
   emptyState.className = "app-shell__empty";
   const emptyIcon = createIcon("M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM14 3v6h6", "app-shell__empty-icon");
@@ -153,7 +171,6 @@ export const mountApp = (root: HTMLElement) => {
   const notesListHandlers: NotesListHandlers = {
     onSelectNote: (id) => actions.selectNote(id),
     onDeleteNote: (id) => actions.deleteNote(id),
-    onSearchChange: (value) => actions.setSearchTerm(value),
     onNoteContextMenu: (event, id) => {
       event.preventDefault();
       const state = appStore.getState();
@@ -197,10 +214,45 @@ export const mountApp = (root: HTMLElement) => {
   let pendingEditorNoteId: number | null = null;
   let pendingEditorContent = "";
   let isEditorUpdating = false;
+  let isSearchOpen = false;
 
   const setEditorLoadingVisible = (visible: boolean) => {
     editorLoading.style.display = visible ? "flex" : "none";
   };
+
+  const setSearchVisible = (visible: boolean) => {
+    isSearchOpen = visible;
+    searchOverlay.style.display = visible ? "flex" : "none";
+    if (visible) {
+      const state = appStore.getState();
+      searchInput.value = state.searchTerm;
+      window.setTimeout(() => {
+        searchInput.focus();
+        searchInput.select();
+      }, 0);
+    }
+  };
+
+  searchButton.addEventListener("click", () => {
+    setSearchVisible(true);
+  });
+
+  searchOverlay.addEventListener("click", (event) => {
+    if (event.target === searchOverlay) {
+      setSearchVisible(false);
+    }
+  });
+
+  searchInput.addEventListener("input", () => {
+    actions.setSearchTerm(searchInput.value);
+  });
+
+  const handleSearchKeydown = (event: KeyboardEvent) => {
+    if (event.key === "Escape" && isSearchOpen) {
+      setSearchVisible(false);
+    }
+  };
+  window.addEventListener("keydown", handleSearchKeydown);
 
   const scheduleEditorUpdate = (noteId: number | null, content: string) => {
     if (pendingEditorUpdate !== null) {
@@ -355,6 +407,7 @@ export const mountApp = (root: HTMLElement) => {
     editorInstance.destroy();
     window.removeEventListener("mousemove", handleMouseMove);
     window.removeEventListener("mouseup", handleMouseUp);
+    window.removeEventListener("keydown", handleSearchKeydown);
     root.removeChild(app);
     root.removeChild(loading);
   };
