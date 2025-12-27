@@ -380,6 +380,8 @@ export const initApp = async () => {
       nextState.selectedNotebookId !== prevState.selectedNotebookId ||
       nextState.selectedNoteId !== prevState.selectedNoteId ||
       nextState.notesListView !== prevState.notesListView ||
+      nextState.notesSortBy !== prevState.notesSortBy ||
+      nextState.notesSortDir !== prevState.notesSortDir ||
       nextState.expandedNotebooks !== prevState.expandedNotebooks
     ) {
       persistSettings(nextState);
