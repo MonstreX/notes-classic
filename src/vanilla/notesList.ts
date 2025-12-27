@@ -331,6 +331,12 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
     const target = event.target as HTMLElement | null;
     if (!target) return;
     const headerAction = target.closest<HTMLElement>("[data-action]");
+    if (headerAction?.dataset.action === "delete-note") {
+      event.stopPropagation();
+      const id = Number(headerAction.dataset.noteId);
+      if (Number.isFinite(id)) handlers.onDeleteNote(id);
+      return;
+    }
     if (headerAction && headerAction.dataset.action) {
       const action = headerAction.dataset.action;
       if (action === "filter") {
@@ -347,13 +353,6 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
         handlers.onToggleView();
         return;
       }
-    }
-    const actionEl = target.closest<HTMLElement>("[data-action]");
-    if (actionEl?.dataset.action === "delete-note") {
-      event.stopPropagation();
-      const id = Number(actionEl.dataset.noteId);
-      if (Number.isFinite(id)) handlers.onDeleteNote(id);
-      return;
     }
     const row = target.closest<HTMLElement>("[data-note-row]");
     if (!row) return;
