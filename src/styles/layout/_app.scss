@@ -101,6 +101,7 @@
 
 .app-shell__meta {
   height: 40px;
+  min-height: 40px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -130,8 +131,8 @@
 }
 
 .app-shell__titlebar {
-  position: absolute;
-  top: 80px;
+  position: relative;
+  /* top: 80px; */
   padding: 24px 40px;
   flex-shrink: 0;
   /* background: var(--color-white); */
