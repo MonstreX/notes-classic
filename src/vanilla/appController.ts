@@ -10,6 +10,9 @@ const STORAGE_KEY = "notes_classic_v10_stable";
 const imageSrcMap = new Map<string, string>();
 const dataFileCache = new Map<string, string>();
 
+const stripTags = (value: string) => value.replace(/<[^>]*>/g, "");
+const buildExcerpt = (value: string) => stripTags(value || "");
+
 const normalizeEnmlContent = (raw: string) => {
   if (!raw) return raw;
   let out = raw.replace(/<en-note[^>]*>/gi, "<div>");
@@ -96,29 +99,52 @@ const fetchData = async () => {
       invoke<NoteListItem[]>("get_notes", { notebookId: state.selectedNotebookId }),
       invoke<NoteCounts>("get_note_counts"),
     ]);
+    const notesWithExcerpt = filteredNotes.map((note) => ({
+      ...note,
+      excerpt: buildExcerpt(note.content || ""),
+    }));
     const map = new Map<number, number>();
     counts.perNotebook.forEach((item) => {
       map.set(item.notebookId, item.count);
     });
-    appStore.setState({
+    let nextSelectedNoteId = state.selectedNoteId;
+    if (state.selectedNotebookId !== null) {
+      const hasSelected = notesWithExcerpt.some((note) => note.id === state.selectedNoteId);
+      nextSelectedNoteId = hasSelected ? state.selectedNoteId : (notesWithExcerpt[0]?.id ?? null);
+    }
+    const selectionChanged = nextSelectedNoteId !== state.selectedNoteId;
+    const nextState: Partial<typeof state> = {
       notebooks: nbs,
-      notes: filteredNotes,
+      notes: notesWithExcerpt,
       noteCounts: map,
       totalNotes: counts.total,
-    });
+      selectedNoteId: nextSelectedNoteId,
+    };
+    if (selectionChanged && nextSelectedNoteId !== null) {
+      nextState.isNoteLoading = true;
+    }
+    appStore.setState(nextState);
+    if (nextSelectedNoteId !== null && (selectionChanged || state.activeNote?.id !== nextSelectedNoteId)) {
+      await loadSelectedNote();
+    }
   } catch (err) {
     console.error("Fetch Error:", err);
   }
 };
 
+let noteLoadToken = 0;
+
 const loadSelectedNote = async () => {
   const initialState = appStore.getState();
-  if (!initialState.selectedNoteId) {
-    appStore.setState({ activeNote: null, title: "", content: "" });
+  const noteId = initialState.selectedNoteId;
+  if (!noteId) {
+    appStore.setState({ activeNote: null, title: "", content: "", isNoteLoading: false });
     return;
   }
+  noteLoadToken += 1;
+  const token = noteLoadToken;
+  appStore.setState({ isNoteLoading: true });
   try {
-    const noteId = initialState.selectedNoteId;
     const note = await invoke<NoteDetail | null>("get_note", { id: noteId });
     if (!note) {
       appStore.setState({ activeNote: null, title: "", content: "" });
@@ -127,28 +153,14 @@ const loadSelectedNote = async () => {
     const currentState = appStore.getState();
     if (currentState.selectedNoteId !== noteId) return;
     const normalized = ensureNotesScheme(normalizeEnmlContent(note.content));
-    try {
-      const displayContent = await toDisplayContent(normalized);
-      const finalNote = displayContent !== note.content ? { ...note, content: displayContent } : note;
-      const hasEdits = currentState.title !== initialState.title || currentState.content !== initialState.content;
-      if (hasEdits) {
-        appStore.setState({
-          activeNote: { ...finalNote, title: currentState.title, content: currentState.content },
-        });
-        return;
-      }
-      appStore.setState({ activeNote: finalNote, title: finalNote.title, content: finalNote.content });
-    } catch (e) {
-      const hasEdits = currentState.title !== initialState.title || currentState.content !== initialState.content;
-      if (hasEdits) {
-        appStore.setState({
-          activeNote: { ...note, title: currentState.title, content: currentState.content },
-        });
-        return;
-      }
-      appStore.setState({ activeNote: note, title: note.title, content: note.content });
-    }
+    const finalNote = normalized !== note.content ? { ...note, content: normalized } : note;
+    appStore.setState({ activeNote: finalNote, title: finalNote.title, content: finalNote.content });
   } catch (e) {}
+  finally {
+    if (token === noteLoadToken) {
+      appStore.setState({ isNoteLoading: false });
+    }
+  }
 };
 
 let saveTimer: number | null = null;
@@ -163,9 +175,10 @@ const scheduleAutosave = () => {
       const storageContent = toStorageContent(state.content);
       await invoke("upsert_note", { id: state.selectedNoteId, title: state.title, content: storageContent, notebookId: currentNote.notebookId });
       const updatedAt = Date.now() / 1000;
+      const excerpt = buildExcerpt(state.content);
       appStore.setState({
         activeNote: { ...currentNote, title: state.title, content: state.content, updatedAt },
-        notes: state.notes.map((n) => n.id === state.selectedNoteId ? { ...n, title: state.title, content: state.content, updatedAt } : n),
+        notes: state.notes.map((n) => n.id === state.selectedNoteId ? { ...n, title: state.title, content: state.content, excerpt, updatedAt } : n),
       });
     }
   }, 1000);
@@ -175,7 +188,12 @@ export const actions = {
   setSearchTerm: (value: string) => appStore.setState({ searchTerm: value }),
   setTitle: (value: string) => appStore.setState({ title: value }),
   setContent: (value: string) => appStore.setState({ content: value }),
-  selectNote: (id: number) => appStore.setState({ selectedNoteId: id }),
+  selectNote: async (id: number) => {
+    const state = appStore.getState();
+    if (state.selectedNoteId === id) return;
+    appStore.setState({ selectedNoteId: id, isNoteLoading: true });
+    await loadSelectedNote();
+  },
   selectNotebook: (id: number | null) => appStore.setState({ selectedNotebookId: id }),
   toggleNotebook: (id: number) => {
     const current = appStore.getState().expandedNotebooks;
@@ -396,7 +414,6 @@ export const initApp = async () => {
 
   await loadSettings();
   await fetchData();
-  await loadSelectedNote();
 
   const unlistenView = await listen<string>("notes-list-view", (event) => {
     if (event.payload === "compact" || event.payload === "detailed") {
@@ -436,18 +453,13 @@ export const initApp = async () => {
       fetchData();
     }
 
-    if (nextState.selectedNoteId !== prevState.selectedNoteId) {
-      loadSelectedNote();
-    }
-
     if (nextState.notesListView !== prevState.notesListView) {
       invoke("set_notes_list_view", { view: nextState.notesListView }).catch(() => {});
     }
 
     if (
       nextState.title !== prevState.title ||
-      nextState.content !== prevState.content ||
-      nextState.selectedNoteId !== prevState.selectedNoteId
+      nextState.content !== prevState.content
     ) {
       scheduleAutosave();
     }

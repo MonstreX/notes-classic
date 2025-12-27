@@ -1,5 +1,26 @@
 import { Jodit } from "jodit";
-import "jodit/esm/plugins/all.js";
+import "jodit/esm/plugins/backspace/backspace.js";
+import "jodit/esm/plugins/bold/bold.js";
+import "jodit/esm/plugins/clipboard/clipboard.js";
+import "jodit/esm/plugins/delete/delete.js";
+import "jodit/esm/plugins/drag-and-drop/drag-and-drop.js";
+import "jodit/esm/plugins/drag-and-drop-element/drag-and-drop-element.js";
+import "jodit/esm/plugins/enter/enter.js";
+import "jodit/esm/plugins/focus/focus.js";
+import "jodit/esm/plugins/hotkeys/hotkeys.js";
+import "jodit/esm/plugins/image/image.js";
+import "jodit/esm/plugins/inline-popup/inline-popup.js";
+import "jodit/esm/plugins/key-arrow-outside/key-arrow-outside.js";
+import "jodit/esm/plugins/link/link.js";
+import "jodit/esm/plugins/ordered-list/ordered-list.js";
+import "jodit/esm/plugins/paste/paste.js";
+import "jodit/esm/plugins/redo-undo/redo-undo.js";
+import "jodit/esm/plugins/resize-cells/resize-cells.js";
+import "jodit/esm/plugins/resize-handler/resize-handler.js";
+import "jodit/esm/plugins/resizer/resizer.js";
+import "jodit/esm/plugins/select-cells/select-cells.js";
+import "jodit/esm/plugins/tab/tab.js";
+import "jodit/esm/plugins/table/table.js";
 import hljs from "highlight.js/lib/core";
 import javascript from "highlight.js/lib/languages/javascript";
 import xml from "highlight.js/lib/languages/xml";
@@ -621,9 +642,13 @@ export const mountEditor = (root: HTMLElement, options: EditorOptions): EditorIn
   editor.value = options.content || "";
 
   let isUpdating = false;
+  let lastEmittedValue = editor.value;
   const handleChange = () => {
     if (isUpdating) return;
-    options.onChange(editor.value);
+    const value = editor.value;
+    if (value === lastEmittedValue) return;
+    lastEmittedValue = value;
+    options.onChange(value);
   };
 
   setupCodeToolbarHandlers(editor);
@@ -667,10 +692,14 @@ export const mountEditor = (root: HTMLElement, options: EditorOptions): EditorIn
 
   return {
     update: (content: string) => {
-      if (content === editor.value) return;
+      const next = content || "";
+      if (next === editor.value) return;
       isUpdating = true;
-      editor.value = content || "";
+      editor.events.off("change", handleChange);
+      editor.value = next;
       editor.history?.clear();
+      lastEmittedValue = editor.value;
+      editor.events.on("change", handleChange);
       isUpdating = false;
       applyHighlightToEditor(editor);
     },

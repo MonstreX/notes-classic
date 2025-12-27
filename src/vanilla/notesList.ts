@@ -2,6 +2,7 @@ export interface NotesListItem {
   id: number;
   title: string;
   content: string;
+  excerpt?: string;
   updatedAt: number;
   notebookId: number | null;
 }
@@ -97,7 +98,7 @@ const renderNoteRow = (note: NotesListItem, state: NotesListState) => {
     `;
   }
 
-  const excerpt = stripTags(note.content || "");
+  const excerpt = note.excerpt ?? stripTags(note.content || "");
   return `
     <div class="px-6 py-5 border-b border-gray-100 cursor-pointer relative bg-white ${isSelected ? "ring-1 ring-[#00A82D] z-10" : "group hover:bg-[#F8F8F8]"}" data-note-row="1" data-note-id="${note.id}">
       <div class="flex justify-between items-start mb-1 text-black">
@@ -145,6 +146,7 @@ const renderNotesList = (state: NotesListState) => `
 
 export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): NotesListInstance => {
   let currentState: NotesListState | null = null;
+  let lastRendered: NotesListState | null = null;
   let dragActive = false;
   let dragStarted = false;
   let ignoreClick = false;
@@ -267,6 +269,12 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
 
   const handlePointerUp = () => {
     if (!dragActive) return;
+    if (!dragStarted && dragNoteId) {
+      ignoreClick = true;
+      handlers.onSelectNote(dragNoteId);
+      cleanupDrag();
+      return;
+    }
     if (dragStarted && dragNoteId && dragHasTarget) {
       handlers.onMoveNote(dragNoteId, dragOverNotebookId);
     }
@@ -324,11 +332,50 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
   root.addEventListener("input", handleInput);
   root.addEventListener("contextmenu", handleContextMenu);
 
+  const updateSelection = (prevId: number | null, nextId: number | null, view: NotesListView) => {
+    if (prevId !== null) {
+      const prevRow = root.querySelector<HTMLElement>(`[data-note-row="1"][data-note-id="${prevId}"]`);
+      if (prevRow) {
+        prevRow.classList.remove("bg-[#F2F2F2]", "ring-1", "ring-[#00A82D]", "z-10");
+        const title = prevRow.querySelector("h3");
+        if (title) title.classList.remove("text-[#00A82D]");
+      }
+    }
+    if (nextId !== null) {
+      const nextRow = root.querySelector<HTMLElement>(`[data-note-row="1"][data-note-id="${nextId}"]`);
+      if (nextRow) {
+        if (view === "compact") {
+          nextRow.classList.add("bg-[#F2F2F2]");
+        } else {
+          nextRow.classList.add("ring-1", "ring-[#00A82D]", "z-10");
+        }
+        const title = nextRow.querySelector("h3");
+        if (title) title.classList.add("text-[#00A82D]");
+      }
+    }
+  };
+
   return {
     update: (state: NotesListState) => {
+      const prev = lastRendered;
+      const shouldFullRender =
+        !prev ||
+        prev.notes !== state.notes ||
+        prev.notebooks !== state.notebooks ||
+        prev.selectedNotebookId !== state.selectedNotebookId ||
+        prev.notesListView !== state.notesListView ||
+        prev.searchTerm !== state.searchTerm;
+
       currentState = state;
       cleanupDrag();
-      root.innerHTML = renderNotesList(state);
+
+      if (shouldFullRender) {
+        root.innerHTML = renderNotesList(state);
+      } else if (prev.selectedNoteId !== state.selectedNoteId) {
+        updateSelection(prev.selectedNoteId, state.selectedNoteId, state.notesListView);
+      }
+
+      lastRendered = state;
     },
     destroy: () => {
       root.removeEventListener("pointerdown", handlePointerDown);

@@ -11,6 +11,7 @@ export interface NoteListItem {
   id: number;
   title: string;
   content: string;
+  excerpt?: string;
   updatedAt: number;
   notebookId: number | null;
 }

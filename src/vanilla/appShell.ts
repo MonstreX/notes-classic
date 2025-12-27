@@ -118,7 +118,7 @@ export const mountApp = (root: HTMLElement) => {
   titleBar.appendChild(titleInput);
 
   const editorHost = document.createElement("div");
-  editorHost.className = "flex-1 overflow-hidden min-h-0";
+  editorHost.className = "editor-host flex-1 overflow-hidden min-h-0";
   editorShell.appendChild(editorHost);
 
   const emptyState = document.createElement("div");
@@ -173,8 +173,58 @@ export const mountApp = (root: HTMLElement) => {
       editorFocused = false;
     },
   });
+  const editorLoading = document.createElement("div");
+  editorLoading.className = "editor-loading";
+  const editorSpinner = document.createElement("div");
+  editorSpinner.className = "editor-loading__spinner";
+  editorLoading.appendChild(editorSpinner);
+  editorHost.appendChild(editorLoading);
   let lastRenderedNoteId: number | null = null;
   let lastRenderedContent = "";
+  let lastSidebarState: SidebarState | null = null;
+  let lastNotesListState: NotesListState | null = null;
+  let pendingEditorUpdate: number | null = null;
+  let pendingEditorNoteId: number | null = null;
+  let pendingEditorContent = "";
+  let isEditorUpdating = false;
+
+  const setEditorLoadingVisible = (visible: boolean) => {
+    editorLoading.style.display = visible ? "flex" : "none";
+  };
+
+  const scheduleEditorUpdate = (noteId: number | null, content: string) => {
+    if (pendingEditorUpdate !== null) {
+      window.clearTimeout(pendingEditorUpdate);
+      pendingEditorUpdate = null;
+    }
+    pendingEditorNoteId = noteId;
+    pendingEditorContent = content;
+    isEditorUpdating = true;
+    if (noteId !== null) {
+      setEditorLoadingVisible(true);
+    }
+    pendingEditorUpdate = window.setTimeout(() => {
+      pendingEditorUpdate = null;
+      const current = appStore.getState();
+      if (current.selectedNoteId !== pendingEditorNoteId) {
+        isEditorUpdating = false;
+        if (current.selectedNoteId === null) {
+          setEditorLoadingVisible(false);
+        }
+        return;
+      }
+      try {
+        editorInstance.update(pendingEditorContent);
+        lastRenderedNoteId = pendingEditorNoteId;
+        lastRenderedContent = pendingEditorContent;
+      } catch (e) {
+        console.error("[editor] update failed", e);
+      } finally {
+        isEditorUpdating = false;
+        setEditorLoadingVisible(current.isNoteLoading);
+      }
+    }, 0);
+  };
 
   let isResizingSidebar = false;
   let isResizingList = false;
@@ -219,6 +269,7 @@ export const mountApp = (root: HTMLElement) => {
     }
 
     const hasNote = !!state.selectedNoteId;
+    setEditorLoadingVisible(hasNote && (state.isNoteLoading || isEditorUpdating));
     editorShell.style.display = hasNote ? "flex" : "none";
     emptyState.style.display = hasNote ? "none" : "flex";
 
@@ -239,17 +290,42 @@ export const mountApp = (root: HTMLElement) => {
       searchTerm: state.searchTerm,
     };
 
-    sidebarInstance.update(sidebarState);
-    notesListInstance.update(notesListState);
+    const shouldUpdateSidebar =
+      !lastSidebarState ||
+      lastSidebarState.notebooks !== sidebarState.notebooks ||
+      lastSidebarState.selectedNotebookId !== sidebarState.selectedNotebookId ||
+      lastSidebarState.expandedNotebooks !== sidebarState.expandedNotebooks ||
+      lastSidebarState.noteCounts !== sidebarState.noteCounts ||
+      lastSidebarState.totalNotes !== sidebarState.totalNotes;
+
+    if (shouldUpdateSidebar) {
+      sidebarInstance.update(sidebarState);
+      lastSidebarState = sidebarState;
+    }
+
+    const shouldUpdateList =
+      !lastNotesListState ||
+      lastNotesListState.notes !== notesListState.notes ||
+      lastNotesListState.notebooks !== notesListState.notebooks ||
+      lastNotesListState.selectedNotebookId !== notesListState.selectedNotebookId ||
+      lastNotesListState.selectedNoteId !== notesListState.selectedNoteId ||
+      lastNotesListState.notesListView !== notesListState.notesListView ||
+      lastNotesListState.searchTerm !== notesListState.searchTerm;
+
+    if (shouldUpdateList) {
+      notesListInstance.update(notesListState);
+      lastNotesListState = notesListState;
+    }
     if (hasNote) {
-      const isSameNote = lastRenderedNoteId === state.selectedNoteId;
-      if (!isSameNote) {
-        editorInstance.update(state.content);
-      } else if (!editorFocused && state.content !== lastRenderedContent) {
-        editorInstance.update(state.content);
+      const readyNote = state.activeNote && state.activeNote.id === state.selectedNoteId;
+      if (readyNote && !state.isNoteLoading) {
+        const isSameNote = lastRenderedNoteId === state.selectedNoteId;
+        if (!isSameNote) {
+          scheduleEditorUpdate(state.selectedNoteId, state.content);
+        } else if (!editorFocused && state.content !== lastRenderedContent) {
+          scheduleEditorUpdate(state.selectedNoteId, state.content);
+        }
       }
-      lastRenderedNoteId = state.selectedNoteId;
-      lastRenderedContent = state.content;
     }
   };
 
