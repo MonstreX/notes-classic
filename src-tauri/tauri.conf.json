@@ -16,7 +16,12 @@
       "assetProtocol": {
         "enable": true,
         "scope": {
-          "allow": ["**"]
+          "allow": [
+            "data/**",
+            "../data/**",
+            "../../data/**",
+            "../../../data/**"
+          ]
         }
       },
       "capabilities": [
