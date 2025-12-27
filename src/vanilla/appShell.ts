@@ -423,7 +423,15 @@ export const mountApp = (root: HTMLElement) => {
       metaNotebookText.textContent = notebook?.name ?? "";
       if (state.activeNote?.updatedAt) {
         const date = new Date(state.activeNote.updatedAt * 1000);
-        metaUpdated.textContent = date.toLocaleDateString();
+        const formatted = date.toLocaleString("en-US", {
+          year: "numeric",
+          month: "short",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        });
+        metaUpdated.textContent = `Last edited on ${formatted}`;
       } else {
         metaUpdated.textContent = "";
       }
