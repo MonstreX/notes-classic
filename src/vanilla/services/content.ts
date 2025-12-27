@@ -1,4 +1,5 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { logError } from "../logger";
 
 const imageSrcMap = new Map<string, string>();
 const assetUrlCache = new Map<string, string>();
@@ -53,7 +54,9 @@ export const toDisplayContent = async (raw: string) => {
       try {
         const assetUrl = await buildAssetUrl(rel);
         resolved.set(rel, assetUrl);
-      } catch (e) {}
+      } catch (e) {
+        logError("[content] asset url failed", e);
+      }
     })
   );
 

@@ -28,6 +28,7 @@ import css from "highlight.js/lib/languages/css";
 import php from "highlight.js/lib/languages/php";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { open } from "@tauri-apps/plugin-shell";
+import { logError } from "./logger";
 
 hljs.registerLanguage("javascript", javascript);
 hljs.registerLanguage("js", javascript);
@@ -153,14 +154,18 @@ const applyHighlightToEditor = (editor: any) => {
         const result = hljs.highlight(text, { language: mapped });
         code.innerHTML = result.value;
         code.className = `hljs language-${mapped}`;
-      } catch (e) {}
+      } catch (e) {
+        logError("[note-code] highlight failed", e);
+      }
       return;
     }
     try {
       const result = hljs.highlightAuto(text, ["php", "html", "javascript", "css"]);
       code.innerHTML = result.value;
       code.className = result.language ? `hljs language-${result.language}` : "hljs";
-    } catch (e) {}
+    } catch (e) {
+      logError("[note-code] auto highlight failed", e);
+    }
   });
 };
 
@@ -204,10 +209,14 @@ const setupCodeToolbarHandlers = (editor: any) => {
         try {
           await writeText(text);
           return;
-        } catch (e) {}
+        } catch (e) {
+          logError("[note-code] copy failed", e);
+        }
         try {
           await navigator.clipboard.writeText(text);
-        } catch (e) {}
+        } catch (e) {
+          logError("[note-code] clipboard fallback failed", e);
+        }
       }
     },
     true
@@ -257,7 +266,9 @@ const setupLinkHandlers = (editor: any) => {
       event.stopPropagation();
       try {
         await open(href);
-      } catch (e) {}
+      } catch (e) {
+        logError("[note-link] open failed", e);
+      }
     },
     true
   );

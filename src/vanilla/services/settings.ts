@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { AppState } from "../store";
 import { appStore } from "../store";
+import { logError } from "../logger";
 
 const STORAGE_KEY = "notes_classic_v10_stable";
 let saveSettingsTimer: number | null = null;
@@ -16,7 +17,9 @@ export const persistSettings = (state: AppState) => {
       expandedNotebooks: Array.from(state.expandedNotebooks),
       notesListView: state.notesListView,
     };
-    invoke("set_settings", { settings: payload }).catch(() => {});
+    invoke("set_settings", { settings: payload }).catch((e) => {
+      logError("[settings] persist failed", e);
+    });
   }, 200);
 };
 
@@ -85,7 +88,9 @@ export const loadSettings = async () => {
       });
       await invoke("set_settings", { settings: legacy });
     }
-  } catch (e) {}
+  } catch (e) {
+    logError("[settings] load failed", e);
+  }
 };
 
 export const cleanupSettings = () => {

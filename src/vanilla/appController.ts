@@ -3,6 +3,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { openNotebookDialog, openConfirmDialog } from "./dialogs";
 import type { Notebook } from "./types";
 import { appStore } from "./store";
+import { logError } from "./logger";
 import {
   ensureNotesScheme,
   normalizeEnmlContent,
@@ -113,7 +114,9 @@ const loadSelectedNote = async () => {
     const displayContent = await toDisplayContent(normalized);
     const finalNote = displayContent !== note.content ? { ...note, content: displayContent } : note;
     appStore.setState({ activeNote: finalNote, title: finalNote.title, content: finalNote.content });
-  } catch (e) {}
+  } catch (e) {
+    logError("[note] load failed", e);
+  }
   finally {
     if (token === noteLoadToken) {
       appStore.setState({ isNoteLoading: false });
@@ -197,6 +200,7 @@ export const actions = {
             appStore.setState({ selectedNoteId: null, activeNote: null, title: "", content: "" });
           }
         } catch (e) {
+          logError("[note] fallback selection failed", e);
           appStore.setState({ selectedNoteId: null, activeNote: null, title: "", content: "" });
         }
       } else {
