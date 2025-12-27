@@ -344,12 +344,14 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
         return;
       }
       if (action === "sort") {
+        event.stopPropagation();
         if (currentState) {
           openSortMenu(headerAction, currentState);
         }
         return;
       }
       if (action === "view") {
+        event.stopPropagation();
         handlers.onToggleView();
         return;
       }
@@ -507,6 +509,9 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
     if (!sortMenu) return;
     const target = event.target as HTMLElement | null;
     if (!target) return;
+    if (target.closest<HTMLElement>("[data-action=\"sort\"]")) {
+      return;
+    }
     if (sortMenu.contains(target)) return;
     closeSortMenu();
   };
