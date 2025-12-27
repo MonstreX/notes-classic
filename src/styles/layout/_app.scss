@@ -131,10 +131,10 @@
 
 .app-shell__titlebar {
   position: absolute;
-  top: 29px;
+  top: 80px;
   padding: 24px 40px;
   flex-shrink: 0;
-  background: var(--color-white);
+  /* background: var(--color-white); */
   z-index: 10;
 }
 
