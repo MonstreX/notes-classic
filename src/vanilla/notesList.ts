@@ -60,19 +60,19 @@ const renderHeader = (state: NotesListState) => {
     ? state.notebooks.find((n) => n.id === state.selectedNotebookId)?.name || "Notebooks"
     : "All Notes";
   return `
-    <div class="px-6 py-4 border-b border-gray-200 bg-[#F8F8F8] shrink-0">
-      <h2 class="text-xs uppercase tracking-widest text-gray-500 font-bold mb-4 italic truncate">
+    <div class="notes-list__header">
+      <h2 class="notes-list__title">
         ${escapeHtml(title)}
       </h2>
-      <div class="relative text-black">
-        <svg class="absolute left-3 top-2 text-gray-400" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <div class="notes-list__search">
+        <svg class="notes-list__search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="11" cy="11" r="8"></circle>
           <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
         </svg>
         <input
           type="text"
           placeholder="Search..."
-          class="w-full bg-white border border-gray-200 rounded py-1.5 pl-9 pr-4 text-sm outline-none focus:border-[#00A82D]"
+          class="notes-list__search-input"
           value="${escapeHtml(state.searchTerm)}"
           data-action="search"
         />
@@ -85,12 +85,12 @@ const renderNoteRow = (note: NotesListItem, state: NotesListState) => {
   const isSelected = state.selectedNoteId === note.id;
   if (state.notesListView === "compact") {
     return `
-      <div class="px-6 py-3 border-b border-gray-100 cursor-pointer relative bg-white ${isSelected ? "bg-[#F2F2F2]" : "group hover:bg-[#F8F8F8]"}" data-note-row="1" data-note-id="${note.id}">
-        <div class="flex items-center justify-between text-black">
-          <h3 class="font-normal text-sm truncate pr-4 ${isSelected ? "text-[#00A82D]" : ""}">
+      <div class="notes-list__row notes-list__row--compact ${isSelected ? "is-selected" : ""}" data-note-row="1" data-note-id="${note.id}">
+        <div class="notes-list__row-line">
+          <h3 class="notes-list__row-title">
             ${escapeHtml(note.title || "Untitled")}
           </h3>
-          <div class="text-[10px] text-gray-400 uppercase font-medium shrink-0">
+          <div class="notes-list__row-date">
             ${formatDate(note.updatedAt)}
           </div>
         </div>
@@ -100,12 +100,12 @@ const renderNoteRow = (note: NotesListItem, state: NotesListState) => {
 
   const excerpt = note.excerpt ?? stripTags(note.content || "");
   return `
-    <div class="px-6 py-5 border-b border-gray-100 cursor-pointer relative bg-white ${isSelected ? "ring-1 ring-[#00A82D] z-10" : "group hover:bg-[#F8F8F8]"}" data-note-row="1" data-note-id="${note.id}">
-      <div class="flex justify-between items-start mb-1 text-black">
-        <h3 class="font-semibold text-sm truncate pr-4 ${isSelected ? "text-[#00A82D]" : ""}">
+    <div class="notes-list__row ${isSelected ? "is-selected" : ""}" data-note-row="1" data-note-id="${note.id}">
+      <div class="notes-list__row-top">
+        <h3 class="notes-list__row-title notes-list__row-title--strong">
           ${escapeHtml(note.title || "Untitled")}
         </h3>
-        <button class="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-opacity" data-action="delete-note" data-note-id="${note.id}">
+        <button class="notes-list__delete" data-action="delete-note" data-note-id="${note.id}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="3 6 5 6 21 6"></polyline>
             <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
@@ -115,10 +115,10 @@ const renderNoteRow = (note: NotesListItem, state: NotesListState) => {
           </svg>
         </button>
       </div>
-      <p class="text-xs text-gray-500 line-clamp-2 leading-relaxed mb-2">
+      <p class="notes-list__excerpt">
         ${escapeHtml(excerpt || "No text")}
       </p>
-      <div class="text-[10px] text-gray-400 uppercase font-medium">
+      <div class="notes-list__row-date">
         ${formatDate(note.updatedAt)}
       </div>
     </div>
@@ -131,14 +131,14 @@ const renderList = (state: NotesListState) => {
     ? state.notes.filter((note) => note.title.toLowerCase().includes(search))
     : state.notes;
   return `
-    <div class="flex-1 overflow-y-auto" data-notes-scroll="1">
+    <div class="notes-list__items" data-notes-scroll="1">
       ${filtered.map((note) => renderNoteRow(note, state)).join("")}
     </div>
   `;
 };
 
 const renderNotesList = (state: NotesListState) => `
-  <div class="flex flex-col h-full">
+  <div class="notes-list">
     ${renderHeader(state)}
     ${renderList(state)}
   </div>
@@ -187,12 +187,12 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
     dragStarted = true;
     ignoreClick = true;
     dragOverlay = document.createElement("div");
-    dragOverlay.className = "fixed z-[9999] pointer-events-none";
+    dragOverlay.className = "notes-list__drag-overlay";
     dragOverlay.style.left = "0";
     dragOverlay.style.top = "0";
     dragOverlay.style.transform = `translate(${clientX + 10}px, ${clientY + 10}px)`;
     dragOverlay.innerHTML = `
-      <div class="px-4 py-2 bg-white border border-gray-200 rounded shadow-sm text-sm text-black opacity-70">
+      <div class="notes-list__drag-card">
         ${escapeHtml(noteTitle || "Untitled")}
       </div>
     `;
@@ -336,21 +336,13 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
     if (prevId !== null) {
       const prevRow = root.querySelector<HTMLElement>(`[data-note-row="1"][data-note-id="${prevId}"]`);
       if (prevRow) {
-        prevRow.classList.remove("bg-[#F2F2F2]", "ring-1", "ring-[#00A82D]", "z-10");
-        const title = prevRow.querySelector("h3");
-        if (title) title.classList.remove("text-[#00A82D]");
+        prevRow.classList.remove("is-selected");
       }
     }
     if (nextId !== null) {
       const nextRow = root.querySelector<HTMLElement>(`[data-note-row="1"][data-note-id="${nextId}"]`);
       if (nextRow) {
-        if (view === "compact") {
-          nextRow.classList.add("bg-[#F2F2F2]");
-        } else {
-          nextRow.classList.add("ring-1", "ring-[#00A82D]", "z-10");
-        }
-        const title = nextRow.querySelector("h3");
-        if (title) title.classList.add("text-[#00A82D]");
+        nextRow.classList.add("is-selected");
       }
     }
   };

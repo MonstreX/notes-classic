@@ -13,7 +13,7 @@ type ConfirmDialogOptions = {
 export const openNotebookDialog = ({ parentId }: NotebookDialogOptions): Promise<string | null> => {
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
-    overlay.className = "fixed inset-0 z-[9999] flex items-center justify-center bg-black/40";
+    overlay.className = "dialog-overlay";
     overlay.dataset.dialogOverlay = "1";
 
     const title = parentId === null ? "Create notebook stack" : "Create notebook";
@@ -23,24 +23,24 @@ export const openNotebookDialog = ({ parentId }: NotebookDialogOptions): Promise
     const placeholder = parentId === null ? "New stack" : "New notebook";
 
     overlay.innerHTML = `
-      <div class="w-[420px] rounded-lg bg-white shadow-xl text-black">
-        <div class="px-5 py-4 border-b border-gray-200">
-          <h3 class="text-sm font-semibold">${title}</h3>
-          <p class="text-xs text-gray-500 mt-1">${subtitle}</p>
+      <div class="dialog">
+        <div class="dialog__header">
+          <h3 class="dialog__title">${title}</h3>
+          <p class="dialog__subtitle">${subtitle}</p>
         </div>
-        <div class="px-5 py-4">
-          <label class="text-xs uppercase tracking-widest text-gray-500 font-semibold">Name</label>
+        <div class="dialog__body">
+          <label class="dialog__label">Name</label>
           <input
-            class="mt-2 w-full border border-gray-300 rounded px-3 py-2 text-sm focus:border-[#00A82D] outline-none"
+            class="dialog__input"
             placeholder="${placeholder}"
           />
-          <div class="text-xs text-red-500 mt-2 hidden" data-dialog-error="1"></div>
+          <div class="dialog__error hidden" data-dialog-error="1"></div>
         </div>
-        <div class="px-5 py-4 border-t border-gray-200 flex justify-end gap-2">
-          <button class="px-4 py-2 text-sm rounded border border-gray-300 text-gray-700 hover:bg-gray-50" data-dialog-cancel="1">
+        <div class="dialog__footer">
+          <button class="dialog__button dialog__button--ghost" data-dialog-cancel="1">
             Cancel
           </button>
-          <button class="px-4 py-2 text-sm rounded bg-[#00A82D] text-white hover:bg-[#008f26]" data-dialog-submit="1">
+          <button class="dialog__button dialog__button--primary" data-dialog-submit="1">
             Create
           </button>
         </div>
@@ -109,23 +109,19 @@ export const openConfirmDialog = ({
     overlay.className = "fixed inset-0 z-[9999] flex items-center justify-center bg-black/40";
     overlay.dataset.dialogOverlay = "1";
 
-    const buttonClass = danger
-      ? "bg-red-500 hover:bg-red-600"
-      : "bg-[#00A82D] hover:bg-[#008f26]";
-
     overlay.innerHTML = `
-      <div class="w-[420px] rounded-lg bg-white shadow-xl text-black">
-        <div class="px-5 py-4 border-b border-gray-200">
-          <h3 class="text-sm font-semibold">${title}</h3>
+      <div class="dialog">
+        <div class="dialog__header">
+          <h3 class="dialog__title">${title}</h3>
         </div>
-        <div class="px-5 py-4 text-sm text-gray-700">
+        <div class="dialog__body dialog__body--message">
           ${message}
         </div>
-        <div class="px-5 py-4 border-t border-gray-200 flex justify-end gap-2">
-          <button class="px-4 py-2 text-sm rounded border border-gray-300 text-gray-700 hover:bg-gray-50" data-dialog-cancel="1">
+        <div class="dialog__footer">
+          <button class="dialog__button dialog__button--ghost" data-dialog-cancel="1">
             ${cancelLabel}
           </button>
-          <button class="px-4 py-2 text-sm rounded text-white ${buttonClass}" data-dialog-confirm="1">
+          <button class="dialog__button ${danger ? "dialog__button--danger" : "dialog__button--primary"}" data-dialog-confirm="1">
             ${confirmLabel}
           </button>
         </div>

@@ -2,7 +2,9 @@
 @use "./base/typography";
 @use "./layout/app";
 @use "./components/sidebar";
+@use "./components/notes-list";
 @use "./components/editor";
+@use "./components/dialogs";
 @use "./components/context-menu";
 @use "./utilities/scrollbar";
 
