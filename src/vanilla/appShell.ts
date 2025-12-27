@@ -423,9 +423,14 @@ export const mountApp = (root: HTMLElement) => {
       metaStackText.classList.toggle("is-hidden", !stack);
       metaNotebookIcon.classList.toggle("is-hidden", !notebook);
       metaNotebookText.classList.toggle("is-hidden", !notebook);
-      metaBar.classList.toggle("is-visible", !!notebook);
     } else {
-      metaBar.classList.remove("is-visible");
+      metaSep.classList.add("is-hidden");
+      metaStackIcon.classList.add("is-hidden");
+      metaStackText.classList.add("is-hidden");
+      metaNotebookIcon.classList.add("is-hidden");
+      metaNotebookText.classList.add("is-hidden");
+      metaStackText.textContent = "";
+      metaNotebookText.textContent = "";
     }
 
     const sidebarState: SidebarState = {
