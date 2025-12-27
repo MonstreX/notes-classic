@@ -418,14 +418,14 @@ export const mountApp = (root: HTMLElement) => {
       const stack = notebook?.parentId ? state.notebooks.find((nb) => nb.id === notebook.parentId) : null;
       metaStackText.textContent = stack?.name ?? "";
       metaNotebookText.textContent = notebook?.name ?? "";
-      metaSep.style.display = stack ? "inline" : "none";
-      metaStackIcon.style.display = stack ? "inline-flex" : "none";
-      metaStackText.style.display = stack ? "inline" : "none";
-      metaNotebookIcon.style.display = notebook ? "inline-flex" : "none";
-      metaNotebookText.style.display = notebook ? "inline" : "none";
-      metaBar.style.display = notebook ? "flex" : "none";
+      metaSep.classList.toggle("is-hidden", !stack);
+      metaStackIcon.classList.toggle("is-hidden", !stack);
+      metaStackText.classList.toggle("is-hidden", !stack);
+      metaNotebookIcon.classList.toggle("is-hidden", !notebook);
+      metaNotebookText.classList.toggle("is-hidden", !notebook);
+      metaBar.classList.toggle("is-visible", !!notebook);
     } else {
-      metaBar.style.display = "none";
+      metaBar.classList.remove("is-visible");
     }
 
     const sidebarState: SidebarState = {
