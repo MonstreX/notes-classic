@@ -229,6 +229,11 @@
   background: #f3f4f6;
 }
 
+.app-shell__tags-suggest-item.is-disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .app-shell__titlebar {
   position: relative;
   /* top: 80px; */

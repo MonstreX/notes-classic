@@ -335,15 +335,14 @@ export const mountApp = (root: HTMLElement) => {
     const state = appStore.getState();
     const query = tagsInput.value.trim().toLowerCase();
     const assigned = new Set(state.noteTags.map((tag) => tag.id));
-    if (!query) {
+    if (query.length < 2) {
       tagSuggestions = [];
       tagsSuggest.style.display = "none";
       tagsSuggest.innerHTML = "";
       return;
     }
     tagSuggestions = state.tags
-      .filter((tag) => !assigned.has(tag.id))
-      .filter((tag) => tag.name.toLowerCase().includes(query))
+      .filter((tag) => tag.name.toLowerCase().startsWith(query))
       .slice(0, 8);
     if (!preserveIndex) {
       tagSuggestIndex = 0;
@@ -355,12 +354,12 @@ export const mountApp = (root: HTMLElement) => {
       tagsSuggest.innerHTML = "";
       return;
     }
-    const map = new Map(state.tags.map((tag) => [tag.id, tag]));
     tagsSuggest.innerHTML = tagSuggestions
       .map((tag, index) => {
-        const label = buildTagPath(tag, map);
+        const label = tag.name;
+        const isAssigned = assigned.has(tag.id);
         return `
-          <button class="app-shell__tags-suggest-item ${index == tagSuggestIndex ? "is-active" : ""}" data-tag-id="${tag.id}">
+          <button class="app-shell__tags-suggest-item ${index == tagSuggestIndex ? "is-active" : ""} ${isAssigned ? "is-disabled" : ""}" data-tag-id="${tag.id}">
             ${label}
           </button>
         `;
@@ -372,6 +371,12 @@ export const mountApp = (root: HTMLElement) => {
   const applyTagSuggestion = (tag?: Tag) => {
     const name = tag?.name ?? tagsInput.value.trim();
     if (!name) return;
+    if (tag) {
+      const state = appStore.getState();
+      if (state.noteTags.some((entry) => entry.id === tag.id)) {
+        return;
+      }
+    }
     actions.addTagToNote(name);
     tagsInput.value = "";
     tagSuggestions = [];
