@@ -1,123 +1,38 @@
-import { openNoteContextMenu, openNotebookContextMenu, openTagContextMenu, type ContextMenuNode } from "./contextMenu";
+import { openNoteContextMenu, openNotebookContextMenu, openTagContextMenu } from "./contextMenu";
 import { mountEditor, type EditorInstance } from "./editor";
-import { createIcon } from "./icons";
 import { mountMetaBar } from "./metaBar";
-import { mountNotesList, type NotesListHandlers, type NotesListInstance, type NotesListState } from "./notesList";
+import { mountNotesList, type NotesListHandlers, type NotesListInstance } from "./notesList";
+import { buildMenuNodes } from "./menuBuilder";
 import { mountSearchModal } from "./searchModal";
-import { mountSidebar, type SidebarHandlers, type SidebarInstance, type SidebarState } from "./sidebar";
+import { mountSidebar, type SidebarHandlers, type SidebarInstance } from "./sidebar";
 import { mountTagsBar } from "./tagsBar";
 import { createEditorScheduler } from "./editorScheduler";
+import { createAppLayout } from "./appLayout";
+import { createAppRenderer } from "./appRenderer";
 import { actions, initApp } from "../controllers/appController";
 import { startOcrQueue } from "../services/ocr";
 import { appStore } from "../state/store";
 
-
-const buildMenuNodes = (parentId: number | null, state: ReturnType<typeof appStore.getState>): ContextMenuNode[] => {
-  const typeFilter = parentId === null ? "stack" : "notebook";
-  const children = state.notebooks
-    .filter((nb) => nb.parentId === parentId && nb.notebookType === typeFilter)
-    .sort((a, b) => (a.sortOrder - b.sortOrder) || a.name.localeCompare(b.name));
-  return children.map((nb) => ({
-    id: nb.id,
-    name: nb.name,
-    type: nb.notebookType,
-    children: nb.notebookType === "stack" ? buildMenuNodes(nb.id, state) : [],
-  }));
-};
-
-
-
 export const mountApp = (root: HTMLElement) => {
-  const loading = document.createElement("div");
-  loading.className = "app-loading";
-  root.appendChild(loading);
+  let openSearchModal = () => {};
+  const layout = createAppLayout(root, {
+    onSearch: () => openSearchModal(),
+    onNewNote: () => actions.createNote(),
+  });
 
-  const app = document.createElement("div");
-  app.className = "app-shell";
-  app.style.display = "none";
-  root.appendChild(app);
-
-  const sidebar = document.createElement("div");
-  sidebar.className = "app-shell__sidebar";
-  app.appendChild(sidebar);
-
-  const sidebarInner = document.createElement("div");
-  sidebarInner.className = "app-shell__sidebar-inner";
-  sidebar.appendChild(sidebarInner);
-
-  const searchButton = document.createElement("button");
-  searchButton.className = "btn btn--secondary btn--pill btn--full btn--search";
-  const searchIcon = createIcon("icon-search", "btn__icon");
-  searchButton.appendChild(searchIcon);
-  const searchLabel = document.createElement("span");
-  searchLabel.textContent = "Search";
-  searchButton.appendChild(searchLabel);
-  sidebarInner.appendChild(searchButton);
-
-  const newNoteButton = document.createElement("button");
-  newNoteButton.className = "btn btn--primary btn--pill btn--full btn--new-note";
-  const plusIcon = createIcon("icon-plus", "btn__icon");
-  newNoteButton.appendChild(plusIcon);
-  const newNoteLabel = document.createElement("span");
-  newNoteLabel.textContent = "New Note";
-  newNoteButton.appendChild(newNoteLabel);
-  newNoteButton.addEventListener("click", () => actions.createNote());
-  sidebarInner.appendChild(newNoteButton);
-
-  const sidebarHost = document.createElement("div");
-  sidebarHost.className = "app-shell__sidebar-host";
-  sidebarInner.appendChild(sidebarHost);
-
-  const sidebarResize = document.createElement("div");
-  sidebarResize.className = "app-shell__resize-handle";
-  sidebar.appendChild(sidebarResize);
-
-  const list = document.createElement("div");
-  list.className = "app-shell__list";
-  app.appendChild(list);
-
-  const listHost = document.createElement("div");
-  listHost.className = "app-shell__list-host";
-  list.appendChild(listHost);
-
-  const listResize = document.createElement("div");
-  listResize.className = "app-shell__resize-handle app-shell__resize-handle--list";
-  list.appendChild(listResize);
-
-  const editorPane = document.createElement("div");
-  editorPane.className = "app-shell__editor";
-  app.appendChild(editorPane);
-
-  const editorShell = document.createElement("div");
-  editorShell.className = "app-shell__editor-shell";
-  editorPane.appendChild(editorShell);
-
-  const metaBar = mountMetaBar(editorShell);
-
-  const titleBar = document.createElement("div");
-  titleBar.className = "app-shell__titlebar";
-  editorShell.appendChild(titleBar);
-
-  const titleInput = document.createElement("input");
-  titleInput.className = "app-shell__title-input";
-  titleInput.placeholder = "Title";
-  titleInput.addEventListener("input", () => {
+  layout.titleInput.addEventListener("input", () => {
     if (appStore.getState().selectedNoteId) {
-      actions.setTitle(titleInput.value);
+      actions.setTitle(layout.titleInput.value);
     }
   });
-  titleBar.appendChild(titleInput);
 
-  const editorHost = document.createElement("div");
-  editorHost.className = "editor-host app-shell__editor-host";
-  editorShell.appendChild(editorHost);
-
-  const tagsBar = mountTagsBar(editorShell, {
+  const metaBar = mountMetaBar(layout.editorShell);
+  const tagsBar = mountTagsBar(layout.editorShell, {
     onAddTag: actions.addTagToNote,
-    onRemoveTag: actions.removeNoteTag,
+    onRemoveTag: actions.removeTagFromNote,
   });
 
-  const searchModal = mountSearchModal(editorPane, {
+  const searchModal = mountSearchModal(layout.editorPane, {
     onOpenNote: (noteId, notebookId) => {
       const state = appStore.getState();
       if (notebookId !== null) {
@@ -132,16 +47,7 @@ export const mountApp = (root: HTMLElement) => {
       actions.selectNote(noteId);
     },
   });
-
-  const emptyState = document.createElement("div");
-  emptyState.className = "app-shell__empty";
-  const emptyIcon = createIcon("icon-file", "app-shell__empty-icon");
-  emptyState.appendChild(emptyIcon);
-  const emptyText = document.createElement("p");
-  emptyText.className = "app-shell__empty-text";
-  emptyText.textContent = "Select a note";
-  emptyState.appendChild(emptyText);
-  editorPane.appendChild(emptyState);
+  openSearchModal = () => searchModal.open();
 
   const sidebarHandlers: SidebarHandlers = {
     onSelectNotebook: (id) => actions.selectNotebook(id),
@@ -202,10 +108,11 @@ export const mountApp = (root: HTMLElement) => {
     onMoveNote: (noteId, notebookId) => actions.moveNoteToNotebook(noteId, notebookId),
   };
 
-  const sidebarInstance: SidebarInstance = mountSidebar(sidebarHost, sidebarHandlers);
-  const notesListInstance: NotesListInstance = mountNotesList(listHost, notesListHandlers);
+  const sidebarInstance: SidebarInstance = mountSidebar(layout.sidebarHost, sidebarHandlers);
+  const notesListInstance: NotesListInstance = mountNotesList(layout.listHost, notesListHandlers);
+
   let editorFocused = false;
-  const editorInstance: EditorInstance = mountEditor(editorHost, {
+  const editorInstance: EditorInstance = mountEditor(layout.editorHost, {
     content: "",
     onChange: actions.setContent,
     onFocus: () => {
@@ -215,23 +122,20 @@ export const mountApp = (root: HTMLElement) => {
       editorFocused = false;
     },
   });
-  const editorLoading = document.createElement("div");
-  editorLoading.className = "editor-loading";
-  const editorSpinner = document.createElement("div");
-  editorSpinner.className = "editor-loading__spinner";
-  editorLoading.appendChild(editorSpinner);
-  editorHost.appendChild(editorLoading);
-  const setEditorLoadingVisible = (visible: boolean) => {
-    editorLoading.style.display = visible ? "flex" : "none";
-  };
-  let lastSidebarState: SidebarState | null = null;
-  let lastNotesListState: NotesListState | null = null;
+
   const editorScheduler = createEditorScheduler({
     editor: editorInstance,
     getSelectedNoteId: () => appStore.getState().selectedNoteId,
   });
-  searchButton.addEventListener("click", () => {
-    searchModal.open();
+
+  const renderer = createAppRenderer({
+    layout,
+    sidebar: sidebarInstance,
+    notesList: notesListInstance,
+    metaBar,
+    tagsBar,
+    editorScheduler,
+    isEditorFocused: () => editorFocused,
   });
 
   let isResizingSidebar = false;
@@ -251,117 +155,16 @@ export const mountApp = (root: HTMLElement) => {
     isResizingList = false;
   };
 
-  sidebarResize.addEventListener("mousedown", () => {
+  layout.sidebarResize.addEventListener("mousedown", () => {
     isResizingSidebar = true;
   });
-  listResize.addEventListener("mousedown", () => {
+  layout.listResize.addEventListener("mousedown", () => {
     isResizingList = true;
   });
   window.addEventListener("mousemove", handleMouseMove);
   window.addEventListener("mouseup", handleMouseUp);
 
-  const render = () => {
-    const state = appStore.getState();
-    if (!state.isLoaded) {
-      loading.style.display = "block";
-      app.style.display = "none";
-      return;
-    }
-    loading.style.display = "none";
-    app.style.display = "flex";
-    sidebar.style.width = `${state.sidebarWidth}px`;
-    list.style.width = `${state.listWidth}px`;
-
-    if (titleInput.value !== state.title) {
-      titleInput.value = state.title;
-    }
-
-    const hasNote = !!state.selectedNoteId;
-    setEditorLoadingVisible(hasNote && (state.isNoteLoading || editorScheduler.isUpdating()));
-    editorShell.style.display = hasNote ? "flex" : "none";
-    emptyState.style.display = hasNote ? "none" : "flex";
-    metaBar.update({
-      hasNote,
-      notebooks: state.notebooks,
-      selectedNotebookId: state.selectedNotebookId,
-      activeNote: state.activeNote,
-    });
-
-
-    tagsBar.update({
-      hasNote,
-      tags: state.tags,
-      noteTags: state.noteTags,
-    });
-
-    const sidebarState: SidebarState = {
-      notebooks: state.notebooks,
-      tags: state.tags,
-      selectedTagId: state.selectedTagId,
-      expandedTags: state.expandedTags,
-      tagsSectionExpanded: state.tagsSectionExpanded,
-      selectedNotebookId: state.selectedNotebookId,
-      expandedNotebooks: state.expandedNotebooks,
-      noteCounts: state.noteCounts,
-      totalNotes: state.totalNotes,
-    };
-
-  const notesListState: NotesListState = {
-    notes: state.notes,
-    notebooks: state.notebooks,
-    tags: state.tags,
-    selectedNotebookId: state.selectedNotebookId,
-    selectedTagId: state.selectedTagId,
-    selectedNoteId: state.selectedNoteId,
-    notesListView: state.notesListView,
-    notesSortBy: state.notesSortBy,
-    notesSortDir: state.notesSortDir,
-  };
-
-    const shouldUpdateSidebar =
-      !lastSidebarState ||
-      lastSidebarState.notebooks !== sidebarState.notebooks ||
-      lastSidebarState.tags !== sidebarState.tags ||
-      lastSidebarState.selectedNotebookId !== sidebarState.selectedNotebookId ||
-      lastSidebarState.selectedTagId !== sidebarState.selectedTagId ||
-      lastSidebarState.expandedNotebooks !== sidebarState.expandedNotebooks ||
-      lastSidebarState.expandedTags !== sidebarState.expandedTags ||
-      lastSidebarState.tagsSectionExpanded !== sidebarState.tagsSectionExpanded ||
-      lastSidebarState.noteCounts !== sidebarState.noteCounts ||
-      lastSidebarState.totalNotes !== sidebarState.totalNotes;
-
-    if (shouldUpdateSidebar) {
-      sidebarInstance.update(sidebarState);
-      lastSidebarState = sidebarState;
-    }
-
-    const shouldUpdateList =
-      !lastNotesListState ||
-      lastNotesListState.notes !== notesListState.notes ||
-      lastNotesListState.notebooks !== notesListState.notebooks ||
-      lastNotesListState.tags !== notesListState.tags ||
-      lastNotesListState.selectedNotebookId !== notesListState.selectedNotebookId ||
-      lastNotesListState.selectedTagId !== notesListState.selectedTagId ||
-      lastNotesListState.selectedNoteId !== notesListState.selectedNoteId ||
-      lastNotesListState.notesListView !== notesListState.notesListView;
-
-    if (shouldUpdateList) {
-      notesListInstance.update(notesListState);
-      lastNotesListState = notesListState;
-    }
-    if (hasNote) {
-      const readyNote = state.activeNote && state.activeNote.id === state.selectedNoteId;
-      if (readyNote && !state.isNoteLoading) {
-        const isSameNote = editorScheduler.getLastRenderedNoteId() === state.selectedNoteId;
-        if (!isSameNote) {
-          editorScheduler.schedule(state.selectedNoteId, state.content);
-        } else if (!editorFocused && state.content !== editorScheduler.getLastRenderedContent()) {
-          editorScheduler.schedule(state.selectedNoteId, state.content);
-        }
-      }
-    }
-  };
-
+  const render = () => renderer.render(appStore.getState());
   const unsubscribe = appStore.subscribe(render);
   render();
 
@@ -385,7 +188,6 @@ export const mountApp = (root: HTMLElement) => {
     tagsBar.destroy();
     window.removeEventListener("mousemove", handleMouseMove);
     window.removeEventListener("mouseup", handleMouseUp);
-    root.removeChild(app);
-    root.removeChild(loading);
+    layout.destroy();
   };
 };
