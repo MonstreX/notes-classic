@@ -16,7 +16,8 @@
     "@tauri-apps/plugin-dialog": "^2.4.2",
     "@tauri-apps/plugin-shell": "^2.3.3",
     "highlight.js": "^11.11.1",
-    "jodit": "^4.7.9"
+    "jodit": "^4.7.9",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.9.6",

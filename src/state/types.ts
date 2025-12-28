@@ -14,6 +14,7 @@ export interface NoteListItem {
   excerpt?: string;
   updatedAt: number;
   notebookId: number | null;
+  ocrMatch?: boolean;
 }
 
 export interface NoteDetail {

@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use sqlx::{sqlite::SqlitePool, FromRow};
+use regex::Regex;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -24,6 +25,38 @@ fn strip_html(input: &str) -> String {
         .collect::<Vec<_>>()
         .join(" ")
 }
+
+fn extract_note_files(content: &str) -> Vec<String> {
+    let mut results = Vec::new();
+    let re_notes_double = Regex::new(r#"src="notes-file://files/(?:evernote/)?([^"]+)""#).unwrap();
+    for caps in re_notes_double.captures_iter(content) {
+        if let Some(path) = caps.get(1) {
+            results.push(path.as_str().to_string());
+        }
+    }
+    let re_notes_single = Regex::new(r#"src='notes-file://files/(?:evernote/)?([^']+)'"#).unwrap();
+    for caps in re_notes_single.captures_iter(content) {
+        if let Some(path) = caps.get(1) {
+            results.push(path.as_str().to_string());
+        }
+    }
+    let re_plain_double = Regex::new(r#"src="files/(?:evernote/)?([^"]+)""#).unwrap();
+    for caps in re_plain_double.captures_iter(content) {
+        if let Some(path) = caps.get(1) {
+            results.push(path.as_str().to_string());
+        }
+    }
+    let re_plain_single = Regex::new(r#"src='files/(?:evernote/)?([^']+)'"#).unwrap();
+    for caps in re_plain_single.captures_iter(content) {
+        if let Some(path) = caps.get(1) {
+            results.push(path.as_str().to_string());
+        }
+    }
+    results.sort();
+    results.dedup();
+    results
+}
+
 
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -68,11 +101,27 @@ pub struct Tag {
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct NoteListItem {
-    pub id: i64,
-    pub title: String,
-    pub content: String,
-    pub updated_at: i64,
-    pub notebook_id: Option<i64>,
+  pub id: i64,
+  pub title: String,
+  pub content: String,
+  pub updated_at: i64,
+  pub notebook_id: Option<i64>,
+  pub ocr_match: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct OcrFileItem {
+    pub file_id: i64,
+    pub file_path: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct OcrStats {
+    pub total: i64,
+    pub done: i64,
+    pub pending: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
@@ -102,6 +151,10 @@ async fn column_exists(pool: &SqlitePool, table: &str, column: &str) -> Result<b
 pub async fn init_db(data_dir: &Path) -> SqlitePool {
     if !data_dir.exists() {
         fs::create_dir_all(data_dir).expect("Could not create data directory");
+    }
+    let ocr_dir = data_dir.join("ocr").join("tessdata");
+    if !ocr_dir.exists() {
+        fs::create_dir_all(&ocr_dir).ok();
     }
 
     let db_path = data_dir.join("notes.db");
@@ -216,6 +269,79 @@ pub async fn init_db(data_dir: &Path) -> SqlitePool {
     .execute(&pool)
     .await
     .expect("Failed to create notes_fts table");
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS ocr_files (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_path TEXT NOT NULL UNIQUE
+        )",
+    )
+    .execute(&pool)
+    .await
+    .expect("Failed to create ocr_files table");
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS note_files (
+            note_id INTEGER NOT NULL,
+            file_id INTEGER NOT NULL,
+            PRIMARY KEY(note_id, file_id),
+            FOREIGN KEY(note_id) REFERENCES notes(id) ON DELETE CASCADE,
+            FOREIGN KEY(file_id) REFERENCES ocr_files(id) ON DELETE CASCADE
+        )",
+    )
+    .execute(&pool)
+    .await
+    .expect("Failed to create note_files table");
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS ocr_text (
+            file_id INTEGER PRIMARY KEY,
+            lang TEXT NOT NULL,
+            text TEXT NOT NULL,
+            hash TEXT NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY(file_id) REFERENCES ocr_files(id) ON DELETE CASCADE
+        )",
+    )
+    .execute(&pool)
+    .await
+    .expect("Failed to create ocr_text table");
+
+    sqlx::query(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS ocr_fts
+         USING fts5(text, content='ocr_text', content_rowid='file_id')",
+    )
+    .execute(&pool)
+    .await
+    .expect("Failed to create ocr_fts table");
+
+    sqlx::query(
+        "CREATE TRIGGER IF NOT EXISTS ocr_text_ai AFTER INSERT ON ocr_text BEGIN
+            INSERT INTO ocr_fts(rowid, text) VALUES (new.file_id, new.text);
+         END;",
+    )
+    .execute(&pool)
+    .await
+    .expect("Failed to create ocr_text_ai trigger");
+
+    sqlx::query(
+        "CREATE TRIGGER IF NOT EXISTS ocr_text_ad AFTER DELETE ON ocr_text BEGIN
+            INSERT INTO ocr_fts(ocr_fts, rowid, text) VALUES ('delete', old.file_id, old.text);
+         END;",
+    )
+    .execute(&pool)
+    .await
+    .expect("Failed to create ocr_text_ad trigger");
+
+    sqlx::query(
+        "CREATE TRIGGER IF NOT EXISTS ocr_text_au AFTER UPDATE ON ocr_text BEGIN
+            INSERT INTO ocr_fts(ocr_fts, rowid, text) VALUES ('delete', old.file_id, old.text);
+            INSERT INTO ocr_fts(rowid, text) VALUES (new.file_id, new.text);
+         END;",
+    )
+    .execute(&pool)
+    .await
+    .expect("Failed to create ocr_text_au trigger");
 
     sqlx::query(
         "CREATE TRIGGER IF NOT EXISTS notes_text_ai AFTER INSERT ON notes_text BEGIN
@@ -478,6 +604,50 @@ impl SqliteRepository {
         Ok(())
     }
 
+    async fn sync_note_files(&self, note_id: i64, content: &str) -> Result<Vec<(i64, String)>, sqlx::Error> {
+        let files = extract_note_files(content);
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("DELETE FROM note_files WHERE note_id = ?")
+            .bind(note_id)
+            .execute(&mut *tx)
+            .await?;
+        let mut mapped = Vec::new();
+        for file_path in files {
+            sqlx::query("INSERT INTO ocr_files (file_path) VALUES (?) ON CONFLICT(file_path) DO NOTHING")
+                .bind(&file_path)
+                .execute(&mut *tx)
+                .await?;
+            let (file_id,): (i64,) = sqlx::query_as("SELECT id FROM ocr_files WHERE file_path = ?")
+                .bind(&file_path)
+                .fetch_one(&mut *tx)
+                .await?;
+            sqlx::query("INSERT OR IGNORE INTO note_files (note_id, file_id) VALUES (?, ?)")
+                .bind(note_id)
+                .bind(file_id)
+                .execute(&mut *tx)
+                .await?;
+            mapped.push((file_id, file_path));
+        }
+        tx.commit().await?;
+        Ok(mapped)
+    }
+
+    pub async fn backfill_note_files_and_ocr(&self, data_dir: &Path) -> Result<(), sqlx::Error> {
+        let notes: Vec<(i64, String)> = sqlx::query_as("SELECT id, content FROM notes")
+            .fetch_all(&self.pool)
+            .await?;
+        let mut file_map: HashMap<i64, String> = HashMap::new();
+        for (note_id, content) in notes {
+            let files = self.sync_note_files(note_id, &content).await?;
+            for (file_id, file_path) in files {
+                file_map.insert(file_id, file_path);
+            }
+        }
+        let _ = data_dir;
+        let _ = file_map;
+        Ok(())
+    }
+
     pub async fn get_notebooks(&self) -> Result<Vec<Notebook>, sqlx::Error> {
         sqlx::query_as::<_, Notebook>(
             "SELECT * FROM notebooks ORDER BY parent_id IS NOT NULL, parent_id, sort_order ASC, name ASC",
@@ -646,7 +816,7 @@ impl SqliteRepository {
                     SELECT n.id FROM notebooks n
                     JOIN descendant_notebooks dn ON n.parent_id = dn.id
                 )
-                SELECT id, title, substr(content, 1, 4000) AS content, updated_at, notebook_id FROM notes
+                SELECT id, title, substr(content, 1, 4000) AS content, updated_at, notebook_id, 0 AS ocr_match FROM notes
                 WHERE notebook_id IN (SELECT id FROM descendant_notebooks)
                 ORDER BY updated_at DESC, created_at DESC, id DESC",
             )
@@ -655,7 +825,7 @@ impl SqliteRepository {
             .await
         } else {
             sqlx::query_as::<_, NoteListItem>(
-                "SELECT id, title, substr(content, 1, 4000) AS content, updated_at, notebook_id FROM notes ORDER BY updated_at DESC, created_at DESC, id DESC",
+                "SELECT id, title, substr(content, 1, 4000) AS content, updated_at, notebook_id, 0 AS ocr_match FROM notes ORDER BY updated_at DESC, created_at DESC, id DESC",
             )
                 .fetch_all(&self.pool)
                 .await
@@ -681,7 +851,8 @@ impl SqliteRepository {
         Ok(NoteCounts { total: total.0, per_notebook })
     }
 
-    pub async fn create_note(&self, title: &str, content: &str, notebook_id: Option<i64>) -> Result<i64, sqlx::Error> {
+    pub async fn create_note(&self, title: &str, content: &str, notebook_id: Option<i64>, data_dir: &Path) -> Result<i64, sqlx::Error> {
+        let _ = data_dir;
         let now = chrono::Utc::now().timestamp();
         let result = sqlx::query("INSERT INTO notes (title, content, created_at, updated_at, notebook_id) VALUES (?, ?, ?, ?, ?)")
             .bind(title)
@@ -693,6 +864,7 @@ impl SqliteRepository {
             .await?;
         let id = result.last_insert_rowid();
         self.upsert_note_text(id, title, content).await?;
+        let _ = self.sync_note_files(id, content).await?;
         Ok(id)
     }
 
@@ -705,7 +877,8 @@ impl SqliteRepository {
         Ok(())
     }
 
-    pub async fn update_note(&self, id: i64, title: &str, content: &str, notebook_id: Option<i64>) -> Result<(), sqlx::Error> {
+    pub async fn update_note(&self, id: i64, title: &str, content: &str, notebook_id: Option<i64>, data_dir: &Path) -> Result<(), sqlx::Error> {
+        let _ = data_dir;
         let now = chrono::Utc::now().timestamp();
         sqlx::query("UPDATE notes SET title = ?, content = ?, updated_at = ?, notebook_id = ? WHERE id = ?")
             .bind(title)
@@ -716,6 +889,7 @@ impl SqliteRepository {
             .execute(&self.pool)
             .await?;
         self.upsert_note_text(id, title, content).await?;
+        let _ = self.sync_note_files(id, content).await?;
         Ok(())
     }
 
@@ -731,30 +905,79 @@ impl SqliteRepository {
                     UNION ALL
                     SELECT n.id FROM notebooks n
                     JOIN descendant_notebooks dn ON n.parent_id = dn.id
+                ),
+                text_matches AS (
+                    SELECT n.id, n.title,
+                           snippet(notes_fts, 1, '', '', '...', 20) AS content,
+                           n.updated_at, n.notebook_id,
+                           0 AS ocr_match
+                    FROM notes_fts
+                    JOIN notes n ON n.id = notes_fts.rowid
+                    WHERE notes_fts MATCH ?
+                      AND n.notebook_id IN (SELECT id FROM descendant_notebooks)
+                ),
+                ocr_matches AS (
+                    SELECT n.id, n.title,
+                           '' AS content,
+                           n.updated_at, n.notebook_id,
+                           1 AS ocr_match
+                    FROM ocr_fts
+                    JOIN note_files nf ON nf.file_id = ocr_fts.rowid
+                    JOIN notes n ON n.id = nf.note_id
+                    WHERE ocr_fts MATCH ?
+                      AND n.notebook_id IN (SELECT id FROM descendant_notebooks)
                 )
-                SELECT n.id, n.title,
-                       snippet(notes_fts, 1, '', '', '…', 20) AS content,
-                       n.updated_at, n.notebook_id
-                FROM notes_fts
-                JOIN notes n ON n.id = notes_fts.rowid
-                WHERE notes_fts MATCH ?
-                  AND n.notebook_id IN (SELECT id FROM descendant_notebooks)
-                ORDER BY n.updated_at DESC, n.created_at DESC, n.id DESC",
+                SELECT id, title,
+                       MAX(content) AS content,
+                       updated_at, notebook_id,
+                       MAX(ocr_match) AS ocr_match
+                FROM (
+                    SELECT * FROM text_matches
+                    UNION ALL
+                    SELECT * FROM ocr_matches
+                )
+                GROUP BY id, title, updated_at, notebook_id
+                ORDER BY updated_at DESC, id DESC",
             )
             .bind(id)
+            .bind(query)
             .bind(query)
             .fetch_all(&self.pool)
             .await
         } else {
             sqlx::query_as::<_, NoteListItem>(
-                "SELECT n.id, n.title,
-                        snippet(notes_fts, 1, '', '', '…', 20) AS content,
-                        n.updated_at, n.notebook_id
-                 FROM notes_fts
-                 JOIN notes n ON n.id = notes_fts.rowid
-                 WHERE notes_fts MATCH ?
-                 ORDER BY n.updated_at DESC, n.created_at DESC, n.id DESC",
+                "WITH text_matches AS (
+                    SELECT n.id, n.title,
+                           snippet(notes_fts, 1, '', '', '...', 20) AS content,
+                           n.updated_at, n.notebook_id,
+                           0 AS ocr_match
+                    FROM notes_fts
+                    JOIN notes n ON n.id = notes_fts.rowid
+                    WHERE notes_fts MATCH ?
+                ),
+                ocr_matches AS (
+                    SELECT n.id, n.title,
+                           '' AS content,
+                           n.updated_at, n.notebook_id,
+                           1 AS ocr_match
+                    FROM ocr_fts
+                    JOIN note_files nf ON nf.file_id = ocr_fts.rowid
+                    JOIN notes n ON n.id = nf.note_id
+                    WHERE ocr_fts MATCH ?
+                )
+                SELECT id, title,
+                       MAX(content) AS content,
+                       updated_at, notebook_id,
+                       MAX(ocr_match) AS ocr_match
+                FROM (
+                    SELECT * FROM text_matches
+                    UNION ALL
+                    SELECT * FROM ocr_matches
+                )
+                GROUP BY id, title, updated_at, notebook_id
+                ORDER BY updated_at DESC, id DESC",
             )
+            .bind(query)
             .bind(query)
             .fetch_all(&self.pool)
             .await
@@ -763,7 +986,7 @@ impl SqliteRepository {
 
     pub async fn get_notes_by_tag(&self, tag_id: i64) -> Result<Vec<NoteListItem>, sqlx::Error> {
         sqlx::query_as::<_, NoteListItem>(
-            "SELECT n.id, n.title, n.content, n.updated_at, n.notebook_id
+            "SELECT n.id, n.title, n.content, n.updated_at, n.notebook_id, 0 AS ocr_match
              FROM notes n
              JOIN note_tags nt ON nt.note_id = n.id
              WHERE nt.tag_id = ?
@@ -804,6 +1027,48 @@ impl SqliteRepository {
         .bind(note_id)
         .fetch_all(&self.pool)
         .await
+    }
+
+    pub async fn get_ocr_pending_files(&self, limit: i64) -> Result<Vec<OcrFileItem>, sqlx::Error> {
+        sqlx::query_as::<_, OcrFileItem>(
+            "SELECT f.id AS file_id, f.file_path
+             FROM ocr_files f
+             LEFT JOIN ocr_text t ON t.file_id = f.id
+             WHERE t.file_id IS NULL
+             ORDER BY f.id ASC
+             LIMIT ?",
+        )
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn upsert_ocr_text(&self, file_id: i64, lang: &str, text: &str, hash: &str) -> Result<(), sqlx::Error> {
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            "INSERT INTO ocr_text (file_id, lang, text, hash, updated_at)
+             VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT(file_id) DO UPDATE SET lang = excluded.lang, text = excluded.text, hash = excluded.hash, updated_at = excluded.updated_at",
+        )
+        .bind(file_id)
+        .bind(lang)
+        .bind(text)
+        .bind(hash)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn get_ocr_stats(&self) -> Result<OcrStats, sqlx::Error> {
+        let (total,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM ocr_files")
+            .fetch_one(&self.pool)
+            .await?;
+        let (done,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM ocr_text")
+            .fetch_one(&self.pool)
+            .await?;
+        let pending = (total - done).max(0);
+        Ok(OcrStats { total, done, pending })
     }
 
     pub async fn create_tag(&self, name: &str, parent_id: Option<i64>) -> Result<i64, sqlx::Error> {

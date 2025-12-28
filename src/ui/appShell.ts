@@ -3,6 +3,7 @@ import { mountEditor, mountPreviewEditor, type EditorInstance } from "./editor";
 import { mountNotesList, type NotesListHandlers, type NotesListInstance, type NotesListState } from "./notesList";
 import { mountSidebar, type SidebarHandlers, type SidebarInstance, type SidebarState } from "./sidebar";
 import { actions, initApp } from "../controllers/appController";
+import { getOcrStats, startOcrQueue } from "../services/ocr";
 import { appStore } from "../state/store";
 import type { Tag } from "../state/types";
 import { ensureNotesScheme, normalizeEnmlContent, toDisplayContent } from "../services/content";
@@ -229,8 +230,15 @@ export const mountApp = (root: HTMLElement) => {
   searchEverywhere.appendChild(searchEverywhereText);
   const searchScope = document.createElement("div");
   searchScope.className = "search-modal__scope";
+  const searchOptionsSpacer = document.createElement("div");
+  searchOptionsSpacer.className = "search-modal__options-spacer";
+  const searchOcrStatus = document.createElement("div");
+  searchOcrStatus.className = "search-modal__ocr-status";
+  searchOcrStatus.textContent = "OCR: ...";
   searchOptions.appendChild(searchEverywhere);
   searchOptions.appendChild(searchScope);
+  searchOptions.appendChild(searchOptionsSpacer);
+  searchOptions.appendChild(searchOcrStatus);
   searchPanel.appendChild(searchOptions);
   const searchResults = document.createElement("div");
   searchResults.className = "search-modal__results";
@@ -360,6 +368,7 @@ export const mountApp = (root: HTMLElement) => {
   let searchLoadingTimer: number | null = null;
   let searchRunToken = 0;
   let searchPreviewEditor: EditorInstance | null = null;
+  let searchOcrTimer: number | null = null;
   let tagSuggestions: Tag[] = [];
   let tagSuggestIndex = 0;
 
@@ -589,7 +598,7 @@ export const mountApp = (root: HTMLElement) => {
         const stack = notebook?.parentId ? map.get(notebook.parentId) : null;
         const parts = [stack?.name, notebook?.name, note.title || "Untitled"].filter(Boolean).join(" - ");
         return `
-          <div class="search-modal__result ${note.id === searchSelectedNoteId ? "is-active" : ""}" data-note-id="${note.id}">
+          <div class="search-modal__result ${note.id === searchSelectedNoteId ? "is-active" : ""} ${note.ocrMatch ? "search-modal__result--ocr" : ""}" data-note-id="${note.id}">
             <span class="search-modal__result-text">${escapeHtml(parts)}</span>
             <button class="search-modal__result-open" type="button" data-action="open-note" data-note-id="${note.id}">
               <svg class="search-modal__result-icon" aria-hidden="true">
@@ -703,6 +712,22 @@ export const mountApp = (root: HTMLElement) => {
     searchScope.classList.toggle("is-active", !searchEverywhereActive);
   };
 
+  const updateOcrStatus = async () => {
+    try {
+      const stats = await getOcrStats();
+      if (stats.total === 0) {
+        searchOcrStatus.textContent = "OCR: idle";
+      } else if (stats.pending === 0) {
+        searchOcrStatus.textContent = `OCR: ${stats.done}/${stats.total}`;
+      } else {
+        searchOcrStatus.textContent = `OCR: ${stats.done}/${stats.total}`;
+      }
+    } catch (e) {
+      console.error("[ocr] stats failed", e);
+      searchOcrStatus.textContent = "OCR: ?";
+    }
+  };
+
   const setSearchLoading = (visible: boolean) => {
     if (searchLoadingTimer !== null) {
       window.clearTimeout(searchLoadingTimer);
@@ -729,6 +754,10 @@ export const mountApp = (root: HTMLElement) => {
     if (!visible) {
       searchRunToken += 1;
       setSearchLoading(false);
+      if (searchOcrTimer !== null) {
+        window.clearInterval(searchOcrTimer);
+        searchOcrTimer = null;
+      }
     }
     if (visible) {
       const state = appStore.getState();
@@ -748,6 +777,11 @@ export const mountApp = (root: HTMLElement) => {
       searchEmpty.style.display = "none";
       searchPreviewEditor?.update("");
       renderSearchResults();
+      updateOcrStatus();
+      if (searchOcrTimer !== null) {
+        window.clearInterval(searchOcrTimer);
+      }
+      searchOcrTimer = window.setInterval(updateOcrStatus, 2000);
       window.setTimeout(() => {
         searchInput.focus();
         searchInput.select();
@@ -1028,13 +1062,16 @@ export const mountApp = (root: HTMLElement) => {
   render();
 
   let cleanupInit: (() => void) | undefined;
+  let cleanupOcr: (() => void) | undefined;
   initApp().then((cleanup) => {
     cleanupInit = cleanup;
+    cleanupOcr = startOcrQueue();
   });
 
   return () => {
     unsubscribe();
     cleanupInit?.();
+    cleanupOcr?.();
     sidebarInstance.destroy();
     notesListInstance.destroy();
     editorInstance.destroy();

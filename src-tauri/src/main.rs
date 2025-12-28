@@ -2,7 +2,7 @@
 
 mod db;
 
-use db::{Note, NoteCounts, NoteListItem, Notebook, SqliteRepository, Tag};
+use db::{Note, NoteCounts, NoteListItem, Notebook, OcrFileItem, OcrStats, SqliteRepository, Tag};
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -311,13 +311,13 @@ async fn upsert_note(id: Option<i64>, title: String, content: String, notebookId
     let repo = SqliteRepository { pool: state.pool.clone() };
     match id {
         Some(id) => {
-            repo.update_note(id, &title, &content, notebookId)
+            repo.update_note(id, &title, &content, notebookId, &state.data_dir)
                 .await
                 .map_err(|e| e.to_string())?;
             Ok(id)
         }
         None => {
-            repo.create_note(&title, &content, notebookId).await.map_err(|e| e.to_string())
+            repo.create_note(&title, &content, notebookId, &state.data_dir).await.map_err(|e| e.to_string())
         }
     }
 }
@@ -326,6 +326,32 @@ async fn upsert_note(id: Option<i64>, title: String, content: String, notebookId
 async fn delete_note(id: i64, state: State<'_, AppState>) -> Result<(), String> {
     let repo = SqliteRepository { pool: state.pool.clone() };
     repo.delete_note(id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_ocr_pending_files(limit: Option<i64>, state: State<'_, AppState>) -> Result<Vec<OcrFileItem>, String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    let limit = limit.unwrap_or(5).max(1);
+    repo.get_ocr_pending_files(limit)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+async fn upsert_ocr_text(fileId: i64, lang: String, text: String, hash: String, state: State<'_, AppState>) -> Result<(), String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    repo.upsert_ocr_text(fileId, &lang, &text, &hash)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_ocr_stats(state: State<'_, AppState>) -> Result<OcrStats, String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    repo.get_ocr_stats()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -426,6 +452,12 @@ fn main() {
                 db::init_db(&data_dir).await
             });
             app.manage(AppState { pool, settings_dir, data_dir });
+            let pool = app.state::<AppState>().pool.clone();
+            let data_dir = app.state::<AppState>().data_dir.clone();
+            tauri::async_runtime::spawn(async move {
+                let repo = SqliteRepository { pool };
+                let _ = repo.backfill_note_files_and_ocr(&data_dir).await;
+            });
             Ok(())
         })
         .menu(|app_handle| build_menu(app_handle))
@@ -463,6 +495,9 @@ fn main() {
             get_data_dir,
             upsert_note,
             delete_note,
+            get_ocr_pending_files,
+            upsert_ocr_text,
+            get_ocr_stats,
             get_tags,
             get_note_tags,
             create_tag,

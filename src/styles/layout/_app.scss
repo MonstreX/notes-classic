@@ -485,6 +485,16 @@
   flex-wrap: wrap;
 }
 
+.search-modal__options-spacer {
+  flex: 1;
+}
+
+.search-modal__ocr-status {
+  font-size: 12px;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
 .search-modal__loading {
   display: none;
   align-items: center;
@@ -598,6 +608,10 @@
 .search-modal__result:hover,
 .search-modal__result.is-active {
   background: #f3f4f6;
+}
+
+.search-modal__result--ocr {
+  border: 1px solid #f6d365;
 }
 
 .search-modal__result-text {
