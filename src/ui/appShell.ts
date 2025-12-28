@@ -220,6 +220,9 @@ export const mountApp = (root: HTMLElement) => {
   editorSpinner.className = "editor-loading__spinner";
   editorLoading.appendChild(editorSpinner);
   editorHost.appendChild(editorLoading);
+  const setEditorLoadingVisible = (visible: boolean) => {
+    editorLoading.style.display = visible ? "flex" : "none";
+  };
   let lastRenderedNoteId: number | null = null;
   let lastRenderedContent = "";
   let lastSidebarState: SidebarState | null = null;
