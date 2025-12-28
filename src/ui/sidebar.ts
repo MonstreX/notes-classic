@@ -925,18 +925,23 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
             }
             if (isExpanded && !wasExpanded) {
               const scrollEl = getScrollEl();
-              if (scrollEl) {
+              const tagsSection = root.querySelector<HTMLElement>("[data-tags-section]");
+              if (scrollEl && tagsSection) {
+                const ensureVisible = () => {
+                  const sectionTop = tagsSection.offsetTop;
+                  const sectionBottom = sectionTop + tagsSection.offsetHeight + tagsTree.offsetHeight;
+                  const viewTop = scrollEl.scrollTop;
+                  const viewBottom = viewTop + scrollEl.clientHeight;
+                  if (sectionBottom > viewBottom) {
+                    scrollEl.scrollTop = Math.max(0, sectionBottom - scrollEl.clientHeight);
+                  } else if (sectionTop < viewTop) {
+                    scrollEl.scrollTop = Math.max(0, sectionTop - 8);
+                  }
+                };
                 requestAnimationFrame(() => {
                   requestAnimationFrame(() => {
-                    const treeTop = tagsTree.offsetTop;
-                    const treeBottom = treeTop + tagsTree.offsetHeight;
-                    const viewTop = scrollEl.scrollTop;
-                    const viewBottom = viewTop + scrollEl.clientHeight;
-                    if (treeBottom > viewBottom) {
-                      scrollEl.scrollTop = Math.max(0, treeBottom - scrollEl.clientHeight);
-                    } else if (treeTop < viewTop) {
-                      scrollEl.scrollTop = Math.max(0, treeTop - 8);
-                    }
+                    ensureVisible();
+                    window.setTimeout(ensureVisible, 220);
                   });
                 });
               }

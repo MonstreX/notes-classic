@@ -116,8 +116,8 @@
 }
 
 .sidebar-section {
-  margin-top: 0;
-  padding: 16px 12px 8px;
+  margin-top: 10px;
+  padding: 8px 12px 8px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -132,6 +132,15 @@
 .sidebar-section__title {
   cursor: pointer;
   user-select: none;
+}
+
+.sidebar-section[data-action="toggle-tags-section"] {
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.sidebar-section[data-action="toggle-tags-section"]:hover {
+  background: var(--color-bg-dark-2);
 }
 
 .sidebar-section__actions {
