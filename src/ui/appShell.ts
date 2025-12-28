@@ -6,6 +6,7 @@ import { mountNotesList, type NotesListHandlers, type NotesListInstance, type No
 import { mountSearchModal } from "./searchModal";
 import { mountSidebar, type SidebarHandlers, type SidebarInstance, type SidebarState } from "./sidebar";
 import { mountTagsBar } from "./tagsBar";
+import { createEditorScheduler } from "./editorScheduler";
 import { actions, initApp } from "../controllers/appController";
 import { startOcrQueue } from "../services/ocr";
 import { appStore } from "../state/store";
@@ -223,51 +224,15 @@ export const mountApp = (root: HTMLElement) => {
   const setEditorLoadingVisible = (visible: boolean) => {
     editorLoading.style.display = visible ? "flex" : "none";
   };
-  let lastRenderedNoteId: number | null = null;
-  let lastRenderedContent = "";
   let lastSidebarState: SidebarState | null = null;
   let lastNotesListState: NotesListState | null = null;
-  let pendingEditorUpdate: number | null = null;
-  let pendingEditorNoteId: number | null = null;
-  let pendingEditorContent = "";
-  let isEditorUpdating = false;
+  const editorScheduler = createEditorScheduler({
+    editor: editorInstance,
+    getSelectedNoteId: () => appStore.getState().selectedNoteId,
+  });
   searchButton.addEventListener("click", () => {
     searchModal.open();
   });
-
-  const scheduleEditorUpdate = (noteId: number | null, content: string) => {
-    if (pendingEditorUpdate !== null) {
-      window.clearTimeout(pendingEditorUpdate);
-      pendingEditorUpdate = null;
-    }
-    pendingEditorNoteId = noteId;
-    pendingEditorContent = content;
-    isEditorUpdating = true;
-    if (noteId !== null) {
-      setEditorLoadingVisible(true);
-    }
-    pendingEditorUpdate = window.setTimeout(() => {
-      pendingEditorUpdate = null;
-      const current = appStore.getState();
-      if (current.selectedNoteId !== pendingEditorNoteId) {
-        isEditorUpdating = false;
-        if (current.selectedNoteId === null) {
-          setEditorLoadingVisible(false);
-        }
-        return;
-      }
-      try {
-        editorInstance.update(pendingEditorContent);
-        lastRenderedNoteId = pendingEditorNoteId;
-        lastRenderedContent = pendingEditorContent;
-      } catch (e) {
-        console.error("[editor] update failed", e);
-      } finally {
-        isEditorUpdating = false;
-        setEditorLoadingVisible(current.isNoteLoading);
-      }
-    }, 0);
-  };
 
   let isResizingSidebar = false;
   let isResizingList = false;
@@ -312,7 +277,7 @@ export const mountApp = (root: HTMLElement) => {
     }
 
     const hasNote = !!state.selectedNoteId;
-    setEditorLoadingVisible(hasNote && (state.isNoteLoading || isEditorUpdating));
+    setEditorLoadingVisible(hasNote && (state.isNoteLoading || editorScheduler.isUpdating()));
     editorShell.style.display = hasNote ? "flex" : "none";
     emptyState.style.display = hasNote ? "none" : "flex";
     metaBar.update({
@@ -387,11 +352,11 @@ export const mountApp = (root: HTMLElement) => {
     if (hasNote) {
       const readyNote = state.activeNote && state.activeNote.id === state.selectedNoteId;
       if (readyNote && !state.isNoteLoading) {
-        const isSameNote = lastRenderedNoteId === state.selectedNoteId;
+        const isSameNote = editorScheduler.getLastRenderedNoteId() === state.selectedNoteId;
         if (!isSameNote) {
-          scheduleEditorUpdate(state.selectedNoteId, state.content);
-        } else if (!editorFocused && state.content !== lastRenderedContent) {
-          scheduleEditorUpdate(state.selectedNoteId, state.content);
+          editorScheduler.schedule(state.selectedNoteId, state.content);
+        } else if (!editorFocused && state.content !== editorScheduler.getLastRenderedContent()) {
+          editorScheduler.schedule(state.selectedNoteId, state.content);
         }
       }
     }
@@ -414,6 +379,7 @@ export const mountApp = (root: HTMLElement) => {
     sidebarInstance.destroy();
     notesListInstance.destroy();
     editorInstance.destroy();
+    editorScheduler.reset();
     searchModal.destroy();
     metaBar.destroy();
     tagsBar.destroy();
