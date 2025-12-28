@@ -111,6 +111,10 @@ pub async fn init_db(data_dir: &Path) -> SqlitePool {
 
     let db_url = format!("sqlite:{}", db_path.to_str().expect("Path is not valid UTF-8"));
     let pool = SqlitePool::connect(&db_url).await.expect("Failed to connect to SQLite");
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .expect("Failed to enable foreign keys");
 
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS notebooks (
@@ -771,7 +775,16 @@ impl SqliteRepository {
     }
 
     pub async fn delete_note(&self, id: i64) -> Result<(), sqlx::Error> {
-        sqlx::query("DELETE FROM notes WHERE id = ?").bind(id).execute(&self.pool).await?;
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("DELETE FROM notes WHERE id = ?")
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM notes_text WHERE note_id = ?")
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
         Ok(())
     }
 
