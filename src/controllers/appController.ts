@@ -4,52 +4,25 @@ import { openNotebookDialog, openTagDialog, openConfirmDialog } from "../ui/dial
 import type { Notebook, Tag } from "../state/types";
 import { appStore } from "../state/store";
 import { logError } from "../services/logger";
-import {
-  ensureNotesScheme,
-  normalizeEnmlContent,
-  toDisplayContent,
-  toStorageContent,
-} from "../services/content";
+import { toStorageContent } from "../services/content";
 import { cleanupSettings, loadSettings, persistSettings } from "../services/settings";
 import {
   createNote,
   createNotebook,
   deleteNotebook,
   deleteNote,
-  getNote,
-  getNoteCounts,
   getNotes,
-  getNotesByTag,
-  getNotebooks,
   moveNotebook,
   moveNote,
   setNotesListView,
   updateNote,
 } from "../services/notes";
-import { addNoteTag, createTag as createTagService, deleteTag as deleteTagService, getNoteTags, getTags, removeNoteTag, updateTagParent } from "../services/tags";
+import { addNoteTag, createTag as createTagService, deleteTag as deleteTagService, getTags, removeNoteTag, updateTagParent } from "../services/tags";
+import { loadSelectedNote } from "./noteLoader";
+import { fetchNotesData, resortNotes } from "./dataLoader";
 
 const stripTags = (value: string) => value.replace(/<[^>]*>/g, "");
 const buildExcerpt = (value: string) => stripTags(value || "");
-
-const sortNotes = (
-  notes: Array<{ id: number; title: string; updatedAt: number }>,
-  sortBy: "updated" | "title",
-  sortDir: "asc" | "desc"
-) => {
-  const dir = sortDir === "asc" ? 1 : -1;
-  return [...notes].sort((a, b) => {
-    let result = 0;
-    if (sortBy === "title") {
-      result = (a.title || "").localeCompare(b.title || "");
-    } else {
-      result = (a.updatedAt || 0) - (b.updatedAt || 0);
-    }
-    if (result === 0) {
-      result = a.id - b.id;
-    }
-    return result * dir;
-  });
-};
 
 const normalizeTagName = (value: string) => value.trim();
 
@@ -78,83 +51,16 @@ const isDescendant = (notebooks: Notebook[], candidateParentId: number | null, n
 };
 
 const fetchData = async () => {
-  const state = appStore.getState();
-  if (!state.isLoaded) return;
   try {
-    const notesPromise = state.selectedTagId !== null
-      ? getNotesByTag(state.selectedTagId)
-      : getNotes(state.selectedNotebookId);
-    const [nbs, filteredNotes, counts] = await Promise.all([
-      getNotebooks(),
-      notesPromise,
-      getNoteCounts(),
-    ]);
-    const notesWithExcerpt = filteredNotes.map((note) => ({
-      ...note,
-      excerpt: buildExcerpt(note.content || ""),
-    }));
-    const sortedNotes = sortNotes(notesWithExcerpt, state.notesSortBy, state.notesSortDir);
-    const map = new Map<number, number>();
-    counts.perNotebook.forEach((item) => {
-      map.set(item.notebookId, item.count);
-    });
-    let nextSelectedNoteId = state.selectedNoteId;
-    const hasSelected = notesWithExcerpt.some((note) => note.id === state.selectedNoteId);
-    if (state.selectedTagId !== null || state.selectedNotebookId !== null) {
-      nextSelectedNoteId = hasSelected ? state.selectedNoteId : (sortedNotes[0]?.id ?? null);
-    }
-    const selectionChanged = nextSelectedNoteId !== state.selectedNoteId;
-    const nextState: Partial<typeof state> = {
-      notebooks: nbs,
-      notes: sortedNotes,
-      noteCounts: map,
-      totalNotes: counts.total,
-      selectedNoteId: nextSelectedNoteId,
-    };
-    if (selectionChanged && nextSelectedNoteId !== null) {
-      nextState.isNoteLoading = true;
-    }
-    appStore.setState(nextState);
+    const result = await fetchNotesData();
+    if (!result) return;
+    const { selectionChanged, nextSelectedNoteId } = result;
+    const state = appStore.getState();
     if (nextSelectedNoteId !== null && (selectionChanged || state.activeNote?.id !== nextSelectedNoteId)) {
       await loadSelectedNote();
     }
   } catch (err) {
-    console.error("Fetch Error:", err);
-  }
-};
-
-let noteLoadToken = 0;
-
-const loadSelectedNote = async () => {
-  const initialState = appStore.getState();
-  const noteId = initialState.selectedNoteId;
-  if (!noteId) {
-    appStore.setState({ activeNote: null, title: "", content: "", noteTags: [], isNoteLoading: false });
-    return;
-  }
-  noteLoadToken += 1;
-  const token = noteLoadToken;
-  appStore.setState({ isNoteLoading: true });
-  try {
-    const note = await getNote(noteId);
-    if (!note) {
-      appStore.setState({ activeNote: null, title: "", content: "", noteTags: [] });
-      return;
-    }
-    const currentState = appStore.getState();
-    if (currentState.selectedNoteId !== noteId) return;
-    const normalized = ensureNotesScheme(normalizeEnmlContent(note.content));
-    const displayContent = await toDisplayContent(normalized);
-    const finalNote = displayContent !== note.content ? { ...note, content: displayContent } : note;
-    const tags = await getNoteTags(noteId);
-    appStore.setState({ activeNote: finalNote, title: finalNote.title, content: finalNote.content, noteTags: tags });
-  } catch (e) {
-    logError("[note] load failed", e);
-  }
-  finally {
-    if (token === noteLoadToken) {
-      appStore.setState({ isNoteLoading: false });
-    }
+    logError("[fetch] failed", err);
   }
 };
 
@@ -210,9 +116,7 @@ export const actions = {
   setListWidth: (value: number) => appStore.setState({ listWidth: value }),
   setNotesListView: (value: "compact" | "detailed") => appStore.setState({ notesListView: value }),
   setNotesSort: (sortBy: "updated" | "title", sortDir: "asc" | "desc") => {
-    const state = appStore.getState();
-    const sorted = sortNotes(state.notes, sortBy, sortDir);
-    appStore.setState({ notesSortBy: sortBy, notesSortDir: sortDir, notes: sorted });
+    resortNotes(sortBy, sortDir);
   },
   addTagToNote: async (name: string) => {
     const state = appStore.getState();
@@ -435,7 +339,9 @@ export const initApp = async () => {
   try {
     const tags = await getTags();
     appStore.setState({ tags });
-  } catch (e) {}
+  } catch (e) {
+    logError("[tag] list failed", e);
+  }
 
   const unlistenView = await listen<string>("notes-list-view", (event) => {
     if (event.payload === "compact" || event.payload === "detailed") {
