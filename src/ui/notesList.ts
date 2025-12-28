@@ -24,7 +24,6 @@ export interface NotesListState {
   selectedTagId: number | null;
   selectedNoteId: number | null;
   notesListView: NotesListView;
-  searchTerm: string;
   notesSortBy: "updated" | "title";
   notesSortDir: "asc" | "desc";
 }
@@ -491,8 +490,7 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
         prev.notes !== state.notes ||
         prev.notebooks !== state.notebooks ||
         prev.selectedNotebookId !== state.selectedNotebookId ||
-        prev.notesListView !== state.notesListView ||
-        prev.searchTerm !== state.searchTerm;
+        prev.notesListView !== state.notesListView;
 
       currentState = state;
       cleanupDrag();

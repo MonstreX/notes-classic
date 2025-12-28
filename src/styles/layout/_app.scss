@@ -491,6 +491,7 @@
   justify-content: center;
   min-height: 64px;
   margin-top: 16px;
+  gap: 10px;
 }
 
 .search-modal__spinner {
@@ -500,6 +501,11 @@
   border-top-color: #00a82d;
   border-radius: 50%;
   animation: editor-spin 0.8s linear infinite;
+}
+
+.search-modal__loading-text {
+  font-size: 12px;
+  color: #6b7280;
 }
 
 .search-modal__toggle {
@@ -534,8 +540,14 @@
   border-radius: 999px;
 }
 
+.search-modal__scope.is-active {
+  background: var(--color-accent);
+  color: #ffffff;
+}
+
 .search-modal__scope.is-disabled {
-  opacity: 0.5;
+  opacity: 0.6;
+  text-decoration: line-through;
 }
 
 .search-modal__results {
@@ -653,8 +665,36 @@
   line-height: 1.5;
 }
 
-.search-modal__preview-body.notes-editor {
+.search-modal__empty-state {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 18px;
+  font-weight: 300;
+  color: #6b7280;
+  margin-top: 28px;
+}
+
+.search-modal__empty-icon {
+  width: 20px;
+  height: 20px;
+  color: #9ca3af;
+}
+
+.search-modal__empty-text {
+  font-size: 18px;
+}
+.search-modal__preview .notes-editor {
   padding: 0;
+}
+
+.search-modal__preview .notes-editor__wrapper {
+  padding: 0;
+}
+
+.search-modal__preview .jodit-toolbar__box {
+  display: none;
 }
 
 .search-modal__preview-body .jodit-wysiwyg {

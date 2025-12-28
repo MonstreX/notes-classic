@@ -18,7 +18,6 @@ export type AppState = {
   tagsSectionExpanded: boolean;
   sidebarWidth: number;
   listWidth: number;
-  searchTerm: string;
   title: string;
   content: string;
   activeNote: NoteDetail | null;
@@ -46,7 +45,6 @@ let state: AppState = {
   tagsSectionExpanded: true,
   sidebarWidth: 240,
   listWidth: 350,
-  searchTerm: "",
   title: "",
   content: "",
   activeNote: null,

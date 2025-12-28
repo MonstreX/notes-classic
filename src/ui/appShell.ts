@@ -1,10 +1,11 @@
 import { openNoteContextMenu, openNotebookContextMenu, openTagContextMenu, type ContextMenuNode } from "./contextMenu";
-import { mountEditor, type EditorInstance } from "./editor";
+import { mountEditor, mountPreviewEditor, type EditorInstance } from "./editor";
 import { mountNotesList, type NotesListHandlers, type NotesListInstance, type NotesListState } from "./notesList";
 import { mountSidebar, type SidebarHandlers, type SidebarInstance, type SidebarState } from "./sidebar";
 import { actions, initApp } from "../controllers/appController";
 import { appStore } from "../state/store";
 import type { Tag } from "../state/types";
+import { ensureNotesScheme, normalizeEnmlContent, toDisplayContent } from "../services/content";
 import { getNote, searchNotes } from "../services/notes";
 
 const buildMenuNodes = (parentId: number | null, state: ReturnType<typeof appStore.getState>): ContextMenuNode[] => {
@@ -206,6 +207,16 @@ export const mountApp = (root: HTMLElement) => {
   searchField.appendChild(searchSubmit);
   searchPanel.appendChild(searchHeader);
   searchPanel.appendChild(searchField);
+  const searchLoading = document.createElement("div");
+  searchLoading.className = "search-modal__loading";
+  const searchLoadingSpinner = document.createElement("div");
+  searchLoadingSpinner.className = "search-modal__spinner";
+  const searchLoadingText = document.createElement("div");
+  searchLoadingText.className = "search-modal__loading-text";
+  searchLoadingText.textContent = "Searching...";
+  searchLoading.appendChild(searchLoadingSpinner);
+  searchLoading.appendChild(searchLoadingText);
+  searchPanel.appendChild(searchLoading);
   const searchOptions = document.createElement("div");
   searchOptions.className = "search-modal__options";
   const searchEverywhere = document.createElement("button");
@@ -218,33 +229,27 @@ export const mountApp = (root: HTMLElement) => {
   searchEverywhere.appendChild(searchEverywhereText);
   const searchScope = document.createElement("div");
   searchScope.className = "search-modal__scope";
-  const searchCase = document.createElement("button");
-  searchCase.type = "button";
-  searchCase.className = "search-modal__toggle";
-  const searchCaseIcon = createIcon("icon-filter", "search-modal__toggle-icon");
-  searchCase.appendChild(searchCaseIcon);
-  const searchCaseText = document.createElement("span");
-  searchCaseText.textContent = "Case sensitive";
-  searchCase.appendChild(searchCaseText);
   searchOptions.appendChild(searchEverywhere);
   searchOptions.appendChild(searchScope);
-  searchOptions.appendChild(searchCase);
   searchPanel.appendChild(searchOptions);
-  const searchLoading = document.createElement("div");
-  searchLoading.className = "search-modal__loading";
-  const searchLoadingSpinner = document.createElement("div");
-  searchLoadingSpinner.className = "search-modal__spinner";
-  searchLoading.appendChild(searchLoadingSpinner);
-  searchPanel.appendChild(searchLoading);
   const searchResults = document.createElement("div");
   searchResults.className = "search-modal__results";
   const searchPreview = document.createElement("div");
   searchPreview.className = "search-modal__preview";
   const searchPreviewBody = document.createElement("div");
-  searchPreviewBody.className = "search-modal__preview-body notes-editor";
+  searchPreviewBody.className = "search-modal__preview-body";
   searchPreview.appendChild(searchPreviewBody);
   searchPanel.appendChild(searchResults);
   searchPanel.appendChild(searchPreview);
+  const searchEmpty = document.createElement("div");
+  searchEmpty.className = "search-modal__empty-state";
+  const searchEmptyIcon = createIcon("icon-search", "search-modal__empty-icon");
+  const searchEmptyText = document.createElement("div");
+  searchEmptyText.className = "search-modal__empty-text";
+  searchEmptyText.textContent = "No results found";
+  searchEmpty.appendChild(searchEmptyIcon);
+  searchEmpty.appendChild(searchEmptyText);
+  searchPanel.appendChild(searchEmpty);
   searchOverlay.appendChild(searchPanel);
   editorPane.appendChild(searchOverlay);
 
@@ -346,13 +351,15 @@ export const mountApp = (root: HTMLElement) => {
   let isEditorUpdating = false;
   let isSearchOpen = false;
   let searchEverywhereActive = false;
-  let searchCaseSensitive = false;
   let searchScopeNotebookId: number | null = null;
   let searchScopeLabel = "All Notes";
   let searchResultsData: NotesListState["notes"] = [];
   let searchSelectedNoteId: number | null = null;
   let searchTokens: string[] = [];
   let searchHasRun = false;
+  let searchLoadingTimer: number | null = null;
+  let searchRunToken = 0;
+  let searchPreviewEditor: EditorInstance | null = null;
   let tagSuggestions: Tag[] = [];
   let tagSuggestIndex = 0;
 
@@ -505,7 +512,15 @@ export const mountApp = (root: HTMLElement) => {
       .map((token) => token.trim())
       .filter((token) => token.length > 0);
 
-  const highlightHtml = (html: string, tokens: string[], caseSensitive: boolean) => {
+  const buildSearchQuery = (tokens: string[]) => {
+    const cleaned = tokens
+      .map((token) => token.replace(/[^\p{L}\p{N}_-]/gu, ""))
+      .filter((token) => token.length > 0);
+    if (cleaned.length === 0) return "";
+    return cleaned.map((token) => `${token}*`).join(" AND ");
+  };
+
+  const highlightHtml = (html: string, tokens: string[]) => {
     if (tokens.length === 0) return html;
     const container = document.createElement("div");
     container.innerHTML = html;
@@ -514,8 +529,7 @@ export const mountApp = (root: HTMLElement) => {
       .slice()
       .sort((a, b) => b.length - a.length)
       .map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-    const flags = caseSensitive ? "g" : "gi";
-    const regex = new RegExp(`(${escaped.join("|")})`, flags);
+    const regex = new RegExp(`(${escaped.join("|")})`, "gi");
     const nodes: Text[] = [];
     let current = walker.nextNode();
     while (current) {
@@ -531,7 +545,7 @@ export const mountApp = (root: HTMLElement) => {
         if (offset > lastIndex) {
           frag.appendChild(document.createTextNode(value.slice(lastIndex, offset)));
         }
-        const mark = document.createElement("mark");
+        const mark = document.createElement("span");
         mark.className = "search-modal__highlight";
         mark.textContent = match;
         frag.appendChild(mark);
@@ -546,16 +560,27 @@ export const mountApp = (root: HTMLElement) => {
     return container.innerHTML;
   };
 
+  const buildPreviewHtml = (html: string, tokens: string[]) => {
+    const maxHighlightLength = 120000;
+    if (html.length > maxHighlightLength) {
+      return html;
+    }
+    return highlightHtml(html, tokens);
+  };
+
   const renderSearchResults = () => {
     if (!searchHasRun) {
       searchResults.innerHTML = "";
+      searchEmpty.style.display = "none";
       return;
     }
     if (searchResultsData.length === 0) {
-      searchResults.innerHTML = "<div class=\"search-modal__empty\">No results</div>";
-      searchPreviewBody.innerHTML = "";
+      searchResults.innerHTML = "";
+      searchEmpty.style.display = "flex";
+      searchPreviewEditor?.update("");
       return;
     }
+    searchEmpty.style.display = "none";
     const state = appStore.getState();
     const map = new Map(state.notebooks.map((nb) => [nb.id, nb]));
     searchResults.innerHTML = searchResultsData
@@ -581,7 +606,7 @@ export const mountApp = (root: HTMLElement) => {
   const selectSearchResult = async (noteId: number | null) => {
     if (!noteId) {
       searchSelectedNoteId = null;
-      searchPreviewBody.innerHTML = "";
+      searchPreviewEditor?.update("");
       renderSearchResults();
       return;
     }
@@ -590,7 +615,13 @@ export const mountApp = (root: HTMLElement) => {
     try {
       const note = await getNote(noteId);
       if (!note) return;
-      searchPreviewBody.innerHTML = `<div class="jodit-wysiwyg">${highlightHtml(note.content || "", searchTokens, searchCaseSensitive)}</div>`;
+      const normalized = ensureNotesScheme(normalizeEnmlContent(note.content));
+      const displayContent = await toDisplayContent(normalized);
+      const previewHtml = buildPreviewHtml(displayContent || "", searchTokens);
+      if (!searchPreviewEditor) {
+        searchPreviewEditor = mountPreviewEditor(searchPreviewBody);
+      }
+      searchPreviewEditor.update(previewHtml);
     } catch (e) {
       console.error("[search] preview failed", e);
     }
@@ -615,6 +646,7 @@ export const mountApp = (root: HTMLElement) => {
   };
 
   const runSearch = async () => {
+    const runToken = ++searchRunToken;
     const query = searchInput.value.trim();
     searchTokens = tokenizeQuery(query);
     if (searchTokens.length === 0) {
@@ -629,38 +661,61 @@ export const mountApp = (root: HTMLElement) => {
     setSearchResultsVisible(false);
     try {
       const scopeNotebookId = searchEverywhereActive ? null : searchScopeNotebookId;
-      const searchQuery = searchTokens.map((token) => `${token}*`).join(" AND ");
-      let results = await searchNotes(searchQuery, scopeNotebookId);
-      if (searchCaseSensitive) {
-        results = results.filter((note) =>
-          searchTokens.every((token) =>
-            (note.title || "").includes(token) || (note.content || "").includes(token)
-          )
-        );
+      const searchQuery = buildSearchQuery(searchTokens);
+      if (!searchQuery) {
+        searchResultsData = [];
+        searchSelectedNoteId = null;
+        searchHasRun = true;
+        renderSearchResults();
+        return;
       }
+      const results = await searchNotes(searchQuery, scopeNotebookId);
+      if (runToken !== searchRunToken) return;
       searchResultsData = results.slice(0, 100);
       searchSelectedNoteId = searchResultsData[0]?.id ?? null;
       searchHasRun = true;
       renderSearchResults();
-      await selectSearchResult(searchSelectedNoteId);
+      if (searchSelectedNoteId) {
+        await selectSearchResult(searchSelectedNoteId);
+      } else {
+        setSearchResultsVisible(false);
+      }
     } catch (e) {
+      if (runToken !== searchRunToken) return;
       console.error("[search] failed", e);
       searchResultsData = [];
       searchSelectedNoteId = null;
       searchHasRun = true;
       renderSearchResults();
+      setSearchResultsVisible(false);
     } finally {
-      setSearchLoading(false);
-      setSearchResultsVisible(true);
+      if (runToken === searchRunToken) {
+        setSearchLoading(false);
+        if (searchResultsData.length > 0) {
+          setSearchResultsVisible(true);
+        }
+      }
     }
   };
 
   const updateSearchScopeState = () => {
     searchScope.classList.toggle("is-disabled", searchEverywhereActive);
+    searchScope.classList.toggle("is-active", !searchEverywhereActive);
   };
 
   const setSearchLoading = (visible: boolean) => {
-    searchLoading.style.display = visible ? "flex" : "none";
+    if (searchLoadingTimer !== null) {
+      window.clearTimeout(searchLoadingTimer);
+      searchLoadingTimer = null;
+    }
+    if (visible) {
+      searchLoadingTimer = window.setTimeout(() => {
+        searchLoading.style.display = "flex";
+        searchLoadingTimer = null;
+      }, 180);
+      return;
+    }
+    searchLoading.style.display = "none";
   };
 
   const setSearchResultsVisible = (visible: boolean) => {
@@ -671,6 +726,10 @@ export const mountApp = (root: HTMLElement) => {
   const setSearchVisible = (visible: boolean) => {
     isSearchOpen = visible;
     searchOverlay.style.display = visible ? "flex" : "none";
+    if (!visible) {
+      searchRunToken += 1;
+      setSearchLoading(false);
+    }
     if (visible) {
       const state = appStore.getState();
       searchScopeNotebookId = state.selectedNotebookId;
@@ -679,8 +738,6 @@ export const mountApp = (root: HTMLElement) => {
       searchEverywhereActive = false;
       searchEverywhere.classList.remove("is-active");
       updateSearchScopeState();
-      searchCaseSensitive = false;
-      searchCase.classList.remove("is-active");
       searchInput.value = "";
       searchResultsData = [];
       searchSelectedNoteId = null;
@@ -688,6 +745,8 @@ export const mountApp = (root: HTMLElement) => {
       searchHasRun = false;
       setSearchLoading(false);
       setSearchResultsVisible(false);
+      searchEmpty.style.display = "none";
+      searchPreviewEditor?.update("");
       renderSearchResults();
       window.setTimeout(() => {
         searchInput.focus();
@@ -738,16 +797,22 @@ export const mountApp = (root: HTMLElement) => {
     selectSearchResult(id);
   });
 
+  searchResults.addEventListener("dblclick", (event) => {
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    const row = target.closest<HTMLElement>("[data-note-id]");
+    if (!row) return;
+    const id = Number(row.dataset.noteId);
+    if (!Number.isFinite(id)) return;
+    openSearchResult(id);
+  });
+
   searchEverywhere.addEventListener("click", () => {
     searchEverywhereActive = !searchEverywhereActive;
     searchEverywhere.classList.toggle("is-active", searchEverywhereActive);
     updateSearchScopeState();
   });
 
-  searchCase.addEventListener("click", () => {
-    searchCaseSensitive = !searchCaseSensitive;
-    searchCase.classList.toggle("is-active", searchCaseSensitive);
-  });
 
   const handleSearchKeydown = (event: KeyboardEvent) => {
     if (event.key === "Escape" && isSearchOpen) {
@@ -911,7 +976,6 @@ export const mountApp = (root: HTMLElement) => {
     selectedTagId: state.selectedTagId,
     selectedNoteId: state.selectedNoteId,
     notesListView: state.notesListView,
-    searchTerm: state.searchTerm,
     notesSortBy: state.notesSortBy,
     notesSortDir: state.notesSortDir,
   };
@@ -941,8 +1005,7 @@ export const mountApp = (root: HTMLElement) => {
       lastNotesListState.selectedNotebookId !== notesListState.selectedNotebookId ||
       lastNotesListState.selectedTagId !== notesListState.selectedTagId ||
       lastNotesListState.selectedNoteId !== notesListState.selectedNoteId ||
-      lastNotesListState.notesListView !== notesListState.notesListView ||
-      lastNotesListState.searchTerm !== notesListState.searchTerm;
+      lastNotesListState.notesListView !== notesListState.notesListView;
 
     if (shouldUpdateList) {
       notesListInstance.update(notesListState);

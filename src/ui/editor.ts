@@ -274,7 +274,7 @@ const setupLinkHandlers = (editor: any) => {
   );
 };
 
-const createEditorConfig = () => {
+const createEditorConfig = (overrides: Record<string, unknown> = {}) => {
   return {
     readonly: false,
     toolbarAdaptive: false,
@@ -636,6 +636,7 @@ const createEditorConfig = () => {
         }
       },
     },
+    ...overrides,
   };
 };
 
@@ -718,6 +719,43 @@ export const mountEditor = (root: HTMLElement, options: EditorOptions): EditorIn
       editor.events.off("change", handleChange);
       editor.events.off("focus", handleFocus);
       editor.events.off("blur", handleBlur);
+      editor.destruct();
+      container.remove();
+    },
+  };
+};
+
+export const mountPreviewEditor = (root: HTMLElement): EditorInstance => {
+  const container = document.createElement("div");
+  container.className = "notes-editor notes-editor--preview";
+  const editorWrapper = document.createElement("div");
+  editorWrapper.className = "notes-editor__wrapper";
+  const mountPoint = document.createElement("div");
+  editorWrapper.appendChild(mountPoint);
+  container.appendChild(editorWrapper);
+  root.appendChild(container);
+
+  const editor = new Jodit(
+    mountPoint,
+    createEditorConfig({
+      readonly: true,
+      toolbar: false,
+      statusbar: false,
+      buttons: [],
+      buttonsMD: [],
+      buttonsSM: [],
+      buttonsXS: [],
+    })
+  );
+  editor.value = "";
+
+  return {
+    update: (content: string) => {
+      const next = content || "";
+      if (next === editor.value) return;
+      editor.value = next;
+    },
+    destroy: () => {
       editor.destruct();
       container.remove();
     },
