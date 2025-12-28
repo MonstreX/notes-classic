@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppState } from "../store";
-import { appStore } from "../store";
-import { logError } from "../logger";
+import type { AppState } from "../state/store";
+import { appStore } from "../state/store";
+import { logError } from "./logger";
 
 const STORAGE_KEY = "notes_classic_v10_stable";
 let saveSettingsTimer: number | null = null;

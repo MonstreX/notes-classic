@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { NoteCounts, NoteDetail, NoteListItem, Notebook } from "../types";
+import type { NoteCounts, NoteDetail, NoteListItem, Notebook } from "../state/types";
 
 export const getNotebooks = () => invoke<Notebook[]>("get_notebooks");
 

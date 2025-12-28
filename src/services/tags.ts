@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Tag } from "../types";
+import type { Tag } from "../state/types";
 
 export const getTags = () => invoke<Tag[]>("get_tags");
 

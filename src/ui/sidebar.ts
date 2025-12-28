@@ -1,4 +1,4 @@
-import type { Tag } from "./types";
+import type { Tag } from "../state/types";
 
 export type NotebookType = "stack" | "notebook";
 

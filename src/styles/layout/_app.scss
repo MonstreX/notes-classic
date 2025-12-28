@@ -413,7 +413,131 @@
   background: #ffffff;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
-  padding: 10px 14px;
+  padding: 10px 96px 10px 36px;
   font-size: 14px;
   outline: none;
+}
+
+.search-modal__icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  color: #9ca3af;
+}
+
+.search-modal__button {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 0;
+  background: #111827;
+  color: #ffffff;
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.search-modal__button:hover {
+  background: #1f2937;
+}
+
+.search-modal__options {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.search-modal__toggle {
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  color: #4b5563;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.search-modal__toggle.is-active {
+  background: #111827;
+  color: #ffffff;
+  border-color: #111827;
+}
+
+.search-modal__scope {
+  font-size: 12px;
+  color: #6b7280;
+  padding: 6px 10px;
+  background: #f3f4f6;
+  border-radius: 999px;
+}
+
+.search-modal__scope.is-disabled {
+  opacity: 0.5;
+}
+
+.search-modal__results {
+  margin-top: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.search-modal__result {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font-size: 13px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #111827;
+}
+
+.search-modal__result:hover,
+.search-modal__result.is-active {
+  background: #f3f4f6;
+}
+
+.search-modal__empty {
+  font-size: 12px;
+  color: #9ca3af;
+  padding: 8px 10px;
+}
+
+.search-modal__preview {
+  margin-top: 16px;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 12px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.search-modal__preview-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 8px;
+}
+
+.search-modal__preview-body {
+  font-size: 13px;
+  color: #111827;
+  line-height: 1.5;
+}
+
+.search-modal__highlight {
+  background: #fff1a8;
+  color: inherit;
+  padding: 0 2px;
+  border-radius: 2px;
 }

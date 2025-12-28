@@ -2,9 +2,10 @@ import { openNoteContextMenu, openNotebookContextMenu, openTagContextMenu, type 
 import { mountEditor, type EditorInstance } from "./editor";
 import { mountNotesList, type NotesListHandlers, type NotesListInstance, type NotesListState } from "./notesList";
 import { mountSidebar, type SidebarHandlers, type SidebarInstance, type SidebarState } from "./sidebar";
-import { actions, initApp } from "./appController";
-import { appStore } from "./store";
-import type { Tag } from "./types";
+import { actions, initApp } from "../controllers/appController";
+import { appStore } from "../state/store";
+import type { Tag } from "../state/types";
+import { getNote, searchNotes } from "../services/notes";
 
 const buildMenuNodes = (parentId: number | null, state: ReturnType<typeof appStore.getState>): ContextMenuNode[] => {
   const typeFilter = parentId === null ? "stack" : "notebook";
@@ -18,6 +19,14 @@ const buildMenuNodes = (parentId: number | null, state: ReturnType<typeof appSto
     children: nb.notebookType === "stack" ? buildMenuNodes(nb.id, state) : [],
   }));
 };
+
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 
 const createIcon = (id: string, className: string) => {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -177,9 +186,44 @@ export const mountApp = (root: HTMLElement) => {
   searchInput.className = "search-modal__input";
   searchInput.type = "text";
   searchInput.placeholder = "Search...";
+  const searchIcon = createIcon("icon-search", "search-modal__icon");
+  const searchSubmit = document.createElement("button");
+  searchSubmit.className = "search-modal__button";
+  searchSubmit.type = "button";
+  searchSubmit.textContent = "Search";
+  searchField.appendChild(searchIcon);
   searchField.appendChild(searchInput);
+  searchField.appendChild(searchSubmit);
   searchPanel.appendChild(searchTitle);
   searchPanel.appendChild(searchField);
+  const searchOptions = document.createElement("div");
+  searchOptions.className = "search-modal__options";
+  const searchEverywhere = document.createElement("button");
+  searchEverywhere.type = "button";
+  searchEverywhere.className = "search-modal__toggle";
+  searchEverywhere.textContent = "Search everywhere";
+  const searchScope = document.createElement("div");
+  searchScope.className = "search-modal__scope";
+  const searchCase = document.createElement("button");
+  searchCase.type = "button";
+  searchCase.className = "search-modal__toggle";
+  searchCase.textContent = "Case sensitive";
+  searchOptions.appendChild(searchEverywhere);
+  searchOptions.appendChild(searchScope);
+  searchOptions.appendChild(searchCase);
+  searchPanel.appendChild(searchOptions);
+  const searchResults = document.createElement("div");
+  searchResults.className = "search-modal__results";
+  const searchPreview = document.createElement("div");
+  searchPreview.className = "search-modal__preview";
+  const searchPreviewTitle = document.createElement("div");
+  searchPreviewTitle.className = "search-modal__preview-title";
+  const searchPreviewBody = document.createElement("div");
+  searchPreviewBody.className = "search-modal__preview-body";
+  searchPreview.appendChild(searchPreviewTitle);
+  searchPreview.appendChild(searchPreviewBody);
+  searchPanel.appendChild(searchResults);
+  searchPanel.appendChild(searchPreview);
   searchOverlay.appendChild(searchPanel);
   editorPane.appendChild(searchOverlay);
 
@@ -280,6 +324,13 @@ export const mountApp = (root: HTMLElement) => {
   let pendingEditorContent = "";
   let isEditorUpdating = false;
   let isSearchOpen = false;
+  let searchEverywhereActive = false;
+  let searchCaseSensitive = false;
+  let searchScopeNotebookId: number | null = null;
+  let searchScopeLabel = "All Notes";
+  let searchResultsData: NotesListState["notes"] = [];
+  let searchSelectedNoteId: number | null = null;
+  let searchTokens: string[] = [];
   let tagSuggestions: Tag[] = [];
   let tagSuggestIndex = 0;
 
@@ -415,12 +466,153 @@ export const mountApp = (root: HTMLElement) => {
     editorLoading.style.display = visible ? "flex" : "none";
   };
 
+  const buildScopeLabel = (state: ReturnType<typeof appStore.getState>) => {
+    if (state.selectedNotebookId !== null) {
+      const notebook = state.notebooks.find((nb) => nb.id === state.selectedNotebookId);
+      const stack = notebook?.parentId ? state.notebooks.find((nb) => nb.id === notebook.parentId) : null;
+      if (stack) return `${stack.name} - ${notebook?.name ?? "Notebook"}`;
+      return notebook?.name ?? "Notebook";
+    }
+    return "All Notes";
+  };
+
+  const tokenizeQuery = (value: string) =>
+    value
+      .replace(/["']/g, " ")
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter((token) => token.length > 0);
+
+  const highlightHtml = (html: string, tokens: string[], caseSensitive: boolean) => {
+    if (tokens.length === 0) return html;
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    const escaped = tokens
+      .slice()
+      .sort((a, b) => b.length - a.length)
+      .map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    const flags = caseSensitive ? "g" : "gi";
+    const regex = new RegExp(`(${escaped.join("|")})`, flags);
+    const nodes: Text[] = [];
+    let current = walker.nextNode();
+    while (current) {
+      nodes.push(current as Text);
+      current = walker.nextNode();
+    }
+    nodes.forEach((node) => {
+      const value = node.nodeValue || "";
+      if (!regex.test(value)) return;
+      const frag = document.createDocumentFragment();
+      let lastIndex = 0;
+      value.replace(regex, (match, _group, offset) => {
+        if (offset > lastIndex) {
+          frag.appendChild(document.createTextNode(value.slice(lastIndex, offset)));
+        }
+        const mark = document.createElement("mark");
+        mark.className = "search-modal__highlight";
+        mark.textContent = match;
+        frag.appendChild(mark);
+        lastIndex = offset + match.length;
+        return match;
+      });
+      if (lastIndex < value.length) {
+        frag.appendChild(document.createTextNode(value.slice(lastIndex)));
+      }
+      node.parentNode?.replaceChild(frag, node);
+    });
+    return container.innerHTML;
+  };
+
+  const renderSearchResults = () => {
+    if (searchResultsData.length === 0) {
+      searchResults.innerHTML = "<div class=\"search-modal__empty\">No results</div>";
+      searchPreviewTitle.textContent = "";
+      searchPreviewBody.innerHTML = "";
+      return;
+    }
+    const state = appStore.getState();
+    const map = new Map(state.notebooks.map((nb) => [nb.id, nb]));
+    searchResults.innerHTML = searchResultsData
+      .map((note) => {
+        const notebook = note.notebookId ? map.get(note.notebookId) : null;
+        const stack = notebook?.parentId ? map.get(notebook.parentId) : null;
+        const parts = [stack?.name, notebook?.name, note.title || "Untitled"].filter(Boolean).join(" - ");
+        return `
+          <button class="search-modal__result ${note.id === searchSelectedNoteId ? "is-active" : ""}" data-note-id="${note.id}">
+            ${escapeHtml(parts)}
+          </button>
+        `;
+      })
+      .join("");
+  };
+
+  const selectSearchResult = async (noteId: number | null) => {
+    if (!noteId) {
+      searchSelectedNoteId = null;
+      searchPreviewTitle.textContent = "";
+      searchPreviewBody.innerHTML = "";
+      renderSearchResults();
+      return;
+    }
+    searchSelectedNoteId = noteId;
+    renderSearchResults();
+    try {
+      const note = await getNote(noteId);
+      if (!note) return;
+      searchPreviewTitle.textContent = note.title || "Untitled";
+      searchPreviewBody.innerHTML = highlightHtml(note.content || "", searchTokens, searchCaseSensitive);
+    } catch (e) {
+      console.error("[search] preview failed", e);
+    }
+  };
+
+  const runSearch = async () => {
+    const query = searchInput.value.trim();
+    searchTokens = tokenizeQuery(query);
+    if (searchTokens.length === 0) {
+      searchResultsData = [];
+      renderSearchResults();
+      return;
+    }
+    const scopeNotebookId = searchEverywhereActive ? null : searchScopeNotebookId;
+    const searchQuery = searchTokens.map((token) => `${token}*`).join(" AND ");
+    let results = await searchNotes(searchQuery, scopeNotebookId);
+    if (searchCaseSensitive) {
+      results = results.filter((note) =>
+        searchTokens.every((token) =>
+          (note.title || "").includes(token) || (note.content || "").includes(token)
+        )
+      );
+    }
+    searchResultsData = results.slice(0, 100);
+    searchSelectedNoteId = searchResultsData[0]?.id ?? null;
+    renderSearchResults();
+    await selectSearchResult(searchSelectedNoteId);
+  };
+
+  const updateSearchScopeState = () => {
+    searchScope.classList.toggle("is-disabled", searchEverywhereActive);
+  };
+
   const setSearchVisible = (visible: boolean) => {
     isSearchOpen = visible;
     searchOverlay.style.display = visible ? "flex" : "none";
     if (visible) {
       const state = appStore.getState();
-      searchInput.value = state.searchTerm;
+      searchScopeNotebookId = state.selectedNotebookId;
+      searchScopeLabel = buildScopeLabel(state);
+      searchScope.textContent = searchScopeLabel;
+      searchEverywhereActive = false;
+      searchEverywhere.classList.remove("is-active");
+      updateSearchScopeState();
+      searchCaseSensitive = false;
+      searchCase.classList.remove("is-active");
+      searchInput.value = "";
+      searchResultsData = [];
+      searchSelectedNoteId = null;
+      searchTokens = [];
+      renderSearchResults();
       window.setTimeout(() => {
         searchInput.focus();
         searchInput.select();
@@ -438,8 +630,35 @@ export const mountApp = (root: HTMLElement) => {
     }
   });
 
-  searchInput.addEventListener("input", () => {
-    actions.setSearchTerm(searchInput.value);
+  searchSubmit.addEventListener("click", () => {
+    runSearch();
+  });
+
+  searchInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      runSearch();
+    }
+  });
+
+  searchResults.addEventListener("click", (event) => {
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    const row = target.closest<HTMLElement>("[data-note-id]");
+    if (!row) return;
+    const id = Number(row.dataset.noteId);
+    if (!Number.isFinite(id)) return;
+    selectSearchResult(id);
+  });
+
+  searchEverywhere.addEventListener("click", () => {
+    searchEverywhereActive = !searchEverywhereActive;
+    searchEverywhere.classList.toggle("is-active", searchEverywhereActive);
+    updateSearchScopeState();
+  });
+
+  searchCase.addEventListener("click", () => {
+    searchCaseSensitive = !searchCaseSensitive;
+    searchCase.classList.toggle("is-active", searchCaseSensitive);
   });
 
   const handleSearchKeydown = (event: KeyboardEvent) => {

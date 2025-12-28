@@ -28,7 +28,7 @@ import css from "highlight.js/lib/languages/css";
 import php from "highlight.js/lib/languages/php";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { open } from "@tauri-apps/plugin-shell";
-import { logError } from "./logger";
+import { logError } from "../services/logger";
 
 hljs.registerLanguage("javascript", javascript);
 hljs.registerLanguage("js", javascript);

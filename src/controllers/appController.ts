@@ -1,16 +1,16 @@
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import { openNotebookDialog, openTagDialog, openConfirmDialog } from "./dialogs";
-import type { Notebook, Tag } from "./types";
-import { appStore } from "./store";
-import { logError } from "./logger";
+import { openNotebookDialog, openTagDialog, openConfirmDialog } from "../ui/dialogs";
+import type { Notebook, Tag } from "../state/types";
+import { appStore } from "../state/store";
+import { logError } from "../services/logger";
 import {
   ensureNotesScheme,
   normalizeEnmlContent,
   toDisplayContent,
   toStorageContent,
-} from "./services/content";
-import { cleanupSettings, loadSettings, persistSettings } from "./services/settings";
+} from "../services/content";
+import { cleanupSettings, loadSettings, persistSettings } from "../services/settings";
 import {
   createNote,
   createNotebook,
@@ -26,8 +26,8 @@ import {
   searchNotes,
   setNotesListView,
   updateNote,
-} from "./services/notes";
-import { addNoteTag, createTag as createTagService, deleteTag as deleteTagService, getNoteTags, getTags, removeNoteTag, updateTagParent } from "./services/tags";
+} from "../services/notes";
+import { addNoteTag, createTag as createTagService, deleteTag as deleteTagService, getNoteTags, getTags, removeNoteTag, updateTagParent } from "../services/tags";
 
 const stripTags = (value: string) => value.replace(/<[^>]*>/g, "");
 const buildExcerpt = (value: string) => stripTags(value || "");
