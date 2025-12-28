@@ -16,7 +16,7 @@
   gap: 12px;
   color: var(--color-text-muted-2);
   padding: 8px;
-  border-radius: 6px;
+  border-radius: 4px;
   cursor: pointer;
   margin: 0 4px;
   transition: background-color 0.2s, color 0.2s;
@@ -149,13 +149,13 @@
 
 .sidebar-section.is-drag-over {
   background: rgba(0, 0, 0, 0.08);
-  border-radius: 6px;
+  border-radius: 4px;
   outline: 1px solid #00a82d;
   outline-offset: -1px;
 }
 
 .sidebar-tree {
-  border-radius: 6px;
+  border-radius: 4px;
   position: relative;
 }
 
@@ -170,7 +170,7 @@
   background: var(--color-bg-dark);
   color: var(--color-white);
   border: 1px solid var(--color-bg-dark-2);
-  border-radius: 6px;
+  border-radius: 4px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
   font-size: 14px;
   opacity: 0.7;
@@ -207,5 +207,5 @@
 
 .sidebar-tree--tags.is-drag-over {
   background: rgba(0, 0, 0, 0.06);
-  border-radius: 6px;
+  border-radius: 4px;
 }

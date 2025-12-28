@@ -177,50 +177,71 @@ export const mountApp = (root: HTMLElement) => {
   searchOverlay.style.display = "none";
   const searchPanel = document.createElement("div");
   searchPanel.className = "search-modal__panel";
+  const searchHeader = document.createElement("div");
+  searchHeader.className = "search-modal__header";
   const searchTitle = document.createElement("div");
   searchTitle.className = "search-modal__title";
   searchTitle.textContent = "Search";
+  const searchClose = document.createElement("button");
+  searchClose.className = "search-modal__close";
+  searchClose.type = "button";
+  searchClose.setAttribute("aria-label", "Close");
+  const searchCloseIcon = createIcon("icon-close", "search-modal__close-icon");
+  searchClose.appendChild(searchCloseIcon);
+  searchHeader.appendChild(searchTitle);
+  searchHeader.appendChild(searchClose);
   const searchField = document.createElement("div");
   searchField.className = "search-modal__field";
   const searchInput = document.createElement("input");
   searchInput.className = "search-modal__input";
   searchInput.type = "text";
   searchInput.placeholder = "Search...";
-  const searchIcon = createIcon("icon-search", "search-modal__icon");
+  const searchFieldIcon = createIcon("icon-search", "search-modal__icon");
   const searchSubmit = document.createElement("button");
   searchSubmit.className = "search-modal__button";
   searchSubmit.type = "button";
   searchSubmit.textContent = "Search";
-  searchField.appendChild(searchIcon);
+  searchField.appendChild(searchFieldIcon);
   searchField.appendChild(searchInput);
   searchField.appendChild(searchSubmit);
-  searchPanel.appendChild(searchTitle);
+  searchPanel.appendChild(searchHeader);
   searchPanel.appendChild(searchField);
   const searchOptions = document.createElement("div");
   searchOptions.className = "search-modal__options";
   const searchEverywhere = document.createElement("button");
   searchEverywhere.type = "button";
   searchEverywhere.className = "search-modal__toggle";
-  searchEverywhere.textContent = "Search everywhere";
+  const searchEverywhereIcon = createIcon("icon-note", "search-modal__toggle-icon");
+  searchEverywhere.appendChild(searchEverywhereIcon);
+  const searchEverywhereText = document.createElement("span");
+  searchEverywhereText.textContent = "Search everywhere";
+  searchEverywhere.appendChild(searchEverywhereText);
   const searchScope = document.createElement("div");
   searchScope.className = "search-modal__scope";
   const searchCase = document.createElement("button");
   searchCase.type = "button";
   searchCase.className = "search-modal__toggle";
-  searchCase.textContent = "Case sensitive";
+  const searchCaseIcon = createIcon("icon-filter", "search-modal__toggle-icon");
+  searchCase.appendChild(searchCaseIcon);
+  const searchCaseText = document.createElement("span");
+  searchCaseText.textContent = "Case sensitive";
+  searchCase.appendChild(searchCaseText);
   searchOptions.appendChild(searchEverywhere);
   searchOptions.appendChild(searchScope);
   searchOptions.appendChild(searchCase);
   searchPanel.appendChild(searchOptions);
+  const searchLoading = document.createElement("div");
+  searchLoading.className = "search-modal__loading";
+  const searchLoadingSpinner = document.createElement("div");
+  searchLoadingSpinner.className = "search-modal__spinner";
+  searchLoading.appendChild(searchLoadingSpinner);
+  searchPanel.appendChild(searchLoading);
   const searchResults = document.createElement("div");
   searchResults.className = "search-modal__results";
   const searchPreview = document.createElement("div");
   searchPreview.className = "search-modal__preview";
-  const searchPreviewTitle = document.createElement("div");
-  searchPreviewTitle.className = "search-modal__preview-title";
   const searchPreviewBody = document.createElement("div");
-  searchPreviewBody.className = "search-modal__preview-body";
-  searchPreview.appendChild(searchPreviewTitle);
+  searchPreviewBody.className = "search-modal__preview-body notes-editor";
   searchPreview.appendChild(searchPreviewBody);
   searchPanel.appendChild(searchResults);
   searchPanel.appendChild(searchPreview);
@@ -331,6 +352,7 @@ export const mountApp = (root: HTMLElement) => {
   let searchResultsData: NotesListState["notes"] = [];
   let searchSelectedNoteId: number | null = null;
   let searchTokens: string[] = [];
+  let searchHasRun = false;
   let tagSuggestions: Tag[] = [];
   let tagSuggestIndex = 0;
 
@@ -525,9 +547,12 @@ export const mountApp = (root: HTMLElement) => {
   };
 
   const renderSearchResults = () => {
+    if (!searchHasRun) {
+      searchResults.innerHTML = "";
+      return;
+    }
     if (searchResultsData.length === 0) {
       searchResults.innerHTML = "<div class=\"search-modal__empty\">No results</div>";
-      searchPreviewTitle.textContent = "";
       searchPreviewBody.innerHTML = "";
       return;
     }
@@ -539,9 +564,15 @@ export const mountApp = (root: HTMLElement) => {
         const stack = notebook?.parentId ? map.get(notebook.parentId) : null;
         const parts = [stack?.name, notebook?.name, note.title || "Untitled"].filter(Boolean).join(" - ");
         return `
-          <button class="search-modal__result ${note.id === searchSelectedNoteId ? "is-active" : ""}" data-note-id="${note.id}">
-            ${escapeHtml(parts)}
-          </button>
+          <div class="search-modal__result ${note.id === searchSelectedNoteId ? "is-active" : ""}" data-note-id="${note.id}">
+            <span class="search-modal__result-text">${escapeHtml(parts)}</span>
+            <button class="search-modal__result-open" type="button" data-action="open-note" data-note-id="${note.id}">
+              <svg class="search-modal__result-icon" aria-hidden="true">
+                <use href="#icon-note"></use>
+              </svg>
+              Open
+            </button>
+          </div>
         `;
       })
       .join("");
@@ -550,7 +581,6 @@ export const mountApp = (root: HTMLElement) => {
   const selectSearchResult = async (noteId: number | null) => {
     if (!noteId) {
       searchSelectedNoteId = null;
-      searchPreviewTitle.textContent = "";
       searchPreviewBody.innerHTML = "";
       renderSearchResults();
       return;
@@ -560,11 +590,28 @@ export const mountApp = (root: HTMLElement) => {
     try {
       const note = await getNote(noteId);
       if (!note) return;
-      searchPreviewTitle.textContent = note.title || "Untitled";
-      searchPreviewBody.innerHTML = highlightHtml(note.content || "", searchTokens, searchCaseSensitive);
+      searchPreviewBody.innerHTML = `<div class="jodit-wysiwyg">${highlightHtml(note.content || "", searchTokens, searchCaseSensitive)}</div>`;
     } catch (e) {
       console.error("[search] preview failed", e);
     }
+  };
+
+  const openSearchResult = (noteId: number) => {
+    const note = searchResultsData.find((item) => item.id === noteId);
+    if (!note) return;
+    const notebookId = note.notebookId ?? null;
+    const state = appStore.getState();
+    if (notebookId !== null) {
+      const notebook = state.notebooks.find((nb) => nb.id === notebookId);
+      if (notebook?.parentId) {
+        const nextExpanded = new Set(state.expandedNotebooks);
+        nextExpanded.add(notebook.parentId);
+        appStore.setState({ expandedNotebooks: nextExpanded });
+      }
+    }
+    actions.selectNotebook(notebookId);
+    actions.selectNote(noteId);
+    setSearchVisible(false);
   };
 
   const runSearch = async () => {
@@ -572,27 +619,53 @@ export const mountApp = (root: HTMLElement) => {
     searchTokens = tokenizeQuery(query);
     if (searchTokens.length === 0) {
       searchResultsData = [];
+      searchHasRun = false;
+      setSearchLoading(false);
+      setSearchResultsVisible(false);
       renderSearchResults();
       return;
     }
-    const scopeNotebookId = searchEverywhereActive ? null : searchScopeNotebookId;
-    const searchQuery = searchTokens.map((token) => `${token}*`).join(" AND ");
-    let results = await searchNotes(searchQuery, scopeNotebookId);
-    if (searchCaseSensitive) {
-      results = results.filter((note) =>
-        searchTokens.every((token) =>
-          (note.title || "").includes(token) || (note.content || "").includes(token)
-        )
-      );
+    setSearchLoading(true);
+    setSearchResultsVisible(false);
+    try {
+      const scopeNotebookId = searchEverywhereActive ? null : searchScopeNotebookId;
+      const searchQuery = searchTokens.map((token) => `${token}*`).join(" AND ");
+      let results = await searchNotes(searchQuery, scopeNotebookId);
+      if (searchCaseSensitive) {
+        results = results.filter((note) =>
+          searchTokens.every((token) =>
+            (note.title || "").includes(token) || (note.content || "").includes(token)
+          )
+        );
+      }
+      searchResultsData = results.slice(0, 100);
+      searchSelectedNoteId = searchResultsData[0]?.id ?? null;
+      searchHasRun = true;
+      renderSearchResults();
+      await selectSearchResult(searchSelectedNoteId);
+    } catch (e) {
+      console.error("[search] failed", e);
+      searchResultsData = [];
+      searchSelectedNoteId = null;
+      searchHasRun = true;
+      renderSearchResults();
+    } finally {
+      setSearchLoading(false);
+      setSearchResultsVisible(true);
     }
-    searchResultsData = results.slice(0, 100);
-    searchSelectedNoteId = searchResultsData[0]?.id ?? null;
-    renderSearchResults();
-    await selectSearchResult(searchSelectedNoteId);
   };
 
   const updateSearchScopeState = () => {
     searchScope.classList.toggle("is-disabled", searchEverywhereActive);
+  };
+
+  const setSearchLoading = (visible: boolean) => {
+    searchLoading.style.display = visible ? "flex" : "none";
+  };
+
+  const setSearchResultsVisible = (visible: boolean) => {
+    searchResults.style.display = visible ? "block" : "none";
+    searchPreview.style.display = visible ? "block" : "none";
   };
 
   const setSearchVisible = (visible: boolean) => {
@@ -612,6 +685,9 @@ export const mountApp = (root: HTMLElement) => {
       searchResultsData = [];
       searchSelectedNoteId = null;
       searchTokens = [];
+      searchHasRun = false;
+      setSearchLoading(false);
+      setSearchResultsVisible(false);
       renderSearchResults();
       window.setTimeout(() => {
         searchInput.focus();
@@ -630,6 +706,10 @@ export const mountApp = (root: HTMLElement) => {
     }
   });
 
+  searchClose.addEventListener("click", () => {
+    setSearchVisible(false);
+  });
+
   searchSubmit.addEventListener("click", () => {
     runSearch();
   });
@@ -643,6 +723,14 @@ export const mountApp = (root: HTMLElement) => {
   searchResults.addEventListener("click", (event) => {
     const target = event.target as HTMLElement | null;
     if (!target) return;
+    if (target.closest("[data-action=\"open-note\"]")) {
+      const button = target.closest<HTMLElement>("[data-action=\"open-note\"]");
+      if (!button) return;
+      const id = Number(button.dataset.noteId);
+      if (!Number.isFinite(id)) return;
+      openSearchResult(id);
+      return;
+    }
     const row = target.closest<HTMLElement>("[data-note-id]");
     if (!row) return;
     const id = Number(row.dataset.noteId);
