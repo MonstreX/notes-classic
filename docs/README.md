@@ -35,22 +35,20 @@ If the app cannot write to the executable folder, it shows an error and aborts s
 
 ```text
 notes-classic/
-?? docs/                      # Project documentation
-?? src/                       # Frontend source (vanilla TS)
-?  ?? assets/                 # Static assets (icons sprite, etc.)
-?  ?? controllers/            # App orchestration
-?  ?? services/               # Domain + IPC helpers
-?  ?? state/                  # In-memory store + types
-?  ?? styles/                 # SCSS styles
-?  ?? ui/                     # UI modules (DOM + events)
-?  ?? components/             # Legacy (unused)
-?  ?? hooks/                  # Legacy (unused)
-?? src-tauri/                 # Rust backend
-?  ?? icons/                  # App icon
-?  ?? src/                    # Rust sources
-?  ?? Cargo.toml              # Rust dependencies
-?? settings/                  # User settings
-?? data/                      # User data
+├─ docs/                      # Project documentation
+├─ src/                       # Frontend source (vanilla TS)
+│  ├─ assets/                 # Static assets (icons sprite, etc.)
+│  ├─ controllers/            # App orchestration
+│  ├─ services/               # Domain + IPC helpers
+│  ├─ state/                  # In-memory store + types
+│  ├─ styles/                 # SCSS styles
+│  └─ ui/                     # UI modules (DOM + events)
+├─ src-tauri/                 # Rust backend
+│  ├─ icons/                  # App icon
+│  ├─ src/                    # Rust sources
+│  └─ Cargo.toml              # Rust dependencies
+├─ settings/                  # User settings
+└─ data/                      # User data
 ```
 
 ---
