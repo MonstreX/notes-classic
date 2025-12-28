@@ -232,9 +232,15 @@ export const mountApp = (root: HTMLElement) => {
   searchScope.className = "search-modal__scope";
   const searchOptionsSpacer = document.createElement("div");
   searchOptionsSpacer.className = "search-modal__options-spacer";
-  const searchOcrStatus = document.createElement("div");
-  searchOcrStatus.className = "search-modal__ocr-status";
-  searchOcrStatus.textContent = "OCR: ...";
+    const searchOcrStatus = document.createElement("div");
+    searchOcrStatus.className = "search-modal__ocr-status";
+    const searchOcrSpinner = document.createElement("span");
+    searchOcrSpinner.className = "search-modal__ocr-spinner";
+    const searchOcrText = document.createElement("span");
+    searchOcrText.className = "search-modal__ocr-text";
+    searchOcrText.textContent = "Indexing images...";
+    searchOcrStatus.appendChild(searchOcrSpinner);
+    searchOcrStatus.appendChild(searchOcrText);
   searchOptions.appendChild(searchEverywhere);
   searchOptions.appendChild(searchScope);
   searchOptions.appendChild(searchOptionsSpacer);
@@ -712,21 +718,25 @@ export const mountApp = (root: HTMLElement) => {
     searchScope.classList.toggle("is-active", !searchEverywhereActive);
   };
 
-  const updateOcrStatus = async () => {
-    try {
-      const stats = await getOcrStats();
-      if (stats.total === 0) {
-        searchOcrStatus.textContent = "OCR: idle";
-      } else if (stats.pending === 0) {
-        searchOcrStatus.textContent = `OCR: ${stats.done}/${stats.total}`;
-      } else {
-        searchOcrStatus.textContent = `OCR: ${stats.done}/${stats.total}`;
+    const updateOcrStatus = async () => {
+      try {
+        const stats = await getOcrStats();
+        if (stats.total === 0) {
+          searchOcrText.textContent = "No images found";
+          searchOcrStatus.classList.remove("is-active");
+        } else if (stats.pending === 0) {
+          searchOcrText.textContent = `${stats.done} of ${stats.total} images indexed`;
+          searchOcrStatus.classList.remove("is-active");
+        } else {
+          searchOcrText.textContent = `${stats.done} of ${stats.total} images indexed`;
+          searchOcrStatus.classList.add("is-active");
+        }
+      } catch (e) {
+        console.error("[ocr] stats failed", e);
+        searchOcrText.textContent = "Indexing unavailable";
+        searchOcrStatus.classList.remove("is-active");
       }
-    } catch (e) {
-      console.error("[ocr] stats failed", e);
-      searchOcrStatus.textContent = "OCR: ?";
-    }
-  };
+    };
 
   const setSearchLoading = (visible: boolean) => {
     if (searchLoadingTimer !== null) {
