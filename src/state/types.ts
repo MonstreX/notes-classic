@@ -4,6 +4,7 @@ export interface Notebook {
   parentId: number | null;
   notebookType: "stack" | "notebook";
   sortOrder: number;
+  externalId?: string | null;
 }
 
 export interface NoteListItem {
@@ -22,12 +23,17 @@ export interface NoteDetail {
   content: string;
   updatedAt: number;
   notebookId: number | null;
+  externalId?: string | null;
+  meta?: string | null;
+  contentHash?: string | null;
+  contentSize?: number | null;
 }
 
 export interface Tag {
   id: number;
   name: string;
   parentId: number | null;
+  externalId?: string | null;
 }
 
 export interface NoteCounts {
