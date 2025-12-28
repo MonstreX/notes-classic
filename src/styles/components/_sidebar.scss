@@ -129,6 +129,11 @@
   flex-shrink: 0;
 }
 
+.sidebar-section__title {
+  cursor: pointer;
+  user-select: none;
+}
+
 .sidebar-section__actions {
   display: flex;
   align-items: center;

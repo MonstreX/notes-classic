@@ -231,13 +231,17 @@ export const mountSearchModal = (container: HTMLElement, handlers: SearchModalHa
       .map((note) => {
         const notebook = note.notebookId ? map.get(note.notebookId) : null;
         const stack = notebook?.parentId ? map.get(notebook.parentId) : null;
-        const parts = [stack?.name, notebook?.name, note.title || "Untitled"].filter(Boolean).join(" - ");
+        const scope = [stack?.name, notebook?.name].filter(Boolean).join(" - ");
+        const title = note.title || "Untitled";
         const ocrIcon = note.ocrMatch
           ? `<svg class="search-modal__result-ocr-icon" aria-hidden="true"><use href="#icon-image"></use></svg>`
           : "";
         return `
           <div class="search-modal__result ${note.id === searchSelectedNoteId ? "is-active" : ""}" data-note-id="${note.id}">
-            <span class="search-modal__result-text">${escapeHtml(parts)}</span>
+            <div class="search-modal__result-main">
+              <span class="search-modal__result-title">${escapeHtml(title)}</span>
+              <span class="search-modal__result-meta">${escapeHtml(scope)}</span>
+            </div>
             ${ocrIcon}
             <button class="search-modal__result-open" type="button" data-action="open-note" data-note-id="${note.id}">
               <svg class="search-modal__result-icon" aria-hidden="true">
@@ -457,14 +461,26 @@ export const mountSearchModal = (container: HTMLElement, handlers: SearchModalHa
     if (!row) return;
     const id = Number(row.dataset.noteId);
     if (!Number.isFinite(id)) return;
+    if (event.detail >= 2) {
+      openSearchResult(id);
+      return;
+    }
     selectSearchResult(id);
   };
   const handleResultsDblClick = (event: MouseEvent) => {
     const target = event.target as HTMLElement | null;
     if (!target) return;
-    const row = target.closest<HTMLElement>("[data-note-id]");
-    if (!row) return;
-    const id = Number(row.dataset.noteId);
+    const result = target.closest<HTMLElement>(".search-modal__result");
+    if (!result) return;
+    if (target.closest("[data-action=\"open-note\"]")) {
+      const button = target.closest<HTMLElement>("[data-action=\"open-note\"]");
+      if (!button) return;
+      const id = Number(button.dataset.noteId);
+      if (!Number.isFinite(id)) return;
+      openSearchResult(id);
+      return;
+    }
+    const id = Number(result.dataset.noteId);
     if (!Number.isFinite(id)) return;
     openSearchResult(id);
   };

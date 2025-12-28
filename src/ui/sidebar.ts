@@ -285,8 +285,8 @@ const renderSidebar = (state: SidebarState) => {
       <div class="sidebar-tree">
         ${renderNotebookTree(state.notebooks, state, null, 0, counts)}
       </div>
-      <div class="sidebar-section" data-tags-section="1">
-        <span>Tags</span>
+      <div class="sidebar-section" data-tags-section="1" data-action="toggle-tags-section">
+        <span class="sidebar-section__title" data-action="toggle-tags-section">Tags</span>
         <div class="sidebar-section__actions">
           <button class="sidebar-section__action" data-action="add-tag-root" title="Create tag">
             ${renderPlus()}
@@ -565,10 +565,10 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
       handlers.onCreateNoteInNotebook(id);
       return;
     }
-    if (action === "toggle-tags-section") {
-      handlers.onToggleTagsSection();
-      return;
-    }
+      if (action === "toggle-tags-section") {
+        handlers.onToggleTagsSection();
+        return;
+      }
     if (action === "select-tag" && tagId !== null) {
       if (actionEl.dataset.tagHasChildren === "1") {
         handlers.onToggleTag(tagId);
@@ -893,11 +893,11 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
         prevExpandedTags = nextExpanded;
       }
 
-      if (shouldFullRender) {
-        const tagsTree = root.querySelector<HTMLElement>(".sidebar-tree--tags");
-        if (tagsTree) {
-          const isExpanded = tagsTree.dataset.expanded === "true";
-          const wasExpanded = prev?.tagsSectionExpanded ?? true;
+        if (shouldFullRender) {
+          const tagsTree = root.querySelector<HTMLElement>(".sidebar-tree--tags");
+          if (tagsTree) {
+            const isExpanded = tagsTree.dataset.expanded === "true";
+            const wasExpanded = prev?.tagsSectionExpanded ?? true;
           if (isExpanded) {
             if (!wasExpanded) {
               tagsTree.style.maxHeight = "0px";
@@ -918,13 +918,31 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
                 tagsTree.style.maxHeight = "0px";
                 tagsTree.style.opacity = "0";
               });
-            } else {
-              tagsTree.style.maxHeight = "0px";
-              tagsTree.style.opacity = "0";
+              } else {
+                tagsTree.style.maxHeight = "0px";
+                tagsTree.style.opacity = "0";
+              }
+            }
+            if (isExpanded && !wasExpanded) {
+              const scrollEl = getScrollEl();
+              if (scrollEl) {
+                requestAnimationFrame(() => {
+                  requestAnimationFrame(() => {
+                    const treeTop = tagsTree.offsetTop;
+                    const treeBottom = treeTop + tagsTree.offsetHeight;
+                    const viewTop = scrollEl.scrollTop;
+                    const viewBottom = viewTop + scrollEl.clientHeight;
+                    if (treeBottom > viewBottom) {
+                      scrollEl.scrollTop = Math.max(0, treeBottom - scrollEl.clientHeight);
+                    } else if (treeTop < viewTop) {
+                      scrollEl.scrollTop = Math.max(0, treeTop - 8);
+                    }
+                  });
+                });
+              }
             }
           }
         }
-      }
       lastRendered = state;
     },
     destroy: () => {
