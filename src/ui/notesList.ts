@@ -87,7 +87,7 @@ const renderViewIcon = () => `
   </svg>
 `;
 
-const renderHeader = (state: NotesListState) => {
+const getHeaderTitle = (state: NotesListState) => {
   const tagTitle = state.selectedTagId
     ? state.tags.find((tag) => tag.id === state.selectedTagId)?.name || "Tag"
     : null;
@@ -96,19 +96,36 @@ const renderHeader = (state: NotesListState) => {
     : state.selectedNotebookId
       ? state.notebooks.find((n) => n.id === state.selectedNotebookId)?.name || "Notebooks"
       : "All Notes";
+  return title === "All Notes" ? "Notes" : title;
+};
+
+const getCountLabel = (state: NotesListState) => {
   const count = state.notes.length;
-  const countLabel = `${count} ${count === 1 ? "Note" : "Notes"}`;
+  return `${count} ${count === 1 ? "Note" : "Notes"}`;
+};
+
+const getSortLabel = (state: NotesListState) => {
+  return state.notesSortBy === "title"
+    ? state.notesSortDir === "asc" ? "Name A-Z" : "Name Z-A"
+    : state.notesSortDir === "asc" ? "Oldest first" : "Newest first";
+};
+
+const getViewLabel = (state: NotesListState) =>
+  state.notesListView === "compact" ? "Compact view" : "Detailed view";
+
+const renderHeader = (state: NotesListState) => {
+  const countLabel = getCountLabel(state);
   const sortLabel =
     state.notesSortBy === "title"
       ? state.notesSortDir === "asc" ? "Name A-Z" : "Name Z-A"
       : state.notesSortDir === "asc" ? "Oldest first" : "Newest first";
-  const viewLabel = state.notesListView === "compact" ? "Compact view" : "Detailed view";
+  const viewLabel = getViewLabel(state);
   return `
     <div class="notes-list__header">
       <div class="notes-list__header-top">
         <div class="notes-list__heading">
           ${renderNotesIcon()}
-          <h2 class="notes-list__title">${escapeHtml(title === "All Notes" ? "Notes" : title)}</h2>
+          <h2 class="notes-list__title">${escapeHtml(getHeaderTitle(state))}</h2>
         </div>
       </div>
       <div class="notes-list__header-bottom">
@@ -182,6 +199,10 @@ const renderNotesList = (state: NotesListState) => `
 export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): NotesListInstance => {
   let currentState: NotesListState | null = null;
   let lastRendered: NotesListState | null = null;
+  let headerTitleEl: HTMLElement | null = null;
+  let headerCountEl: HTMLElement | null = null;
+  let sortButtonEl: HTMLElement | null = null;
+  let viewButtonEl: HTMLElement | null = null;
   let dragActive = false;
   let dragStarted = false;
   let ignoreClick = false;
@@ -436,6 +457,28 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
     if (Number.isFinite(id)) handlers.onSelectNote(id);
   };
 
+  const cacheHeaderRefs = () => {
+    headerTitleEl = root.querySelector<HTMLElement>(".notes-list__title");
+    headerCountEl = root.querySelector<HTMLElement>(".notes-list__count");
+    sortButtonEl = root.querySelector<HTMLElement>("[data-action=\"sort\"]");
+    viewButtonEl = root.querySelector<HTMLElement>("[data-action=\"view\"]");
+  };
+
+  const updateHeader = (state: NotesListState) => {
+    if (!headerTitleEl || !headerCountEl) {
+      cacheHeaderRefs();
+    }
+    if (!headerTitleEl || !headerCountEl) return;
+    headerTitleEl.textContent = getHeaderTitle(state);
+    headerCountEl.textContent = getCountLabel(state);
+    if (sortButtonEl) {
+      sortButtonEl.setAttribute("title", getSortLabel(state));
+    }
+    if (viewButtonEl) {
+      viewButtonEl.setAttribute("title", getViewLabel(state));
+    }
+  };
+
   const handleKeyDown = (event: KeyboardEvent) => {
     if (event.key !== "Delete") return;
     const target = event.target as HTMLElement | null;
@@ -489,8 +532,16 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
       const shouldFullRender =
         !prev ||
         prev.notes !== state.notes ||
-        prev.notebooks !== state.notebooks ||
+        prev.notesListView !== state.notesListView;
+      const shouldUpdateHeader =
+        !prev ||
+        shouldFullRender ||
         prev.selectedNotebookId !== state.selectedNotebookId ||
+        prev.selectedTagId !== state.selectedTagId ||
+        prev.tags !== state.tags ||
+        prev.notes.length !== state.notes.length ||
+        prev.notesSortBy !== state.notesSortBy ||
+        prev.notesSortDir !== state.notesSortDir ||
         prev.notesListView !== state.notesListView;
 
       currentState = state;
@@ -498,8 +549,12 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
 
       if (shouldFullRender) {
         root.innerHTML = renderNotesList(state);
+        cacheHeaderRefs();
       } else if (prev.selectedNoteId !== state.selectedNoteId) {
         updateSelection(prev.selectedNoteId, state.selectedNoteId, state.notesListView);
+      }
+      if (shouldUpdateHeader) {
+        updateHeader(state);
       }
 
       lastRendered = state;
