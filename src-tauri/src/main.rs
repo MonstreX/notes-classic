@@ -346,6 +346,15 @@ async fn upsert_ocr_text(fileId: i64, lang: String, text: String, hash: String, 
         .map_err(|e| e.to_string())
 }
 
+#[allow(non_snake_case)]
+#[tauri::command]
+async fn mark_ocr_failed(fileId: i64, message: String, state: State<'_, AppState>) -> Result<(), String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    repo.mark_ocr_failed(fileId, &message)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 async fn get_ocr_stats(state: State<'_, AppState>) -> Result<OcrStats, String> {
     let repo = SqliteRepository { pool: state.pool.clone() };
@@ -497,6 +506,7 @@ fn main() {
             delete_note,
             get_ocr_pending_files,
             upsert_ocr_text,
+            mark_ocr_failed,
             get_ocr_stats,
             get_tags,
             get_note_tags,

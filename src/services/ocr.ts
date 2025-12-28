@@ -76,16 +76,12 @@ const markOcrDone = async (fileId: number, hash: string, text: string) =>
     hash,
   });
 
-const isNoiseText = (value: string) => {
-  if (!value) return true;
-  const compact = value.replace(/\s+/g, "");
-  if (!compact) return true;
-  if (/[A-Za-z0-9]{6,}/.test(compact)) return false;
-  const alnum = compact.match(/[A-Za-zА-Яа-я0-9]/g)?.length ?? 0;
-  if (alnum >= 10) return false;
-  if (alnum >= 3 && alnum / compact.length >= 0.25) return false;
-  return true;
-};
+const markOcrFailed = async (fileId: number, message: string) =>
+  invoke("mark_ocr_failed", {
+    fileId,
+    message,
+  });
+
 
 const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, label: string) => {
   let timer: number | null = null;
@@ -153,7 +149,7 @@ export const startOcrQueue = () => {
         const response = await fetch(url);
         if (!response.ok) {
           console.warn("[ocr] fetch failed", file.filePath, response.status);
-          await markOcrDone(file.fileId, `fetch-${response.status}`, "");
+          await markOcrFailed(file.fileId, `fetch-${response.status}`);
           continue;
         }
         const blob = await response.blob();
@@ -163,10 +159,12 @@ export const startOcrQueue = () => {
         try {
           const result = await withTimeout(workerInstance.recognize(blob), 60000, "recognize");
           const text = normalizeText(result.data.text || "");
-          cleaned = isNoiseText(text) ? "" : text;
+          cleaned = text;
         } catch (err) {
           console.error("[ocr] recognize failed", file.filePath, err);
+          await markOcrFailed(file.fileId, "recognize");
           await resetWorker();
+          continue;
         }
         await markOcrDone(file.fileId, hash, cleaned);
       }

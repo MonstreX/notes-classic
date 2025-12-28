@@ -67,7 +67,6 @@ pub struct Notebook {
     pub parent_id: Option<i64>,
     pub notebook_type: String,
     pub sort_order: i64,
-    pub external_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
@@ -78,13 +77,7 @@ pub struct Note {
     pub content: String,
     pub created_at: i64,
     pub updated_at: i64,
-    pub sync_status: i32,
-    pub remote_id: Option<String>,
     pub notebook_id: Option<i64>,
-    pub external_id: Option<String>,
-    pub meta: Option<String>,
-    pub content_hash: Option<String>,
-    pub content_size: Option<i64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
@@ -95,7 +88,6 @@ pub struct Tag {
     pub parent_id: Option<i64>,
     pub created_at: i64,
     pub updated_at: i64,
-    pub external_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
@@ -138,14 +130,397 @@ pub struct NoteCounts {
     pub per_notebook: Vec<NoteCountItem>,
 }
 
-async fn column_exists(pool: &SqlitePool, table: &str, column: &str) -> Result<bool, sqlx::Error> {
-    let table = table.replace('\'', "''");
-    let query = format!("SELECT name FROM pragma_table_info('{}') WHERE name = ?", table);
-    let row: Option<(String,)> = sqlx::query_as(&query)
-        .bind(column)
+const SCHEMA_VERSION: i64 = 2;
+
+async fn table_exists(pool: &SqlitePool, name: &str) -> Result<bool, sqlx::Error> {
+    let row: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+    )
+    .bind(name)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.is_some())
+}
+
+async fn ensure_schema_version(pool: &SqlitePool) -> Result<i64, sqlx::Error> {
+    sqlx::query("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)")
+        .execute(pool)
+        .await?;
+    let existing: Option<(i64,)> = sqlx::query_as("SELECT version FROM schema_version LIMIT 1")
         .fetch_optional(pool)
         .await?;
-    Ok(row.is_some())
+    if let Some((version,)) = existing {
+        return Ok(version);
+    }
+    let has_notes = table_exists(pool, "notes").await?;
+    let initial = if has_notes { 1 } else { 0 };
+    sqlx::query("INSERT INTO schema_version (version) VALUES (?)")
+        .bind(initial)
+        .execute(pool)
+        .await?;
+    Ok(initial)
+}
+
+async fn set_schema_version(pool: &SqlitePool, version: i64) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE schema_version SET version = ?")
+        .bind(version)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+async fn create_schema_v2(pool: &SqlitePool) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS notebooks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            parent_id INTEGER,
+            notebook_type TEXT NOT NULL DEFAULT 'stack',
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY(parent_id) REFERENCES notebooks(id) ON DELETE CASCADE
+        )",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS notes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            notebook_id INTEGER,
+            FOREIGN KEY(notebook_id) REFERENCES notebooks(id) ON DELETE SET NULL
+        )",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS notes_text (
+            note_id INTEGER PRIMARY KEY,
+            title TEXT NOT NULL,
+            plain_text TEXT NOT NULL,
+            FOREIGN KEY(note_id) REFERENCES notes(id) ON DELETE CASCADE
+        )",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts
+         USING fts5(title, plain_text, content='notes_text', content_rowid='note_id')",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS ocr_files (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_path TEXT NOT NULL UNIQUE,
+            attempts_left INTEGER NOT NULL DEFAULT 3,
+            last_error TEXT
+        )",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS note_files (
+            note_id INTEGER NOT NULL,
+            file_id INTEGER NOT NULL,
+            PRIMARY KEY(note_id, file_id),
+            FOREIGN KEY(note_id) REFERENCES notes(id) ON DELETE CASCADE,
+            FOREIGN KEY(file_id) REFERENCES ocr_files(id) ON DELETE CASCADE
+        )",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS ocr_text (
+            file_id INTEGER PRIMARY KEY,
+            lang TEXT NOT NULL,
+            text TEXT NOT NULL,
+            hash TEXT NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY(file_id) REFERENCES ocr_files(id) ON DELETE CASCADE
+        )",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS ocr_fts
+         USING fts5(text, content='ocr_text', content_rowid='file_id')",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE TRIGGER IF NOT EXISTS ocr_text_ai AFTER INSERT ON ocr_text BEGIN
+            INSERT INTO ocr_fts(rowid, text) VALUES (new.file_id, new.text);
+         END;",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE TRIGGER IF NOT EXISTS ocr_text_ad AFTER DELETE ON ocr_text BEGIN
+            INSERT INTO ocr_fts(ocr_fts, rowid, text) VALUES ('delete', old.file_id, old.text);
+         END;",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE TRIGGER IF NOT EXISTS ocr_text_au AFTER UPDATE ON ocr_text BEGIN
+            INSERT INTO ocr_fts(ocr_fts, rowid, text) VALUES ('delete', old.file_id, old.text);
+            INSERT INTO ocr_fts(rowid, text) VALUES (new.file_id, new.text);
+         END;",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE TRIGGER IF NOT EXISTS notes_text_ai AFTER INSERT ON notes_text BEGIN
+            INSERT INTO notes_fts(rowid, title, plain_text) VALUES (new.note_id, new.title, new.plain_text);
+         END;",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE TRIGGER IF NOT EXISTS notes_text_ad AFTER DELETE ON notes_text BEGIN
+            INSERT INTO notes_fts(notes_fts, rowid, title, plain_text) VALUES ('delete', old.note_id, old.title, old.plain_text);
+         END;",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE TRIGGER IF NOT EXISTS notes_text_au AFTER UPDATE ON notes_text BEGIN
+            INSERT INTO notes_fts(notes_fts, rowid, title, plain_text) VALUES ('delete', old.note_id, old.title, old.plain_text);
+            INSERT INTO notes_fts(rowid, title, plain_text) VALUES (new.note_id, new.title, new.plain_text);
+         END;",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_notes_notebook_id ON notes(notebook_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_notes_updated_at ON notes(updated_at)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS tags (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            parent_id INTEGER,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY(parent_id) REFERENCES tags(id) ON DELETE CASCADE
+        )",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE UNIQUE INDEX IF NOT EXISTS idx_tags_parent_name ON tags(parent_id, name)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS note_tags (
+            note_id INTEGER NOT NULL,
+            tag_id INTEGER NOT NULL,
+            PRIMARY KEY(note_id, tag_id),
+            FOREIGN KEY(note_id) REFERENCES notes(id) ON DELETE CASCADE,
+            FOREIGN KEY(tag_id) REFERENCES tags(id) ON DELETE CASCADE
+        )",
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+async fn migrate_v1_to_v2(pool: &SqlitePool) -> Result<(), sqlx::Error> {
+    let has_note_tags = table_exists(pool, "note_tags").await?;
+    let has_note_files = table_exists(pool, "note_files").await?;
+    let has_notebooks = table_exists(pool, "notebooks").await?;
+    let has_notes = table_exists(pool, "notes").await?;
+    let has_tags = table_exists(pool, "tags").await?;
+    let has_attachments = table_exists(pool, "attachments").await?;
+    let mut tx = pool.begin().await?;
+    sqlx::query("PRAGMA foreign_keys = OFF")
+        .execute(&mut *tx)
+        .await?;
+
+    if has_note_tags {
+        sqlx::query("CREATE TABLE note_tags_backup AS SELECT * FROM note_tags")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DROP TABLE note_tags").execute(&mut *tx).await?;
+    }
+
+    if has_note_files {
+        sqlx::query("CREATE TABLE note_files_backup AS SELECT * FROM note_files")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DROP TABLE note_files").execute(&mut *tx).await?;
+    }
+
+    if has_notebooks {
+        sqlx::query(
+            "CREATE TABLE notebooks_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                parent_id INTEGER,
+                notebook_type TEXT NOT NULL DEFAULT 'stack',
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY(parent_id) REFERENCES notebooks(id) ON DELETE CASCADE
+            )",
+        )
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "INSERT INTO notebooks_new (id, name, created_at, parent_id, notebook_type, sort_order)
+             SELECT id, name, created_at, parent_id, notebook_type, sort_order FROM notebooks",
+        )
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query("DROP TABLE notebooks").execute(&mut *tx).await?;
+        sqlx::query("ALTER TABLE notebooks_new RENAME TO notebooks")
+            .execute(&mut *tx)
+            .await?;
+    }
+
+    if has_notes {
+        sqlx::query(
+            "CREATE TABLE notes_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                notebook_id INTEGER,
+                FOREIGN KEY(notebook_id) REFERENCES notebooks(id) ON DELETE SET NULL
+            )",
+        )
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "INSERT INTO notes_new (id, title, content, created_at, updated_at, notebook_id)
+             SELECT id, title, content, created_at, updated_at, notebook_id FROM notes",
+        )
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query("DROP TABLE notes").execute(&mut *tx).await?;
+        sqlx::query("ALTER TABLE notes_new RENAME TO notes")
+            .execute(&mut *tx)
+            .await?;
+    }
+
+    if has_tags {
+        sqlx::query(
+            "CREATE TABLE tags_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                parent_id INTEGER,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY(parent_id) REFERENCES tags(id) ON DELETE CASCADE
+            )",
+        )
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "INSERT INTO tags_new (id, name, parent_id, created_at, updated_at)
+             SELECT id, name, parent_id, created_at, updated_at FROM tags",
+        )
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query("DROP TABLE tags").execute(&mut *tx).await?;
+        sqlx::query("ALTER TABLE tags_new RENAME TO tags")
+            .execute(&mut *tx)
+            .await?;
+    }
+
+    if has_note_tags {
+        sqlx::query(
+            "CREATE TABLE note_tags (
+                note_id INTEGER NOT NULL,
+                tag_id INTEGER NOT NULL,
+                PRIMARY KEY(note_id, tag_id),
+                FOREIGN KEY(note_id) REFERENCES notes(id) ON DELETE CASCADE,
+                FOREIGN KEY(tag_id) REFERENCES tags(id) ON DELETE CASCADE
+            )",
+        )
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query("INSERT INTO note_tags SELECT note_id, tag_id FROM note_tags_backup")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DROP TABLE note_tags_backup")
+            .execute(&mut *tx)
+            .await?;
+    }
+
+    if has_note_files {
+        sqlx::query(
+            "CREATE TABLE note_files (
+                note_id INTEGER NOT NULL,
+                file_id INTEGER NOT NULL,
+                PRIMARY KEY(note_id, file_id),
+                FOREIGN KEY(note_id) REFERENCES notes(id) ON DELETE CASCADE,
+                FOREIGN KEY(file_id) REFERENCES ocr_files(id) ON DELETE CASCADE
+            )",
+        )
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query("INSERT INTO note_files SELECT note_id, file_id FROM note_files_backup")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DROP TABLE note_files_backup")
+            .execute(&mut *tx)
+            .await?;
+    }
+
+    if has_attachments {
+        sqlx::query("DROP TABLE attachments").execute(&mut *tx).await?;
+    }
+
+    sqlx::query("ALTER TABLE ocr_files ADD COLUMN attempts_left INTEGER NOT NULL DEFAULT 3")
+        .execute(&mut *tx)
+        .await
+        .ok();
+    sqlx::query("ALTER TABLE ocr_files ADD COLUMN last_error TEXT")
+        .execute(&mut *tx)
+        .await
+        .ok();
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_notes_notebook_id ON notes(notebook_id)")
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_notes_updated_at ON notes(updated_at)")
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("CREATE UNIQUE INDEX IF NOT EXISTS idx_tags_parent_name ON tags(parent_id, name)")
+        .execute(&mut *tx)
+        .await?;
+
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&mut *tx)
+        .await?;
+
+    tx.commit().await?;
+    Ok(())
 }
 
 pub async fn init_db(data_dir: &Path) -> SqlitePool {
@@ -168,321 +543,29 @@ pub async fn init_db(data_dir: &Path) -> SqlitePool {
         .execute(&pool)
         .await
         .expect("Failed to enable foreign keys");
-
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS notebooks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            created_at INTEGER NOT NULL,
-            parent_id INTEGER,
-            notebook_type TEXT NOT NULL DEFAULT 'stack',
-            sort_order INTEGER NOT NULL DEFAULT 0,
-            external_id TEXT,
-            FOREIGN KEY(parent_id) REFERENCES notebooks(id) ON DELETE CASCADE
-        )",
-    )
-    .execute(&pool)
-    .await
-    .expect("Failed to create notebooks table");
-
-    if !column_exists(&pool, "notebooks", "parent_id")
+    let version = ensure_schema_version(&pool)
         .await
-        .expect("Failed to check schema")
-    {
-        sqlx::query("ALTER TABLE notebooks ADD COLUMN parent_id INTEGER REFERENCES notebooks(id) ON DELETE CASCADE")
-            .execute(&pool)
+        .expect("Failed to ensure schema_version");
+    if version == 0 {
+        create_schema_v2(&pool)
             .await
-            .expect("Failed to add parent_id column");
-    }
-
-    let mut sort_order_added = false;
-    let mut notebook_type_added = false;
-    if !column_exists(&pool, "notebooks", "sort_order")
-        .await
-        .expect("Failed to check schema")
-    {
-        sqlx::query("ALTER TABLE notebooks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0")
-            .execute(&pool)
+            .expect("Failed to create schema v2");
+        set_schema_version(&pool, SCHEMA_VERSION)
             .await
-            .expect("Failed to add sort_order column");
-        sort_order_added = true;
-    }
-
-    if !column_exists(&pool, "notebooks", "notebook_type")
-        .await
-        .expect("Failed to check schema")
-    {
-        sqlx::query("ALTER TABLE notebooks ADD COLUMN notebook_type TEXT NOT NULL DEFAULT 'stack'")
-            .execute(&pool)
+            .expect("Failed to set schema version");
+    } else if version < SCHEMA_VERSION {
+        migrate_v1_to_v2(&pool)
             .await
-            .expect("Failed to add notebook_type column");
-        notebook_type_added = true;
-    }
-
-    if !column_exists(&pool, "notebooks", "external_id")
-        .await
-        .expect("Failed to check schema")
-    {
-        sqlx::query("ALTER TABLE notebooks ADD COLUMN external_id TEXT")
-            .execute(&pool)
+            .expect("Failed to migrate schema");
+        set_schema_version(&pool, SCHEMA_VERSION)
             .await
-            .expect("Failed to add external_id column");
+            .expect("Failed to set schema version");
     }
-
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS notes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            content TEXT NOT NULL,
-            created_at INTEGER NOT NULL,
-            updated_at INTEGER NOT NULL,
-            sync_status INTEGER DEFAULT 0,
-            remote_id TEXT,
-            notebook_id INTEGER,
-            external_id TEXT,
-            meta TEXT,
-            content_hash TEXT,
-            content_size INTEGER,
-            FOREIGN KEY(notebook_id) REFERENCES notebooks(id) ON DELETE SET NULL
-        )",
-    )
-    .execute(&pool)
-    .await
-    .expect("Failed to create notes table");
-
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS notes_text (
-            note_id INTEGER PRIMARY KEY,
-            title TEXT NOT NULL,
-            plain_text TEXT NOT NULL,
-            FOREIGN KEY(note_id) REFERENCES notes(id) ON DELETE CASCADE
-        )",
-    )
-    .execute(&pool)
-    .await
-    .expect("Failed to create notes_text table");
-
-    sqlx::query(
-        "CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts
-         USING fts5(title, plain_text, content='notes_text', content_rowid='note_id')",
-    )
-    .execute(&pool)
-    .await
-    .expect("Failed to create notes_fts table");
-
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS ocr_files (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            file_path TEXT NOT NULL UNIQUE
-        )",
-    )
-    .execute(&pool)
-    .await
-    .expect("Failed to create ocr_files table");
-
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS note_files (
-            note_id INTEGER NOT NULL,
-            file_id INTEGER NOT NULL,
-            PRIMARY KEY(note_id, file_id),
-            FOREIGN KEY(note_id) REFERENCES notes(id) ON DELETE CASCADE,
-            FOREIGN KEY(file_id) REFERENCES ocr_files(id) ON DELETE CASCADE
-        )",
-    )
-    .execute(&pool)
-    .await
-    .expect("Failed to create note_files table");
-
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS ocr_text (
-            file_id INTEGER PRIMARY KEY,
-            lang TEXT NOT NULL,
-            text TEXT NOT NULL,
-            hash TEXT NOT NULL,
-            updated_at INTEGER NOT NULL,
-            FOREIGN KEY(file_id) REFERENCES ocr_files(id) ON DELETE CASCADE
-        )",
-    )
-    .execute(&pool)
-    .await
-    .expect("Failed to create ocr_text table");
-
-    sqlx::query(
-        "CREATE VIRTUAL TABLE IF NOT EXISTS ocr_fts
-         USING fts5(text, content='ocr_text', content_rowid='file_id')",
-    )
-    .execute(&pool)
-    .await
-    .expect("Failed to create ocr_fts table");
-
-    sqlx::query(
-        "CREATE TRIGGER IF NOT EXISTS ocr_text_ai AFTER INSERT ON ocr_text BEGIN
-            INSERT INTO ocr_fts(rowid, text) VALUES (new.file_id, new.text);
-         END;",
-    )
-    .execute(&pool)
-    .await
-    .expect("Failed to create ocr_text_ai trigger");
-
-    sqlx::query(
-        "CREATE TRIGGER IF NOT EXISTS ocr_text_ad AFTER DELETE ON ocr_text BEGIN
-            INSERT INTO ocr_fts(ocr_fts, rowid, text) VALUES ('delete', old.file_id, old.text);
-         END;",
-    )
-    .execute(&pool)
-    .await
-    .expect("Failed to create ocr_text_ad trigger");
-
-    sqlx::query(
-        "CREATE TRIGGER IF NOT EXISTS ocr_text_au AFTER UPDATE ON ocr_text BEGIN
-            INSERT INTO ocr_fts(ocr_fts, rowid, text) VALUES ('delete', old.file_id, old.text);
-            INSERT INTO ocr_fts(rowid, text) VALUES (new.file_id, new.text);
-         END;",
-    )
-    .execute(&pool)
-    .await
-    .expect("Failed to create ocr_text_au trigger");
-
-    sqlx::query(
-        "CREATE TRIGGER IF NOT EXISTS notes_text_ai AFTER INSERT ON notes_text BEGIN
-            INSERT INTO notes_fts(rowid, title, plain_text) VALUES (new.note_id, new.title, new.plain_text);
-         END;",
-    )
-    .execute(&pool)
-    .await
-    .expect("Failed to create notes_text_ai trigger");
-
-    sqlx::query(
-        "CREATE TRIGGER IF NOT EXISTS notes_text_ad AFTER DELETE ON notes_text BEGIN
-            INSERT INTO notes_fts(notes_fts, rowid, title, plain_text) VALUES ('delete', old.note_id, old.title, old.plain_text);
-         END;",
-    )
-    .execute(&pool)
-    .await
-    .expect("Failed to create notes_text_ad trigger");
-
-    sqlx::query(
-        "CREATE TRIGGER IF NOT EXISTS notes_text_au AFTER UPDATE ON notes_text BEGIN
-            INSERT INTO notes_fts(notes_fts, rowid, title, plain_text) VALUES ('delete', old.note_id, old.title, old.plain_text);
-            INSERT INTO notes_fts(rowid, title, plain_text) VALUES (new.note_id, new.title, new.plain_text);
-         END;",
-    )
-    .execute(&pool)
-    .await
-    .expect("Failed to create notes_text_au trigger");
-
-    sqlx::query("CREATE INDEX IF NOT EXISTS idx_notes_notebook_id ON notes(notebook_id)")
-        .execute(&pool)
+    create_schema_v2(&pool)
         .await
-        .expect("Failed to create notes notebook index");
+        .expect("Failed to ensure schema");
 
-    sqlx::query("CREATE INDEX IF NOT EXISTS idx_notes_updated_at ON notes(updated_at)")
-        .execute(&pool)
-        .await
-        .expect("Failed to create notes updated index");
-
-    if !column_exists(&pool, "notes", "external_id")
-        .await
-        .expect("Failed to check schema")
-    {
-        sqlx::query("ALTER TABLE notes ADD COLUMN external_id TEXT")
-            .execute(&pool)
-            .await
-            .expect("Failed to add external_id column");
-    }
-
-    if !column_exists(&pool, "notes", "meta")
-        .await
-        .expect("Failed to check schema")
-    {
-        sqlx::query("ALTER TABLE notes ADD COLUMN meta TEXT")
-            .execute(&pool)
-            .await
-            .expect("Failed to add meta column");
-    }
-
-    if !column_exists(&pool, "notes", "content_hash")
-        .await
-        .expect("Failed to check schema")
-    {
-        sqlx::query("ALTER TABLE notes ADD COLUMN content_hash TEXT")
-            .execute(&pool)
-            .await
-            .expect("Failed to add content_hash column");
-    }
-
-    if !column_exists(&pool, "notes", "content_size")
-        .await
-        .expect("Failed to check schema")
-    {
-        sqlx::query("ALTER TABLE notes ADD COLUMN content_size INTEGER")
-            .execute(&pool)
-            .await
-        .expect("Failed to add content_size column");
-    }
-
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS tags (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            parent_id INTEGER,
-            created_at INTEGER NOT NULL,
-            updated_at INTEGER NOT NULL,
-            external_id TEXT,
-            FOREIGN KEY(parent_id) REFERENCES tags(id) ON DELETE CASCADE
-        )",
-    )
-    .execute(&pool)
-    .await
-    .expect("Failed to create tags table");
-
-    sqlx::query("CREATE UNIQUE INDEX IF NOT EXISTS idx_tags_parent_name ON tags(parent_id, name)")
-        .execute(&pool)
-        .await
-        .expect("Failed to create tags index");
-
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS note_tags (
-            note_id INTEGER NOT NULL,
-            tag_id INTEGER NOT NULL,
-            PRIMARY KEY(note_id, tag_id),
-            FOREIGN KEY(note_id) REFERENCES notes(id) ON DELETE CASCADE,
-            FOREIGN KEY(tag_id) REFERENCES tags(id) ON DELETE CASCADE
-        )",
-    )
-    .execute(&pool)
-    .await
-    .expect("Failed to create note_tags table");
-
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS attachments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            note_id INTEGER NOT NULL,
-            external_id TEXT,
-            hash TEXT,
-            filename TEXT,
-            mime TEXT,
-            size INTEGER,
-            width INTEGER,
-            height INTEGER,
-            local_path TEXT,
-            source_url TEXT,
-            is_attachment INTEGER,
-            created_at INTEGER,
-            updated_at INTEGER,
-            FOREIGN KEY(note_id) REFERENCES notes(id) ON DELETE CASCADE
-        )",
-    )
-    .execute(&pool)
-    .await
-    .expect("Failed to create attachments table");
-
-    sqlx::query("CREATE INDEX IF NOT EXISTS idx_attachments_note_id ON attachments(note_id)")
-        .execute(&pool)
-        .await
-        .expect("Failed to create attachments index");
-
-    let mut structure_changed = sort_order_added || notebook_type_added;
+    let mut structure_changed = false;
     let rows: Vec<(i64, Option<i64>)> = sqlx::query_as("SELECT id, parent_id FROM notebooks")
         .fetch_all(&pool)
         .await
@@ -589,7 +672,13 @@ pub struct SqliteRepository {
 }
 
 impl SqliteRepository {
-    async fn upsert_note_text(&self, note_id: i64, title: &str, content: &str) -> Result<(), sqlx::Error> {
+    async fn upsert_note_text_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        note_id: i64,
+        title: &str,
+        content: &str,
+    ) -> Result<(), sqlx::Error> {
         let plain = strip_html(content);
         sqlx::query(
             "INSERT INTO notes_text (note_id, title, plain_text)
@@ -599,53 +688,54 @@ impl SqliteRepository {
         .bind(note_id)
         .bind(title)
         .bind(plain)
-        .execute(&self.pool)
+        .execute(&mut **tx)
         .await?;
         Ok(())
     }
 
-    async fn sync_note_files(&self, note_id: i64, content: &str) -> Result<Vec<(i64, String)>, sqlx::Error> {
-        let files = extract_note_files(content);
+    async fn upsert_note_text(&self, note_id: i64, title: &str, content: &str) -> Result<(), sqlx::Error> {
         let mut tx = self.pool.begin().await?;
+        self.upsert_note_text_tx(&mut tx, note_id, title, content).await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    async fn sync_note_files_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        note_id: i64,
+        content: &str,
+    ) -> Result<Vec<(i64, String)>, sqlx::Error> {
+        let files = extract_note_files(content);
         sqlx::query("DELETE FROM note_files WHERE note_id = ?")
             .bind(note_id)
-            .execute(&mut *tx)
+            .execute(&mut **tx)
             .await?;
         let mut mapped = Vec::new();
         for file_path in files {
             sqlx::query("INSERT INTO ocr_files (file_path) VALUES (?) ON CONFLICT(file_path) DO NOTHING")
                 .bind(&file_path)
-                .execute(&mut *tx)
+                .execute(&mut **tx)
                 .await?;
             let (file_id,): (i64,) = sqlx::query_as("SELECT id FROM ocr_files WHERE file_path = ?")
                 .bind(&file_path)
-                .fetch_one(&mut *tx)
+                .fetch_one(&mut **tx)
                 .await?;
-            sqlx::query("INSERT OR IGNORE INTO note_files (note_id, file_id) VALUES (?, ?)")
+            sqlx::query("INSERT INTO note_files (note_id, file_id) VALUES (?, ?) ON CONFLICT DO NOTHING")
                 .bind(note_id)
                 .bind(file_id)
-                .execute(&mut *tx)
+                .execute(&mut **tx)
                 .await?;
             mapped.push((file_id, file_path));
         }
-        tx.commit().await?;
         Ok(mapped)
     }
 
-    pub async fn backfill_note_files_and_ocr(&self, data_dir: &Path) -> Result<(), sqlx::Error> {
-        let notes: Vec<(i64, String)> = sqlx::query_as("SELECT id, content FROM notes")
-            .fetch_all(&self.pool)
-            .await?;
-        let mut file_map: HashMap<i64, String> = HashMap::new();
-        for (note_id, content) in notes {
-            let files = self.sync_note_files(note_id, &content).await?;
-            for (file_id, file_path) in files {
-                file_map.insert(file_id, file_path);
-            }
-        }
-        let _ = data_dir;
-        let _ = file_map;
-        Ok(())
+    async fn sync_note_files(&self, note_id: i64, content: &str) -> Result<Vec<(i64, String)>, sqlx::Error> {
+        let mut tx = self.pool.begin().await?;
+        let mapped = self.sync_note_files_tx(&mut tx, note_id, content).await?;
+        tx.commit().await?;
+        Ok(mapped)
     }
 
     pub async fn get_notebooks(&self) -> Result<Vec<Notebook>, sqlx::Error> {
@@ -833,7 +923,9 @@ impl SqliteRepository {
     }
 
     pub async fn get_note(&self, id: i64) -> Result<Option<Note>, sqlx::Error> {
-        sqlx::query_as::<_, Note>("SELECT * FROM notes WHERE id = ?")
+        sqlx::query_as::<_, Note>(
+            "SELECT id, title, content, created_at, updated_at, notebook_id FROM notes WHERE id = ?",
+        )
             .bind(id)
             .fetch_optional(&self.pool)
             .await
@@ -854,17 +946,19 @@ impl SqliteRepository {
     pub async fn create_note(&self, title: &str, content: &str, notebook_id: Option<i64>, data_dir: &Path) -> Result<i64, sqlx::Error> {
         let _ = data_dir;
         let now = chrono::Utc::now().timestamp();
+        let mut tx = self.pool.begin().await?;
         let result = sqlx::query("INSERT INTO notes (title, content, created_at, updated_at, notebook_id) VALUES (?, ?, ?, ?, ?)")
             .bind(title)
             .bind(content)
             .bind(now)
             .bind(now)
             .bind(notebook_id)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
         let id = result.last_insert_rowid();
-        self.upsert_note_text(id, title, content).await?;
-        let _ = self.sync_note_files(id, content).await?;
+        self.upsert_note_text_tx(&mut tx, id, title, content).await?;
+        let _ = self.sync_note_files_tx(&mut tx, id, content).await?;
+        tx.commit().await?;
         Ok(id)
     }
 
@@ -880,16 +974,18 @@ impl SqliteRepository {
     pub async fn update_note(&self, id: i64, title: &str, content: &str, notebook_id: Option<i64>, data_dir: &Path) -> Result<(), sqlx::Error> {
         let _ = data_dir;
         let now = chrono::Utc::now().timestamp();
+        let mut tx = self.pool.begin().await?;
         sqlx::query("UPDATE notes SET title = ?, content = ?, updated_at = ?, notebook_id = ? WHERE id = ?")
             .bind(title)
             .bind(content)
             .bind(now)
             .bind(notebook_id)
             .bind(id)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
-        self.upsert_note_text(id, title, content).await?;
-        let _ = self.sync_note_files(id, content).await?;
+        self.upsert_note_text_tx(&mut tx, id, title, content).await?;
+        let _ = self.sync_note_files_tx(&mut tx, id, content).await?;
+        tx.commit().await?;
         Ok(())
     }
 
@@ -1035,6 +1131,7 @@ impl SqliteRepository {
              FROM ocr_files f
              LEFT JOIN ocr_text t ON t.file_id = f.id
              WHERE t.file_id IS NULL
+               AND f.attempts_left > 0
              ORDER BY f.id ASC
              LIMIT ?",
         )
@@ -1060,6 +1157,20 @@ impl SqliteRepository {
         Ok(())
     }
 
+    pub async fn mark_ocr_failed(&self, file_id: i64, message: &str) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE ocr_files
+             SET attempts_left = MAX(attempts_left - 1, 0),
+                 last_error = ?
+             WHERE id = ?",
+        )
+        .bind(message)
+        .bind(file_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
     pub async fn get_ocr_stats(&self) -> Result<OcrStats, sqlx::Error> {
         let (total,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM ocr_files")
             .fetch_one(&self.pool)
@@ -1067,7 +1178,13 @@ impl SqliteRepository {
         let (done,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM ocr_text")
             .fetch_one(&self.pool)
             .await?;
-        let pending = (total - done).max(0);
+        let (pending,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM ocr_files f
+             LEFT JOIN ocr_text t ON t.file_id = f.id
+             WHERE t.file_id IS NULL AND f.attempts_left > 0",
+        )
+        .fetch_one(&self.pool)
+        .await?;
         Ok(OcrStats { total, done, pending })
     }
 
