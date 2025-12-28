@@ -1,4 +1,5 @@
 import type { Tag } from "../state/types";
+import { DRAG_HOLD_MS, hasDragDistance } from "./dragConfig";
 
 export type NotebookType = "stack" | "notebook";
 
@@ -637,7 +638,7 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
       }
       dragHoldTimer = window.setTimeout(() => {
         dragHoldReady = true;
-      }, 180);
+      }, DRAG_HOLD_MS);
       return;
     }
     const row = target.closest<HTMLElement>("[data-notebook-row]");
@@ -660,7 +661,7 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
     }
     dragHoldTimer = window.setTimeout(() => {
       dragHoldReady = true;
-    }, 180);
+    }, DRAG_HOLD_MS);
   };
 
   const handlePointerMove = (event: PointerEvent) => {
@@ -670,7 +671,7 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
     const dy = event.clientY - dragStartY;
     if (!dragStarted) {
       if (!dragHoldReady) return;
-      if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+      if (!hasDragDistance(dx, dy)) return;
       if (dragType === "tag") {
         const tag = findTag(dragId);
         if (!tag) {

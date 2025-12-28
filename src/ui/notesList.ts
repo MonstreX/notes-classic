@@ -1,4 +1,5 @@
 import type { Tag } from "../state/types";
+import { DRAG_START_PX, hasDragDistance } from "./dragConfig";
 
 export interface NotesListItem {
   id: number;
@@ -385,7 +386,7 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
     const dx = event.clientX - dragStartX;
     const dy = event.clientY - dragStartY;
     if (!dragStarted) {
-      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+      if (!hasDragDistance(dx, dy, DRAG_START_PX)) return;
       const note = getNote(dragNoteId);
       if (!note) {
         cleanupDrag();
