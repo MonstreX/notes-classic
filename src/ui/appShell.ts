@@ -520,12 +520,26 @@ export const mountApp = (root: HTMLElement) => {
     return "All Notes";
   };
 
-  const tokenizeQuery = (value: string) =>
-    value
+  const tokenizeQuery = (value: string) => {
+    const rawTokens = value
       .replace(/["']/g, " ")
       .split(/\s+/)
       .map((token) => token.trim())
       .filter((token) => token.length > 0);
+    const tokens: string[] = [];
+    for (const token of rawTokens) {
+      if (token.includes("-") && /\d/.test(token)) {
+        token
+          .split("-")
+          .map((part) => part.trim())
+          .filter((part) => part.length > 0)
+          .forEach((part) => tokens.push(part));
+      } else {
+        tokens.push(token);
+      }
+    }
+    return tokens;
+  };
 
   const buildSearchQuery = (tokens: string[]) => {
     const cleaned = tokens
@@ -603,18 +617,22 @@ export const mountApp = (root: HTMLElement) => {
         const notebook = note.notebookId ? map.get(note.notebookId) : null;
         const stack = notebook?.parentId ? map.get(notebook.parentId) : null;
         const parts = [stack?.name, notebook?.name, note.title || "Untitled"].filter(Boolean).join(" - ");
-        return `
-          <div class="search-modal__result ${note.id === searchSelectedNoteId ? "is-active" : ""} ${note.ocrMatch ? "search-modal__result--ocr" : ""}" data-note-id="${note.id}">
-            <span class="search-modal__result-text">${escapeHtml(parts)}</span>
-            <button class="search-modal__result-open" type="button" data-action="open-note" data-note-id="${note.id}">
-              <svg class="search-modal__result-icon" aria-hidden="true">
-                <use href="#icon-note"></use>
-              </svg>
-              Open
-            </button>
-          </div>
-        `;
-      })
+          const ocrIcon = note.ocrMatch
+            ? `<svg class="search-modal__result-ocr-icon" aria-hidden="true"><use href="#icon-image"></use></svg>`
+            : "";
+          return `
+            <div class="search-modal__result ${note.id === searchSelectedNoteId ? "is-active" : ""}" data-note-id="${note.id}">
+              <span class="search-modal__result-text">${escapeHtml(parts)}</span>
+              ${ocrIcon}
+              <button class="search-modal__result-open" type="button" data-action="open-note" data-note-id="${note.id}">
+                <svg class="search-modal__result-icon" aria-hidden="true">
+                  <use href="#icon-note"></use>
+                </svg>
+                Open
+              </button>
+            </div>
+          `;
+        })
       .join("");
   };
 
