@@ -273,6 +273,47 @@
   white-space: pre;
 }
 
+.notes-editor .jodit-wysiwyg .note-secure {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 4px;
+  border: 1px solid #e5e7eb;
+  background: #f3f4f6;
+  color: #6b7280;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.notes-editor .jodit-wysiwyg .note-secure:hover {
+  background: #e5e7eb;
+}
+
+.notes-editor .jodit-wysiwyg .note-secure__handle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notes-editor .jodit-wysiwyg .note-secure__icon {
+  width: 14px;
+  height: 14px;
+  color: #202020;
+}
+
+.notes-editor .jodit-wysiwyg .note-secure__dots {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.notes-editor .jodit-wysiwyg .note-secure__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #202020;
+}
+
 .editor-host {
   position: relative;
 }

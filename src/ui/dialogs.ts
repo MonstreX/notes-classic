@@ -14,6 +14,13 @@ type ConfirmDialogOptions = {
   danger?: boolean;
 };
 
+type PasswordDialogOptions = {
+  title: string;
+  message?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+};
+
 export const openNotebookDialog = ({ parentId }: NotebookDialogOptions): Promise<string | null> => {
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
@@ -158,6 +165,92 @@ export const openTagDialog = ({ parentId }: TagDialogOptions): Promise<string | 
       const value = (input?.value || "").trim();
       if (!value) {
         showError("Enter a name");
+        return;
+      }
+      cleanup(value);
+    };
+
+    cancelBtn?.addEventListener("click", () => cleanup(null));
+    submitBtn?.addEventListener("click", submit);
+    input?.addEventListener("input", () => {
+      if (!error) return;
+      error.textContent = "";
+      error.classList.add("is-hidden");
+    });
+    input?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        submit();
+      }
+      if (event.key === "Escape") {
+        cleanup(null);
+      }
+    });
+
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) cleanup(null);
+    });
+
+    document.body.appendChild(overlay);
+    input?.focus();
+  });
+};
+
+export const openPasswordDialog = ({
+  title,
+  message = "Enter password",
+  confirmLabel = "Unlock",
+  cancelLabel = "Cancel",
+}: PasswordDialogOptions): Promise<string | null> => {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "dialog-overlay";
+    overlay.dataset.dialogOverlay = "1";
+
+    overlay.innerHTML = `
+      <div class="dialog">
+        <div class="dialog__header">
+          <h3 class="dialog__title">${title}</h3>
+        </div>
+        <div class="dialog__body">
+          <label class="dialog__label">${message}</label>
+          <input
+            class="dialog__input"
+            type="password"
+            placeholder="Password"
+          />
+          <div class="dialog__error is-hidden" data-dialog-error="1"></div>
+        </div>
+        <div class="dialog__footer">
+          <button class="dialog__button dialog__button--ghost" data-dialog-cancel="1">
+            ${cancelLabel}
+          </button>
+          <button class="dialog__button dialog__button--primary" data-dialog-submit="1">
+            ${confirmLabel}
+          </button>
+        </div>
+      </div>
+    `;
+
+    const input = overlay.querySelector("input") as HTMLInputElement | null;
+    const error = overlay.querySelector("[data-dialog-error]") as HTMLDivElement | null;
+    const cancelBtn = overlay.querySelector("[data-dialog-cancel]") as HTMLButtonElement | null;
+    const submitBtn = overlay.querySelector("[data-dialog-submit]") as HTMLButtonElement | null;
+
+    const cleanup = (result: string | null) => {
+      overlay.remove();
+      resolve(result);
+    };
+
+    const showError = (text: string) => {
+      if (!error) return;
+      error.textContent = text;
+      error.classList.remove("is-hidden");
+    };
+
+    const submit = () => {
+      const value = (input?.value || "").trim();
+      if (!value) {
+        showError("Enter a password");
         return;
       }
       cleanup(value);

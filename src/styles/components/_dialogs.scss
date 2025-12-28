@@ -115,3 +115,33 @@
 .dialog__button--danger:hover {
   background: #dc2626;
 }
+
+.secure-dialog {
+  width: min(720px, 90vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.secure-dialog .dialog__body {
+  flex: 1;
+}
+
+.secure-dialog__content {
+  max-height: 60vh;
+  overflow: auto;
+}
+
+.secure-dialog__content .notes-editor {
+  padding: 0;
+  background: transparent;
+  height: auto;
+}
+
+.secure-dialog__content .notes-editor__wrapper {
+  overflow: visible;
+}
+
+.secure-dialog__content .jodit-wysiwyg {
+  padding: 0 !important;
+}

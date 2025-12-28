@@ -29,6 +29,9 @@ import php from "highlight.js/lib/languages/php";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { open } from "@tauri-apps/plugin-shell";
 import { logError } from "../services/logger";
+import { decryptHtml, encryptHtml } from "../services/crypto";
+import { openPasswordDialog } from "./dialogs";
+import { createIcon } from "./icons";
 
 hljs.registerLanguage("javascript", javascript);
 hljs.registerLanguage("js", javascript);
@@ -66,6 +69,17 @@ const findCodeBlock = (node: Node | null, root: HTMLElement) => {
   let current = node;
   while (current && current !== root) {
     if (current.nodeType === 1 && (current as HTMLElement).classList.contains("note-code")) {
+      return current as HTMLElement;
+    }
+    current = current.parentNode;
+  }
+  return null;
+};
+
+const findSecureBlock = (node: Node | null, root: HTMLElement) => {
+  let current = node;
+  while (current && current !== root) {
+    if (current.nodeType === 1 && (current as HTMLElement).classList.contains("note-secure")) {
       return current as HTMLElement;
     }
     current = current.parentNode;
@@ -169,6 +183,91 @@ const applyHighlightToEditor = (editor: any) => {
   });
 };
 
+const buildSecureNode = (editor: any, payload: { cipher: string; salt: string; iv: string; iterations: number }) => {
+  const wrapper = editor.createInside.element("div");
+  wrapper.className = "note-secure";
+  wrapper.setAttribute("data-secure", "1");
+  wrapper.setAttribute("data-alg", "aes-gcm");
+  wrapper.setAttribute("data-kdf", "pbkdf2");
+  wrapper.setAttribute("data-iter", String(payload.iterations));
+  wrapper.setAttribute("data-salt", payload.salt);
+  wrapper.setAttribute("data-iv", payload.iv);
+  wrapper.setAttribute("data-cipher", payload.cipher);
+  wrapper.setAttribute("data-ver", "1");
+  wrapper.setAttribute("contenteditable", "false");
+
+  const handle = editor.createInside.element("span");
+  handle.className = "note-secure__handle";
+
+  const icon = createIcon("icon-lock", "note-secure__icon");
+  handle.appendChild(icon);
+
+  const dots = editor.createInside.element("span");
+  dots.className = "note-secure__dots";
+  for (let i = 0; i < 5; i += 1) {
+    const dot = editor.createInside.element("span");
+    dot.className = "note-secure__dot";
+    dots.appendChild(dot);
+  }
+  handle.appendChild(dots);
+
+  wrapper.appendChild(handle);
+  return wrapper;
+};
+
+const openSecureEditor = (html: string): Promise<string | null> => {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "dialog-overlay";
+    overlay.dataset.dialogOverlay = "1";
+
+    overlay.innerHTML = `
+      <div class="dialog secure-dialog">
+        <div class="dialog__header">
+          <h3 class="dialog__title">Encrypted content</h3>
+        </div>
+        <div class="dialog__body">
+          <div class="secure-dialog__content">
+            <div class="notes-editor notes-editor--preview">
+              <div class="jodit-wysiwyg" contenteditable="true"></div>
+            </div>
+          </div>
+        </div>
+        <div class="dialog__footer">
+          <button class="dialog__button dialog__button--ghost" data-secure-cancel="1">Cancel</button>
+          <button class="dialog__button dialog__button--primary" data-secure-save="1">Save</button>
+        </div>
+      </div>
+    `;
+
+    const content = overlay.querySelector(".secure-dialog__content .jodit-wysiwyg") as HTMLElement | null;
+    if (content) {
+      content.innerHTML = html;
+      content.focus();
+    }
+
+    const cleanup = (result: string | null) => {
+      overlay.remove();
+      resolve(result);
+    };
+
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) cleanup(null);
+    });
+    overlay.querySelector("[data-secure-cancel]")?.addEventListener("click", () => cleanup(null));
+    overlay.querySelector("[data-secure-save]")?.addEventListener("click", () => cleanup(content?.innerHTML ?? ""));
+    window.addEventListener(
+      "keydown",
+      (event) => {
+        if (event.key === "Escape") cleanup(null);
+      },
+      { once: true }
+    );
+
+    document.body.appendChild(overlay);
+  });
+};
+
 const setupCodeToolbarHandlers = (editor: any) => {
   if (!editor || !editor.editor) return;
   if ((editor as any).__noteCodeSetup) return;
@@ -217,6 +316,59 @@ const setupCodeToolbarHandlers = (editor: any) => {
         } catch (e) {
           logError("[note-code] clipboard fallback failed", e);
         }
+      }
+    },
+    true
+  );
+};
+
+const setupSecureHandlers = (editor: any) => {
+  if (!editor || !editor.editor) return;
+  if ((editor as any).__noteSecureSetup) return;
+  (editor as any).__noteSecureSetup = true;
+
+  editor.editor.addEventListener(
+    "click",
+    async (event: Event) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      const block = target.closest(".note-secure") as HTMLElement | null;
+      if (!block) return;
+      const cipher = block.getAttribute("data-cipher");
+      const salt = block.getAttribute("data-salt");
+      const iv = block.getAttribute("data-iv");
+      const iterRaw = block.getAttribute("data-iter");
+      if (!cipher || !salt || !iv || !iterRaw) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const password = await openPasswordDialog({
+        title: "Unlock content",
+        message: "Enter password",
+        confirmLabel: "Unlock",
+        cancelLabel: "Cancel",
+      });
+      if (!password) return;
+      try {
+        const html = await decryptHtml(
+          {
+            cipher,
+            salt,
+            iv,
+            iterations: Number(iterRaw),
+          },
+          password
+        );
+        const updated = await openSecureEditor(html);
+        if (updated === null) return;
+        const payload = await encryptHtml(updated, password);
+        block.setAttribute("data-iter", String(payload.iterations));
+        block.setAttribute("data-salt", payload.salt);
+        block.setAttribute("data-iv", payload.iv);
+        block.setAttribute("data-cipher", payload.cipher);
+        editor.synchronizeValues();
+      } catch (e) {
+        logError("[note-secure] decrypt failed", e);
+        alert("Invalid password or corrupted content.");
       }
     },
     true
@@ -298,6 +450,7 @@ const createEditorConfig = (overrides: Record<string, unknown> = {}) => {
       "callout",
       "todo",
       "codeblock",
+      "encrypt",
       "|",
       "link",
       "image",
@@ -315,6 +468,7 @@ const createEditorConfig = (overrides: Record<string, unknown> = {}) => {
       "callout",
       "todo",
       "codeblock",
+      "encrypt",
       "|",
       "link",
       "image",
@@ -331,6 +485,7 @@ const createEditorConfig = (overrides: Record<string, unknown> = {}) => {
       "callout",
       "todo",
       "codeblock",
+      "encrypt",
       "|",
       "link",
       "|",
@@ -346,6 +501,7 @@ const createEditorConfig = (overrides: Record<string, unknown> = {}) => {
       "callout",
       "todo",
       "codeblock",
+      "encrypt",
       "|",
       "undo",
       "redo",
@@ -485,6 +641,57 @@ const createEditorConfig = (overrides: Record<string, unknown> = {}) => {
           editor.s.setCursorIn(code);
           editor.s.synchronizeValues();
           applyHighlightToEditor(editor);
+        },
+      },
+      encrypt: {
+        tooltip: "Encrypt",
+        text: "ENC",
+        exec: async (editor: any) => {
+          if (!editor || !editor.s || editor.s.isCollapsed()) return;
+          const range: Range = editor.s.range;
+          const isInsideBlock = (node: Node | null) => {
+            let current = node;
+            while (current && current !== editor.editor) {
+              if (current.nodeType === 1) {
+                const el = current as HTMLElement;
+                if (el.classList.contains("note-secure")) return true;
+              }
+              current = current.parentNode;
+            }
+            return false;
+          };
+          if (isInsideBlock(range.startContainer) || isInsideBlock(range.endContainer)) return;
+
+          const fragment = range.extractContents();
+          const container = document.createElement("div");
+          container.appendChild(fragment);
+          const restoreHtml = container.innerHTML;
+          const html = restoreHtml.trim();
+          if (!html) return;
+
+          const password = await openPasswordDialog({
+            title: "Encrypt selection",
+            message: "Enter password",
+            confirmLabel: "Encrypt",
+            cancelLabel: "Cancel",
+          });
+          if (!password) {
+            editor.s.insertHTML(restoreHtml);
+            editor.s.synchronizeValues();
+            return;
+          }
+
+          try {
+            const payload = await encryptHtml(html, password);
+            const secureNode = buildSecureNode(editor, payload);
+            range.insertNode(secureNode);
+            editor.s.setCursorAfter(secureNode);
+            editor.s.synchronizeValues();
+          } catch (e) {
+            logError("[note-secure] encrypt failed", e);
+            editor.s.insertHTML(restoreHtml);
+            editor.s.synchronizeValues();
+          }
         },
       },
     },
@@ -664,6 +871,7 @@ export const mountEditor = (root: HTMLElement, options: EditorOptions): EditorIn
   };
 
   setupCodeToolbarHandlers(editor);
+  setupSecureHandlers(editor);
   setupTodoHandlers(editor);
   setupLinkHandlers(editor);
   applyHighlightToEditor(editor);
