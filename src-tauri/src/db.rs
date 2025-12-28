@@ -629,13 +629,6 @@ impl SqliteRepository {
         Ok(())
     }
 
-    async fn upsert_note_text(&self, note_id: i64, title: &str, content: &str) -> Result<(), sqlx::Error> {
-        let mut tx = self.pool.begin().await?;
-        self.upsert_note_text_tx(&mut tx, note_id, title, content).await?;
-        tx.commit().await?;
-        Ok(())
-    }
-
     async fn sync_note_files_tx(
         &self,
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
@@ -1057,6 +1050,17 @@ impl SqliteRepository {
         .bind(note_id)
         .fetch_all(&self.pool)
         .await
+    }
+
+    pub async fn backfill_note_files_and_ocr(&self, data_dir: &Path) -> Result<(), sqlx::Error> {
+        let _ = data_dir;
+        let notes: Vec<(i64, String)> = sqlx::query_as("SELECT id, content FROM notes")
+            .fetch_all(&self.pool)
+            .await?;
+        for (note_id, content) in notes {
+            let _ = self.sync_note_files(note_id, &content).await?;
+        }
+        Ok(())
     }
 
     pub async fn get_ocr_pending_files(&self, limit: i64) -> Result<Vec<OcrFileItem>, sqlx::Error> {
