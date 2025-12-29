@@ -48,12 +48,25 @@ export const fetchNotesData = async () => {
   counts.perNotebook.forEach((item) => {
     map.set(item.notebookId, item.count);
   });
+  const noteIds = new Set(sortedNotes.map((note) => note.id));
+  const preservedSelection = new Set(
+    Array.from(state.selectedNoteIds).filter((id) => noteIds.has(id))
+  );
   let nextSelectedNoteId = state.selectedNoteId;
-  const hasSelected = notesWithExcerpt.some((note) => note.id === state.selectedNoteId);
+  const hasSelected = nextSelectedNoteId !== null && noteIds.has(nextSelectedNoteId);
   if (state.selectedTrash || state.selectedTagId !== null || state.selectedNotebookId !== null) {
-    nextSelectedNoteId = hasSelected ? state.selectedNoteId : (sortedNotes[0]?.id ?? null);
+    nextSelectedNoteId = hasSelected
+      ? nextSelectedNoteId
+      : preservedSelection.size > 0
+        ? Array.from(preservedSelection)[0]
+        : (sortedNotes[0]?.id ?? null);
   }
   const selectionChanged = nextSelectedNoteId !== state.selectedNoteId;
+  if (nextSelectedNoteId !== null) {
+    preservedSelection.add(nextSelectedNoteId);
+  } else {
+    preservedSelection.clear();
+  }
   const nextState: Partial<typeof state> = {
     notebooks: nbs,
     notes: sortedNotes,
@@ -61,7 +74,7 @@ export const fetchNotesData = async () => {
     totalNotes: counts.total,
     trashedCount: counts.trashed,
     selectedNoteId: nextSelectedNoteId,
-    selectedNoteIds: nextSelectedNoteId !== null ? new Set([nextSelectedNoteId]) : new Set(),
+    selectedNoteIds: preservedSelection,
   };
   if (selectionChanged && nextSelectedNoteId !== null) {
     nextState.isNoteLoading = true;

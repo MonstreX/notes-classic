@@ -408,7 +408,11 @@ export const actions = {
   addTagToNotes: async (noteIds: number[], tagId: number) => {
     const unique = Array.from(new Set(noteIds)).filter((id) => Number.isFinite(id));
     for (const id of unique) {
-      await addNoteTag(id, tagId);
+      try {
+        await addNoteTag(id, tagId);
+      } catch (e) {
+        logError("[tag] add failed", e);
+      }
     }
     const state = appStore.getState();
     if (state.selectedNoteId && unique.includes(state.selectedNoteId)) {

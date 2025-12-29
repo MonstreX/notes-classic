@@ -435,12 +435,6 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
 
   const handlePointerUp = () => {
     if (!dragActive) return;
-    if (!dragStarted && dragNoteId) {
-      ignoreClick = true;
-      handlers.onSelectNote(dragNoteId);
-      cleanupDrag();
-      return;
-    }
     if (dragStarted && dragNoteId && dragHasTarget) {
       const selectedIds = currentState?.selectedNoteIds ?? new Set<number>();
       const ids = selectedIds.has(dragNoteId) ? Array.from(selectedIds) : [dragNoteId];
@@ -451,6 +445,9 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
       } else {
         handlers.onMoveNotes(ids, dragOverNotebookId);
       }
+    }
+    if (dragStarted) {
+      ignoreClick = true;
     }
     cleanupDrag();
   };
