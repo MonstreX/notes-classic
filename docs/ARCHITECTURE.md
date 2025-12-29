@@ -316,10 +316,19 @@ Sort menu:
 DnD notes:
 
 - Pointer down on a note row starts drag tracking.
-- Drag overlay shows note title only.
+- Drag overlay shows note title only, or "N Notes" for group drag.
 - Drop target is resolved in sidebar via elementFromPoint.
 - Drop onto All Notes or a notebook updates note notebookId.
+- Drop onto a tag adds that tag to the dragged notes.
+- Drop onto Trash deletes (or trashes) the dragged notes.
 - Drag uses custom overlay and highlight class on target.
+
+Selection:
+
+- Single click selects one note.
+- Shift-click selects a range.
+- Ctrl/Cmd-click toggles individual notes.
+- Selected notes are tracked as selectedNoteIds in state.
 
 ### 5.5 Editor module (src/ui/editor.ts)
 
@@ -453,6 +462,8 @@ Menu types:
 - Note menu: Delete, Move To submenu.
 - Notebook menu: Delete.
 - Tag menu: Delete.
+- Notes group menu: "N Notes selected", Delete Notes, Move To submenu.
+- Trash group menu: "N Notes selected", Restore Notes, Delete Permanently.
 
 ### 5.10 Dialogs (src/ui/dialogs.ts)
 
@@ -513,15 +524,17 @@ Autosave:
 Actions map:
 
 - setTitle, setContent
-- selectNote, selectNotebook, selectTag
+- selectNote, setNoteSelection, selectNotebook, selectTag
 - toggleNotebook, toggleTag, toggleTagsSection
 - setSidebarWidth, setListWidth
 - setNotesListView, setNotesSort
 - addTagToNote, removeTagFromNote
+- addTagToNotes
 - createTag, deleteTag, moveTag
-- createNote, createNoteInNotebook, deleteNote
+- createNote, createNoteInNotebook, deleteNote, deleteNotes
 - createNotebook, deleteNotebook
-- moveNoteToNotebook, moveNotebookByDrag
+- moveNoteToNotebook, moveNotesToNotebook, moveNotebookByDrag
+- restoreNote, restoreNotes, restoreAllTrash
 
 Selection safeguards:
 
@@ -551,11 +564,15 @@ State structure:
 - selectedNotebookId: number or null
 - selectedTagId: number or null
 - selectedNoteId: number or null
+- selectedNoteIds: Set<number>
+- selectedTrash: boolean
 - expandedNotebooks: Set<number>
 - expandedTags: Set<number>
 - tagsSectionExpanded: boolean
 - sidebarWidth: number
 - listWidth: number
+- trashedCount: number
+- deleteToTrash: boolean
 - title: string
 - content: string
 - activeNote: NoteDetail or null
@@ -578,6 +595,7 @@ IPC wrappers:
 
 - getNotebooks
 - getNotes
+- getTrashedNotes
 - getNotesByTag
 - searchNotes
 - getNote
@@ -585,6 +603,9 @@ IPC wrappers:
 - createNote
 - updateNote
 - deleteNote
+- trashNote
+- restoreNote
+- restoreAllNotes
 - moveNote
 - createNotebook
 - deleteNotebook

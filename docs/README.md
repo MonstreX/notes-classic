@@ -58,6 +58,7 @@ notes-classic/
 ### 1. Three-Panel Interface
 - **Sidebar**: Notebooks and tags with collapse/expand.
 - **Note List**: Sorting, view modes, and selection.
+- **Multi-selection**: Shift/Ctrl selection, group move/delete, and drag groups to tags or Trash.
 - **Editor**: Jodit-based rich text editing with custom callouts, code blocks, TODO lists, and encrypted content blocks.
 - **Attachments**: Attach files via toolbar or drag-and-drop, with download/view/delete actions.
 
