@@ -142,6 +142,7 @@ The service layer:
 - Normalizes content and URLs.
 - Manages OCR worker queue.
 - Handles settings persistence.
+- Provides crypto helpers for encrypted editor blocks.
 
 ### 4.5 Backend layer (src-tauri)
 
@@ -337,7 +338,7 @@ Toolbar:
 
 - bold, italic, underline
 - ul, ol
-- callout, todo, codeblock
+- callout, todo, codeblock, encrypt
 - link, image
 - undo, redo
 
@@ -346,6 +347,7 @@ Custom controls:
 - callout: wraps selected fragment into div.note-callout.
 - todo: converts list to ul[data-en-todo=true], toggles li flags.
 - codeblock: wraps selection into div.note-code with toolbar.
+- encrypt: replaces selection with a password-protected secure block.
 
 Code block behavior:
 
@@ -455,6 +457,7 @@ Menu types:
 Responsibilities:
 
 - Create modal overlays for create notebook/tag and confirmations.
+- Provide password prompt for encrypted blocks.
 - Validate input.
 - Handle Enter and Escape.
 - Remove DOM on completion.
@@ -753,6 +756,27 @@ Behavior:
 - No toolbar and no status bar.
 - Used for search modal preview.
 
+### 8.8 Encrypted block
+
+Creation:
+
+- User selects HTML and clicks Encrypt (ENC).
+- Selection is serialized to HTML and encrypted with AES-GCM.
+- The encrypted payload is stored in a div.note-secure data attributes.
+- The visible handle shows a lock icon and dots.
+
+Interaction:
+
+- Clicking a secure block prompts for the password.
+- If the password is valid, a modal editor opens with decrypted HTML.
+- Saving re-encrypts the edited HTML and updates the block payload.
+- Cancelling leaves the encrypted block unchanged.
+
+Storage:
+
+- The encrypted payload is stored inline as data attributes.
+- No plaintext is kept in the note content.
+
 ----------------------------------------------------------------
 
 ## 9) Search and OCR architecture
@@ -1044,6 +1068,7 @@ Known risks:
 - Callout and code block custom controls.
 - TODO list behavior.
 - HR insertion from ---.
+- Encrypted content blocks with password prompt and modal editor.
 
 ### src/ui/searchModal.ts
 - Modal layout and search logic.
@@ -1065,6 +1090,7 @@ Known risks:
 ### src/ui/dialogs.ts
 - Create notebook and tag dialogs.
 - Confirmation dialog for destructive actions.
+- Password dialog for encrypted blocks.
 
 ### src/controllers/appController.ts
 - Data fetch orchestration.
@@ -1092,6 +1118,9 @@ Known risks:
 
 ### src/services/ocr.ts
 - OCR queue, worker, and stats.
+
+### src/services/crypto.ts
+- WebCrypto helpers for encrypting and decrypting editor fragments.
 
 ### src/services/logger.ts
 - Minimal console error helper.

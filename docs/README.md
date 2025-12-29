@@ -58,7 +58,7 @@ notes-classic/
 ### 1. Three-Panel Interface
 - **Sidebar**: Notebooks and tags with collapse/expand.
 - **Note List**: Sorting, view modes, and selection.
-- **Editor**: Jodit-based rich text editing with custom callouts, code blocks, and TODO lists.
+- **Editor**: Jodit-based rich text editing with custom callouts, code blocks, TODO lists, and encrypted content blocks.
 
 ### 2. Notebooks and Stacks
 - Two-level structure: stacks (top level) and notebooks (inside stacks).
