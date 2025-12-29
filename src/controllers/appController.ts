@@ -88,14 +88,36 @@ const scheduleAutosave = () => {
   }, 1000);
 };
 
+const setSelection = async (noteIds: number[], primaryId: number | null) => {
+  const unique = Array.from(new Set(noteIds));
+  const nextPrimary = primaryId !== null && unique.includes(primaryId)
+    ? primaryId
+    : (unique[0] ?? null);
+  const nextSelectedIds = new Set(unique);
+  if (nextPrimary !== null) {
+    nextSelectedIds.add(nextPrimary);
+  }
+  const state = appStore.getState();
+  if (state.selectedNoteId !== nextPrimary) {
+    appStore.setState({ selectedNoteId: nextPrimary, selectedNoteIds: nextSelectedIds, isNoteLoading: nextPrimary !== null });
+    if (nextPrimary !== null) {
+      await loadSelectedNote();
+    } else {
+      appStore.setState({ activeNote: null, title: "", content: "", isNoteLoading: false });
+    }
+    return;
+  }
+  appStore.setState({ selectedNoteIds: nextSelectedIds });
+};
+
 export const actions = {
   setTitle: (value: string) => appStore.setState({ title: value }),
   setContent: (value: string) => appStore.setState({ content: value }),
   selectNote: async (id: number) => {
-    const state = appStore.getState();
-    if (state.selectedNoteId === id) return;
-    appStore.setState({ selectedNoteId: id, isNoteLoading: true });
-    await loadSelectedNote();
+    await setSelection([id], id);
+  },
+  setNoteSelection: async (ids: number[], primaryId: number) => {
+    await setSelection(ids, primaryId);
   },
   selectNotebook: (id: number | null) => appStore.setState({ selectedNotebookId: id, selectedTagId: null, selectedTrash: false }),
   selectTag: (id: number) => appStore.setState({ selectedTagId: id, selectedNotebookId: null, selectedTrash: false }),
@@ -227,93 +249,74 @@ export const actions = {
     await actions.selectNote(id);
   },
   deleteNote: async (id: number) => {
+    await actions.deleteNotes([id]);
+  },
+  deleteNotes: async (ids: number[]) => {
+    const unique = Array.from(new Set(ids)).filter((id) => Number.isFinite(id));
+    if (unique.length === 0) return;
+    const prevSelectedId = appStore.getState().selectedNoteId;
+    const countLabel = unique.length === 1 ? "note" : "notes";
+    const state = appStore.getState();
+    const inTrash = state.selectedTrash;
+    const bypassTrash = !state.deleteToTrash || inTrash;
+    const title = unique.length === 1 ? "Delete note" : "Delete notes";
+    const message = inTrash
+      ? `Delete ${unique.length} ${countLabel} permanently?`
+      : `Delete ${unique.length} ${countLabel}?`;
     const ok = await openConfirmDialog({
-      title: "Delete note",
-      message: "Are you sure you want to delete this note?",
+      title,
+      message,
       confirmLabel: "Delete",
       danger: true,
     });
     if (!ok) return;
-    const state = appStore.getState();
-    if (!state.deleteToTrash || state.selectedTrash) {
-      await actions.purgeNote(id);
-      return;
-    }
-    try {
-      await trashNote(id);
-    } catch (e) {
-      logError("[note] trash failed", e);
-      return;
-    }
-    const isCurrent = state.selectedNoteId === id;
-    const nextNotes = state.notes.filter((note) => note.id !== id);
 
-    if (isCurrent) {
-      if (nextNotes.length > 0) {
-        appStore.setState({ selectedNoteId: nextNotes[0].id });
-      } else if (state.selectedNotebookId !== null) {
+    if (bypassTrash) {
+      for (const id of unique) {
         try {
-          const allNotes = await getNotes(null);
-          if (allNotes.length > 0) {
-            appStore.setState({ selectedNotebookId: null, selectedNoteId: allNotes[0].id });
-          } else {
-            appStore.setState({ selectedNoteId: null, activeNote: null, title: "", content: "" });
-          }
+          await deleteNote(id);
         } catch (e) {
-          logError("[note] fallback selection failed", e);
-          appStore.setState({ selectedNoteId: null, activeNote: null, title: "", content: "" });
+          logError("[note] delete failed", e);
         }
-      } else {
-        appStore.setState({ selectedNoteId: null, activeNote: null, title: "", content: "" });
+      }
+    } else {
+      for (const id of unique) {
+        try {
+          await trashNote(id);
+        } catch (e) {
+          logError("[note] trash failed", e);
+        }
       }
     }
 
-    const postState = appStore.getState();
-    appStore.setState({
-      notes: nextNotes,
-      selectedNoteId: postState.selectedNoteId,
-      activeNote: postState.activeNote,
-      title: postState.title,
-      content: postState.content,
-    });
-    document.querySelectorAll("[data-dialog-overlay], .context-menu").forEach((el) => el.remove());
-    document.body.style.cursor = "";
-    fetchData();
-  },
-  purgeNote: async (id: number) => {
-    const state = appStore.getState();
-    const isCurrent = state.selectedNoteId === id;
-    const nextNotes = state.notes.filter((note) => note.id !== id);
-
-    if (isCurrent) {
-      if (nextNotes.length > 0) {
-        appStore.setState({ selectedNoteId: nextNotes[0].id });
-      } else if (state.selectedNotebookId !== null) {
-        try {
-          const allNotes = await getNotes(null);
-          if (allNotes.length > 0) {
-            appStore.setState({ selectedNotebookId: null, selectedNoteId: allNotes[0].id });
-          } else {
-            appStore.setState({ selectedNoteId: null, activeNote: null, title: "", content: "" });
-          }
-        } catch (e) {
-          logError("[note] fallback selection failed", e);
-          appStore.setState({ selectedNoteId: null, activeNote: null, title: "", content: "" });
-        }
-      } else {
-        appStore.setState({ selectedNoteId: null, activeNote: null, title: "", content: "" });
-      }
+    const idsSet = new Set(unique);
+    const remainingNotes = state.notes.filter((note) => !idsSet.has(note.id));
+    const remainingSelectedIds = new Set(Array.from(state.selectedNoteIds).filter((id) => !idsSet.has(id)));
+    let nextSelectedNoteId = state.selectedNoteId;
+    if (nextSelectedNoteId !== null && idsSet.has(nextSelectedNoteId)) {
+      nextSelectedNoteId = remainingNotes[0]?.id ?? null;
     }
-
-    await deleteNote(id);
-    const postState = appStore.getState();
-    appStore.setState({
-      notes: nextNotes,
-      selectedNoteId: postState.selectedNoteId,
-      activeNote: postState.activeNote,
-      title: postState.title,
-      content: postState.content,
-    });
+    if (nextSelectedNoteId !== null) {
+      remainingSelectedIds.add(nextSelectedNoteId);
+    } else {
+      remainingSelectedIds.clear();
+    }
+    const nextState: Partial<typeof state> = {
+      notes: remainingNotes,
+      selectedNoteId: nextSelectedNoteId,
+      selectedNoteIds: remainingSelectedIds,
+    };
+    if (nextSelectedNoteId === null) {
+      nextState.activeNote = null;
+      nextState.title = "";
+      nextState.content = "";
+    } else {
+      nextState.isNoteLoading = true;
+    }
+    appStore.setState(nextState);
+    if (nextSelectedNoteId !== null && nextSelectedNoteId !== prevSelectedId) {
+      await loadSelectedNote();
+    }
     document.querySelectorAll("[data-dialog-overlay], .context-menu").forEach((el) => el.remove());
     document.body.style.cursor = "";
     fetchData();
@@ -330,6 +333,25 @@ export const actions = {
       const nextNotes = state.notes.filter((note) => note.id !== id);
       const nextSelected = nextNotes[0]?.id ?? null;
       appStore.setState({ notes: nextNotes, selectedNoteId: nextSelected });
+    }
+    fetchData();
+  },
+  restoreNotes: async (ids: number[]) => {
+    const unique = Array.from(new Set(ids)).filter((id) => Number.isFinite(id));
+    if (unique.length === 0) return;
+    for (const id of unique) {
+      try {
+        await restoreNote(id);
+      } catch (e) {
+        logError("[note] restore failed", e);
+      }
+    }
+    const state = appStore.getState();
+    if (state.selectedTrash) {
+      const idsSet = new Set(unique);
+      const nextNotes = state.notes.filter((note) => !idsSet.has(note.id));
+      const nextSelected = nextNotes[0]?.id ?? null;
+      appStore.setState({ notes: nextNotes, selectedNoteId: nextSelected, selectedNoteIds: nextSelected ? new Set([nextSelected]) : new Set() });
     }
     fetchData();
   },
@@ -375,6 +397,24 @@ export const actions = {
       }
     }
     fetchData();
+  },
+  moveNotesToNotebook: async (noteIds: number[], notebookId: number | null) => {
+    const unique = Array.from(new Set(noteIds)).filter((id) => Number.isFinite(id));
+    for (const id of unique) {
+      await moveNote(id, notebookId);
+    }
+    fetchData();
+  },
+  addTagToNotes: async (noteIds: number[], tagId: number) => {
+    const unique = Array.from(new Set(noteIds)).filter((id) => Number.isFinite(id));
+    for (const id of unique) {
+      await addNoteTag(id, tagId);
+    }
+    const state = appStore.getState();
+    if (state.selectedNoteId && unique.includes(state.selectedNoteId)) {
+      const updated = await getNoteTags(state.selectedNoteId);
+      appStore.setState({ noteTags: updated });
+    }
   },
   moveNotebookByDrag: async (activeId: number, overId: number, position: "before" | "after" | "inside") => {
     const state = appStore.getState();

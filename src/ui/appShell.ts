@@ -1,4 +1,4 @@
-import { openNoteContextMenu, openNotebookContextMenu, openTagContextMenu, openTrashContextMenu, openTrashNoteContextMenu } from "./contextMenu";
+import { openNoteContextMenu, openNotebookContextMenu, openTagContextMenu, openTrashContextMenu, openTrashNoteContextMenu, openTrashNotesContextMenu, openNotesContextMenu } from "./contextMenu";
 import { mountEditor, type EditorInstance } from "./editor";
 import { mountMetaBar } from "./metaBar";
 import { mountNotesList, type NotesListHandlers, type NotesListInstance } from "./notesList";
@@ -93,6 +93,7 @@ export const mountApp = (root: HTMLElement) => {
 
   const notesListHandlers: NotesListHandlers = {
     onSelectNote: (id) => actions.selectNote(id),
+    onSelectNotes: (ids, primaryId) => actions.setNoteSelection(ids, primaryId),
     onDeleteNote: (id) => actions.deleteNote(id),
     onSelectSort: (sortBy, sortDir) => actions.setNotesSort(sortBy, sortDir),
     onToggleView: () => {
@@ -104,13 +105,36 @@ export const mountApp = (root: HTMLElement) => {
     onNoteContextMenu: (event, id) => {
       event.preventDefault();
       const state = appStore.getState();
+      const selectedIds = state.selectedNoteIds;
       if (state.selectedTrash) {
+        if (selectedIds.size > 1) {
+          openTrashNotesContextMenu({
+            x: event.clientX,
+            y: event.clientY,
+            noteIds: Array.from(selectedIds),
+            onRestore: actions.restoreNotes,
+            onDelete: actions.deleteNotes,
+          });
+          return;
+        }
         openTrashNoteContextMenu({
           x: event.clientX,
           y: event.clientY,
           noteId: id,
           onRestore: actions.restoreNote,
-          onDelete: actions.purgeNote,
+          onDelete: (noteId) => actions.deleteNotes([noteId]),
+        });
+        return;
+      }
+      if (selectedIds.size > 1) {
+        const nodes = buildMenuNodes(null, state);
+        openNotesContextMenu({
+          x: event.clientX,
+          y: event.clientY,
+          noteIds: Array.from(selectedIds),
+          nodes,
+          onDelete: actions.deleteNotes,
+          onMove: actions.moveNotesToNotebook,
         });
         return;
       }
@@ -124,12 +148,12 @@ export const mountApp = (root: HTMLElement) => {
         onMove: actions.moveNoteToNotebook,
       });
     },
-    onMoveNote: (noteId, notebookId) => {
+    onMoveNotes: (noteIds, notebookId) => {
       if (appStore.getState().selectedTrash) return;
-      actions.moveNoteToNotebook(noteId, notebookId);
+      actions.moveNotesToNotebook(noteIds, notebookId);
     },
-    onDropToTrash: (noteId) => actions.deleteNote(noteId),
-    onDropToTag: (noteId, tagId) => actions.addTagToNoteById(noteId, tagId),
+    onDropToTrash: (noteIds) => actions.deleteNotes(noteIds),
+    onDropToTag: (noteIds, tagId) => actions.addTagToNotes(noteIds, tagId),
   };
 
   const sidebarInstance: SidebarInstance = mountSidebar(layout.sidebarHost, sidebarHandlers);

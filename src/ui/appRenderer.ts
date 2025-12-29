@@ -68,6 +68,7 @@ export const createAppRenderer = (deps: RendererDeps) => {
       selectedNotebookId: state.selectedNotebookId,
       selectedTagId: state.selectedTagId,
       selectedNoteId: state.selectedNoteId,
+      selectedNoteIds: state.selectedNoteIds,
       selectedTrash: state.selectedTrash,
       notesListView: state.notesListView,
       notesSortBy: state.notesSortBy,
@@ -102,6 +103,7 @@ export const createAppRenderer = (deps: RendererDeps) => {
       lastNotesListState.selectedTagId !== notesListState.selectedTagId ||
       lastNotesListState.selectedTrash !== notesListState.selectedTrash ||
       lastNotesListState.selectedNoteId !== notesListState.selectedNoteId ||
+      lastNotesListState.selectedNoteIds !== notesListState.selectedNoteIds ||
       lastNotesListState.notesListView !== notesListState.notesListView;
 
     if (shouldUpdateList) {

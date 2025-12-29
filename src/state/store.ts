@@ -14,6 +14,7 @@ export type AppState = {
   selectedNotebookId: number | null;
   selectedTagId: number | null;
   selectedNoteId: number | null;
+  selectedNoteIds: Set<number>;
   selectedTrash: boolean;
   expandedNotebooks: Set<number>;
   expandedTags: Set<number>;
@@ -44,6 +45,7 @@ let state: AppState = {
   selectedNotebookId: null,
   selectedTagId: null,
   selectedNoteId: null,
+  selectedNoteIds: new Set(),
   selectedTrash: false,
   expandedNotebooks: new Set(),
   expandedTags: new Set(),

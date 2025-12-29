@@ -26,6 +26,7 @@ export interface NotesListState {
   selectedTagId: number | null;
   selectedTrash: boolean;
   selectedNoteId: number | null;
+  selectedNoteIds: Set<number>;
   notesListView: NotesListView;
   notesSortBy: "updated" | "title";
   notesSortDir: "asc" | "desc";
@@ -33,14 +34,15 @@ export interface NotesListState {
 
 export interface NotesListHandlers {
   onSelectNote: (id: number) => void;
+  onSelectNotes: (ids: number[], primaryId: number) => void;
   onDeleteNote: (id: number) => void;
   onSelectSort: (sortBy: "updated" | "title", sortDir: "asc" | "desc") => void;
   onToggleView: () => void;
   onFilterClick: () => void;
   onNoteContextMenu: (event: MouseEvent, id: number) => void;
-  onMoveNote: (noteId: number, notebookId: number | null) => void;
-  onDropToTrash: (noteId: number) => void;
-  onDropToTag: (noteId: number, tagId: number) => void;
+  onMoveNotes: (noteIds: number[], notebookId: number | null) => void;
+  onDropToTrash: (noteIds: number[]) => void;
+  onDropToTag: (noteIds: number[], tagId: number) => void;
 }
 
 export interface NotesListInstance {
@@ -152,7 +154,7 @@ const renderHeader = (state: NotesListState) => {
 };
 
 const renderNoteRow = (note: NotesListItem, state: NotesListState) => {
-  const isSelected = state.selectedNoteId === note.id;
+  const isSelected = state.selectedNoteIds.has(note.id);
   if (state.notesListView === "compact") {
     return `
       <div class="notes-list__row notes-list__row--compact ${isSelected ? "is-selected" : ""}" data-note-row="1" data-note-id="${note.id}">
@@ -194,7 +196,7 @@ const renderList = (state: NotesListState) => {
   `;
 };
 
-  const renderNotesList = (state: NotesListState) => `
+const renderNotesList = (state: NotesListState) => `
   <div class="notes-list">
     ${renderHeader(state)}
     ${renderList(state)}
@@ -208,6 +210,7 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
   let headerCountEl: HTMLElement | null = null;
   let sortButtonEl: HTMLElement | null = null;
   let viewButtonEl: HTMLElement | null = null;
+  let anchorNoteId: number | null = null;
   let dragActive = false;
   let dragStarted = false;
   let ignoreClick = false;
@@ -319,7 +322,7 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
     dragOverlay.style.transform = `translate(${clientX + 10}px, ${clientY + 10}px)`;
   };
 
-  const startDrag = (noteTitle: string, clientX: number, clientY: number) => {
+  const startDrag = (label: string, clientX: number, clientY: number) => {
     dragStarted = true;
     ignoreClick = true;
     dragOverlay = document.createElement("div");
@@ -329,7 +332,7 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
     dragOverlay.style.transform = `translate(${clientX + 10}px, ${clientY + 10}px)`;
     dragOverlay.innerHTML = `
       <div class="notes-list__drag-card">
-        ${escapeHtml(noteTitle || "Untitled")}
+        ${escapeHtml(label || "Untitled")}
       </div>
     `;
     document.body.appendChild(dragOverlay);
@@ -419,7 +422,10 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
         cleanupDrag();
         return;
       }
-      startDrag(note.title, event.clientX, event.clientY);
+      const selectedIds = currentState?.selectedNoteIds ?? new Set<number>();
+      const isGrouped = selectedIds.has(dragNoteId) && selectedIds.size > 1;
+      const label = isGrouped ? `${selectedIds.size} Notes` : note.title;
+      startDrag(label, event.clientX, event.clientY);
     }
     updateOverlay(event.clientX, event.clientY);
     const target = resolveDropTarget(event.clientX, event.clientY);
@@ -436,12 +442,14 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
       return;
     }
     if (dragStarted && dragNoteId && dragHasTarget) {
+      const selectedIds = currentState?.selectedNoteIds ?? new Set<number>();
+      const ids = selectedIds.has(dragNoteId) ? Array.from(selectedIds) : [dragNoteId];
       if (dragOverTrash) {
-        handlers.onDropToTrash(dragNoteId);
+        handlers.onDropToTrash(ids);
       } else if (dragOverTagId !== null) {
-        handlers.onDropToTag(dragNoteId, dragOverTagId);
+        handlers.onDropToTag(ids, dragOverTagId);
       } else {
-        handlers.onMoveNote(dragNoteId, dragOverNotebookId);
+        handlers.onMoveNotes(ids, dragOverNotebookId);
       }
     }
     cleanupDrag();
@@ -488,7 +496,41 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
     const row = target.closest<HTMLElement>("[data-note-row]");
     if (!row) return;
     const id = Number(row.dataset.noteId);
-    if (Number.isFinite(id)) handlers.onSelectNote(id);
+    if (!Number.isFinite(id) || !currentState) return;
+
+    const isCtrl = event.metaKey || event.ctrlKey;
+    const isShift = event.shiftKey;
+    const currentIds = new Set(currentState.selectedNoteIds);
+
+    if (isShift) {
+      const notes = currentState.notes;
+      const anchorId = anchorNoteId ?? currentState.selectedNoteId ?? id;
+      const anchorIndex = notes.findIndex((note) => note.id === anchorId);
+      const targetIndex = notes.findIndex((note) => note.id === id);
+      if (anchorIndex !== -1 && targetIndex !== -1) {
+        const [start, end] = anchorIndex <= targetIndex
+          ? [anchorIndex, targetIndex]
+          : [targetIndex, anchorIndex];
+        const rangeIds = notes.slice(start, end + 1).map((note) => note.id);
+        const nextIds = isCtrl ? new Set([...currentIds, ...rangeIds]) : new Set(rangeIds);
+        handlers.onSelectNotes(Array.from(nextIds), id);
+      } else {
+        handlers.onSelectNotes([id], id);
+      }
+    } else if (isCtrl) {
+      if (currentIds.has(id)) {
+        currentIds.delete(id);
+      } else {
+        currentIds.add(id);
+      }
+      if (currentIds.size === 0) {
+        currentIds.add(id);
+      }
+      handlers.onSelectNotes(Array.from(currentIds), id);
+    } else {
+      handlers.onSelectNotes([id], id);
+    }
+    anchorNoteId = id;
   };
 
   const cacheHeaderRefs = () => {
@@ -520,10 +562,14 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
       const tag = target.tagName?.toLowerCase();
       if (tag === "input" || tag === "textarea" || target.isContentEditable) return;
     }
-    const selectedId = currentState?.selectedNoteId ?? null;
-    if (!selectedId) return;
+    const selectedIds = currentState?.selectedNoteIds ?? new Set<number>();
+    if (selectedIds.size === 0) return;
     event.preventDefault();
-    handlers.onDeleteNote(selectedId);
+    if (selectedIds.size === 1) {
+      handlers.onDeleteNote(Array.from(selectedIds)[0]);
+    } else {
+      handlers.onDropToTrash(Array.from(selectedIds));
+    }
   };
 
   const handleContextMenu = (event: MouseEvent) => {
@@ -533,6 +579,10 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
     if (!row) return;
     const id = Number(row.dataset.noteId);
     if (!Number.isFinite(id)) return;
+    if (currentState && !currentState.selectedNoteIds.has(id)) {
+      handlers.onSelectNotes([id], id);
+      anchorNoteId = id;
+    }
     handlers.onNoteContextMenu(event, id);
   };
 
@@ -545,19 +595,17 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
   window.addEventListener("keydown", handleKeyDown);
   window.addEventListener("click", handleWindowClick);
 
-  const updateSelection = (prevId: number | null, nextId: number | null, view: NotesListView) => {
-    if (prevId !== null) {
-      const prevRow = root.querySelector<HTMLElement>(`[data-note-row="1"][data-note-id="${prevId}"]`);
-      if (prevRow) {
-        prevRow.classList.remove("is-selected");
-      }
-    }
-    if (nextId !== null) {
-      const nextRow = root.querySelector<HTMLElement>(`[data-note-row="1"][data-note-id="${nextId}"]`);
-      if (nextRow) {
-        nextRow.classList.add("is-selected");
-      }
-    }
+  const updateSelection = (prevIds: Set<number>, nextIds: Set<number>) => {
+    prevIds.forEach((id) => {
+      if (nextIds.has(id)) return;
+      const row = root.querySelector<HTMLElement>(`[data-note-row="1"][data-note-id="${id}"]`);
+      if (row) row.classList.remove("is-selected");
+    });
+    nextIds.forEach((id) => {
+      if (prevIds.has(id)) return;
+      const row = root.querySelector<HTMLElement>(`[data-note-row="1"][data-note-id="${id}"]`);
+      if (row) row.classList.add("is-selected");
+    });
   };
 
   return {
@@ -585,8 +633,9 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
       if (shouldFullRender) {
         root.innerHTML = renderNotesList(state);
         cacheHeaderRefs();
-      } else if (prev.selectedNoteId !== state.selectedNoteId) {
-        updateSelection(prev.selectedNoteId, state.selectedNoteId, state.notesListView);
+        anchorNoteId = state.selectedNoteId;
+      } else if (prev.selectedNoteIds !== state.selectedNoteIds) {
+        updateSelection(prev.selectedNoteIds, state.selectedNoteIds);
       }
       if (shouldUpdateHeader) {
         updateHeader(state);

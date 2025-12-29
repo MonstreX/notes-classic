@@ -61,6 +61,7 @@ export const fetchNotesData = async () => {
     totalNotes: counts.total,
     trashedCount: counts.trashed,
     selectedNoteId: nextSelectedNoteId,
+    selectedNoteIds: nextSelectedNoteId !== null ? new Set([nextSelectedNoteId]) : new Set(),
   };
   if (selectionChanged && nextSelectedNoteId !== null) {
     nextState.isNoteLoading = true;
