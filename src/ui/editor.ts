@@ -37,6 +37,8 @@ import { decryptHtml, encryptHtml } from "../services/crypto";
 import { openConfirmDialog, openPasswordDialog } from "./dialogs";
 import { createIcon } from "./icons";
 import { importAttachment, importAttachmentBytes, deleteAttachment, readAttachmentText, saveAttachmentAs } from "../services/attachments";
+import { downloadNoteFile, storeNoteFileBytes } from "../services/noteFiles";
+import { toAssetUrl } from "../services/content";
 
 hljs.registerLanguage("javascript", javascript);
 hljs.registerLanguage("js", javascript);
@@ -191,6 +193,45 @@ const formatBytes = (value: number) => {
   }
   const precision = unitIndex === 0 ? 0 : size < 10 ? 1 : 0;
   return `${size.toFixed(precision)} ${units[unitIndex]}`;
+};
+
+const extensionFromMime = (mime: string) => {
+  const lower = mime.toLowerCase();
+  if (lower === "image/png") return "png";
+  if (lower === "image/jpeg") return "jpg";
+  if (lower === "image/gif") return "gif";
+  if (lower === "image/webp") return "webp";
+  if (lower === "image/svg+xml") return "svg";
+  return "bin";
+};
+
+const dataUrlToBytes = (dataUrl: string) => {
+  const [meta, data] = dataUrl.split(",", 2);
+  const mimeMatch = meta?.match(/data:([^;]+)/i);
+  const mime = mimeMatch?.[1] || "application/octet-stream";
+  const isBase64 = /;base64/i.test(meta || "");
+  let binary = "";
+  if (isBase64) {
+    binary = atob(data || "");
+  } else {
+    binary = decodeURIComponent(data || "");
+  }
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return { mime, bytes };
+};
+
+const shouldConvertImageSrc = (src: string) => {
+  if (!src) return false;
+  if (src.startsWith("notes-file://")) return false;
+  if (src.startsWith("files/")) return false;
+  if (src.startsWith("asset://")) return false;
+  if (src.startsWith("tauri://")) return false;
+  if (src.startsWith("http://asset.localhost/")) return false;
+  if (src.startsWith("https://asset.localhost/")) return false;
+  return true;
 };
 
 const isTextAttachment = (name: string, mime: string) => {
@@ -867,6 +908,154 @@ const setupAttachmentDrop = (editor: any, getNoteId?: () => number | null) => {
   });
 };
 
+const setupPasteImageHandlers = (editor: any) => {
+  if (!editor || !editor.editor) return;
+  if ((editor as any).__notePasteSetup) return;
+  (editor as any).__notePasteSetup = true;
+
+  const syncEditor = () => {
+    if (typeof editor.synchronizeValues === "function") {
+      editor.synchronizeValues();
+    } else if (typeof editor.s?.synchronizeValues === "function") {
+      editor.s.synchronizeValues();
+    } else if (typeof editor?.s?.sync === "function") {
+      editor.s.sync();
+    } else {
+      editor.events?.fire?.("change");
+    }
+  };
+
+  const insertImages = async (images: Array<{ filename: string; mime: string; bytes: Uint8Array }>) => {
+    for (const image of images) {
+      try {
+        const stored = await storeNoteFileBytes(image.filename, image.mime, image.bytes);
+        const assetUrl = await toAssetUrl(stored.rel_path);
+        const paragraph = editor.createInside.element("p");
+        const img = editor.createInside.element("img");
+        img.setAttribute("src", assetUrl);
+        img.setAttribute("data-en-hash", stored.hash);
+        paragraph.appendChild(img);
+        editor.s.insertNode(paragraph);
+        editor.s.setCursorAfter(paragraph);
+      } catch (e) {
+        logError("[paste] image store failed", e);
+      }
+    }
+    syncEditor();
+  };
+
+  const cleanupImageAttrs = (img: HTMLImageElement) => {
+    img.removeAttribute("srcset");
+    img.removeAttribute("data-src");
+    img.removeAttribute("data-src-pb");
+    img.removeAttribute("data-original");
+    img.removeAttribute("data-original-src");
+  };
+
+  const convertImageElement = async (img: HTMLImageElement) => {
+    if (img.dataset.noteImagePending === "1") return;
+    const src = img.getAttribute("src") || "";
+    if (!shouldConvertImageSrc(src)) return;
+    img.dataset.noteImagePending = "1";
+    try {
+      if (src.startsWith("data:")) {
+        const payload = dataUrlToBytes(src);
+        const filename = `pasted-image-${Date.now()}.${extensionFromMime(payload.mime)}`;
+        const stored = await storeNoteFileBytes(filename, payload.mime, payload.bytes);
+        const assetUrl = await toAssetUrl(stored.rel_path);
+        img.setAttribute("src", assetUrl);
+        img.setAttribute("data-en-hash", stored.hash);
+        cleanupImageAttrs(img);
+        return;
+      }
+      if (src.startsWith("http://") || src.startsWith("https://")) {
+        const stored = await downloadNoteFile(src);
+        const assetUrl = await toAssetUrl(stored.rel_path);
+        img.setAttribute("src", assetUrl);
+        img.setAttribute("data-en-hash", stored.hash);
+        cleanupImageAttrs(img);
+        return;
+      }
+      img.remove();
+    } catch (e) {
+      logError("[paste] image convert failed", e);
+      img.remove();
+    } finally {
+      delete img.dataset.noteImagePending;
+    }
+  };
+
+  const convertImagesInEditor = async () => {
+    if (!editor.editor) return;
+    const images = Array.from(editor.editor.querySelectorAll("img"));
+    for (const img of images) {
+      await convertImageElement(img);
+    }
+    syncEditor();
+  };
+
+  const handlePaste = async (event: ClipboardEvent) => {
+    const clipboard = event.clipboardData;
+    if (!clipboard) return;
+    const html = clipboard.getData("text/html");
+    const items = Array.from(clipboard.items || []);
+    const imageItems = items
+      .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => !!file);
+
+    const hasHtmlImages = !!html && /<img[\s>]/i.test(html);
+    if (!hasHtmlImages && imageItems.length === 0) {
+      window.setTimeout(() => {
+        convertImagesInEditor().catch((e) => logError("[paste] scan failed", e));
+      }, 0);
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (hasHtmlImages && html) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, "text/html");
+      const images = Array.from(doc.querySelectorAll("img"));
+      for (const img of images) {
+        const src = img.getAttribute("src") || "";
+        await convertImageElement(img);
+      }
+      editor.s.insertHTML(doc.body.innerHTML);
+      syncEditor();
+      window.setTimeout(() => {
+        convertImagesInEditor().catch((e) => logError("[paste] scan failed", e));
+      }, 0);
+      return;
+    }
+
+    if (imageItems.length > 0) {
+      const images = await Promise.all(
+        imageItems.map(async (file, index) => {
+          const buffer = await file.arrayBuffer();
+          const bytes = new Uint8Array(buffer);
+          const mime = file.type || "image/png";
+          const filename = file.name || `pasted-image-${Date.now()}-${index}.${extensionFromMime(mime)}`;
+          return { filename, mime, bytes };
+        })
+      );
+      await insertImages(images);
+      window.setTimeout(() => {
+        convertImagesInEditor().catch((e) => logError("[paste] scan failed", e));
+      }, 0);
+    }
+  };
+
+  const onPaste = (event: ClipboardEvent) => {
+    handlePaste(event).catch((e) => logError("[paste] failed", e));
+  };
+  editor.editor.addEventListener("paste", onPaste);
+  editor.container?.addEventListener("paste", onPaste, true);
+  editor.workplace?.addEventListener("paste", onPaste, true);
+};
+
 const createEditorConfig = (overrides: Record<string, unknown> = {}, getNoteId?: () => number | null) => {
   registerToolbarIcons();
   return {
@@ -1148,11 +1337,11 @@ const createEditorConfig = (overrides: Record<string, unknown> = {}, getNoteId?:
           };
           if (isInsideBlock(range.startContainer) || isInsideBlock(range.endContainer)) return;
 
-          const fragment = range.extractContents();
+          const selectionRange = range.cloneRange();
+          const fragment = selectionRange.cloneContents();
           const container = document.createElement("div");
           container.appendChild(fragment);
-          const restoreHtml = container.innerHTML;
-          const html = restoreHtml.trim();
+          const html = container.innerHTML.trim();
           if (!html) return;
 
           const password = await openPasswordDialog({
@@ -1161,22 +1350,22 @@ const createEditorConfig = (overrides: Record<string, unknown> = {}, getNoteId?:
             confirmLabel: "Encrypt",
             cancelLabel: "Cancel",
           });
-          if (!password) {
-            editor.s.insertHTML(restoreHtml);
-            editor.s.synchronizeValues();
-            return;
-          }
+          if (!password) return;
 
           try {
             const payload = await encryptHtml(html, password);
             const secureNode = buildSecureNode(editor, payload);
-            range.insertNode(secureNode);
+            const selection = editor.s?.sel;
+            if (selection) {
+              selection.removeAllRanges();
+              selection.addRange(selectionRange);
+            }
+            selectionRange.deleteContents();
+            selectionRange.insertNode(secureNode);
             editor.s.setCursorAfter(secureNode);
             editor.s.synchronizeValues();
           } catch (e) {
             logError("[note-secure] encrypt failed", e);
-            editor.s.insertHTML(restoreHtml);
-            editor.s.synchronizeValues();
           }
         },
       },
@@ -1360,6 +1549,7 @@ export const mountEditor = (root: HTMLElement, options: EditorOptions): EditorIn
   setupSecureHandlers(editor);
   setupAttachmentHandlers(editor);
   setupAttachmentDrop(editor, options.getNoteId);
+  setupPasteImageHandlers(editor);
   setupTodoHandlers(editor);
   setupLinkHandlers(editor);
   applyHighlightToEditor(editor);
