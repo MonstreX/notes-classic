@@ -35,6 +35,7 @@ All text is in English and matches the current code base.
 - UI must be fast and deterministic.
 - Editor must preserve complex HTML.
 - Search must include OCR results.
+- Attachments must be stored locally with original filenames.
 - No React; vanilla DOM rendering.
 - Keep IPC boundaries strict.
 
@@ -348,6 +349,7 @@ Custom controls:
 - todo: converts list to ul[data-en-todo=true], toggles li flags.
 - codeblock: wraps selection into div.note-code with toolbar.
 - encrypt: replaces selection with a password-protected secure block.
+- attach: inserts a file attachment handle at the cursor.
 
 Code block behavior:
 
@@ -777,6 +779,31 @@ Storage:
 - The encrypted payload is stored inline as data attributes.
 - No plaintext is kept in the note content.
 
+### 8.9 Attachments
+
+Creation:
+
+- Attach via toolbar button (ATT) or drag-and-drop.
+- Files are copied to data/files/attachments/<id>/original_name.
+- Attachment metadata is stored in the attachments table.
+- Editor inserts a div.note-attachment handle with filename and size.
+
+Interaction:
+
+- Download: save file to chosen location.
+- View: open preview for text files only.
+- Delete: confirm and remove attachment + handle.
+
+Storage:
+
+- File data lives in data/files/attachments.
+- DB stores local_path, filename, mime, and size.
+
+Limitations:
+
+- Preview is text-only.
+- No versioning or trash yet (planned).
+
 ----------------------------------------------------------------
 
 ## 9) Search and OCR architecture
@@ -1069,6 +1096,7 @@ Known risks:
 - TODO list behavior.
 - HR insertion from ---.
 - Encrypted content blocks with password prompt and modal editor.
+- Attachment handles, DnD, and preview dialog.
 
 ### src/ui/searchModal.ts
 - Modal layout and search logic.
@@ -1110,6 +1138,9 @@ Known risks:
 ### src/services/tags.ts
 - IPC wrappers for tags and note tags.
 
+### src/services/attachments.ts
+- IPC wrappers for attachment import/read/delete.
+
 ### src/services/content.ts
 - Content normalization and asset mapping.
 
@@ -1130,11 +1161,13 @@ Known risks:
 - IPC command registration.
 - notes-file protocol handler.
 - Menu wiring and events.
+- Attachment import/read/delete commands.
 
 ### src-tauri/src/db.rs
 - Schema creation and migrations.
 - Repository methods with transactions.
 - Search queries and OCR queries.
+- Attachment CRUD helpers.
 
 ----------------------------------------------------------------
 

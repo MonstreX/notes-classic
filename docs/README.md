@@ -59,6 +59,7 @@ notes-classic/
 - **Sidebar**: Notebooks and tags with collapse/expand.
 - **Note List**: Sorting, view modes, and selection.
 - **Editor**: Jodit-based rich text editing with custom callouts, code blocks, TODO lists, and encrypted content blocks.
+- **Attachments**: Attach files via toolbar or drag-and-drop, with download/view/delete actions.
 
 ### 2. Notebooks and Stacks
 - Two-level structure: stacks (top level) and notebooks (inside stacks).

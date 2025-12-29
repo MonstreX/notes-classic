@@ -12,5 +12,5 @@ by the current app logic:
 - notebooks.external_id
 - tags.external_id
 
-The `attachments` table is also kept as a placeholder for future file attachment
-handling.
+The `attachments` table is used for file attachments. It stores file metadata
+and a local_path that points to files under data/files/attachments.
