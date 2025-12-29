@@ -371,6 +371,51 @@ async fn import_attachment(noteId: i64, sourcePath: String, state: State<'_, App
     })
 }
 
+#[allow(non_snake_case)]
+#[tauri::command]
+async fn import_attachment_bytes(
+    noteId: i64,
+    filename: String,
+    mime: String,
+    bytes: Vec<u8>,
+    state: State<'_, AppState>,
+) -> Result<Attachment, String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    let size = bytes.len() as i64;
+    let resolved_mime = if mime.is_empty() {
+        mime_guess::from_path(&filename)
+            .first_or_octet_stream()
+            .essence_str()
+            .to_string()
+    } else {
+        mime
+    };
+    let id = repo
+        .create_attachment(noteId, &filename, &resolved_mime, size)
+        .await
+        .map_err(|e| e.to_string())?;
+    let rel_dir = PathBuf::from("files").join("attachments").join(id.to_string());
+    let dest_dir = state.data_dir.join(&rel_dir);
+    fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
+    let dest_path = dest_dir.join(&filename);
+    if let Err(e) = fs::write(&dest_path, &bytes) {
+        let _ = repo.delete_attachment(id).await;
+        return Err(e.to_string());
+    }
+    let rel_path = rel_dir.join(&filename).to_string_lossy().replace('\\', "/");
+    repo.update_attachment_path(id, &rel_path)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(Attachment {
+        id,
+        note_id: noteId,
+        filename,
+        mime: resolved_mime,
+        size,
+        local_path: rel_path,
+    })
+}
+
 #[tauri::command]
 async fn delete_attachment(id: i64, state: State<'_, AppState>) -> Result<(), String> {
     let repo = SqliteRepository { pool: state.pool.clone() };
@@ -597,6 +642,7 @@ fn main() {
             upsert_note,
             delete_note,
             import_attachment,
+            import_attachment_bytes,
             delete_attachment,
             save_attachment_as,
             read_attachment_text,

@@ -12,6 +12,18 @@ export type AttachmentInfo = {
 export const importAttachment = (noteId: number, sourcePath: string) =>
   invoke<AttachmentInfo>("import_attachment", { noteId, sourcePath });
 
+export const importAttachmentBytes = (
+  noteId: number,
+  filename: string,
+  mime: string,
+  bytes: Uint8Array
+) => invoke<AttachmentInfo>("import_attachment_bytes", {
+  noteId,
+  filename,
+  mime,
+  bytes,
+});
+
 export const deleteAttachment = (id: number) =>
   invoke("delete_attachment", { id });
 

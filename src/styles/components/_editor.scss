@@ -346,8 +346,9 @@
 
 .notes-editor .jodit-wysiwyg .note-attachment__meta {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -362,6 +363,7 @@
 .notes-editor .jodit-wysiwyg .note-attachment__size {
   color: #6b7280;
   font-size: 11px;
+  white-space: nowrap;
 }
 
 .notes-editor .jodit-wysiwyg .note-attachment__actions {

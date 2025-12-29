@@ -29,11 +29,12 @@ import php from "highlight.js/lib/languages/php";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { open as openShell } from "@tauri-apps/plugin-shell";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { logError } from "../services/logger";
 import { decryptHtml, encryptHtml } from "../services/crypto";
 import { openConfirmDialog, openPasswordDialog } from "./dialogs";
 import { createIcon } from "./icons";
-import { importAttachment, deleteAttachment, readAttachmentText, saveAttachmentAs } from "../services/attachments";
+import { importAttachment, importAttachmentBytes, deleteAttachment, readAttachmentText, saveAttachmentAs } from "../services/attachments";
 
 hljs.registerLanguage("javascript", javascript);
 hljs.registerLanguage("js", javascript);
@@ -298,7 +299,10 @@ const buildAttachmentNode = (
   openBtn.className = "note-attachment__action";
   openBtn.setAttribute("data-attachment-action", "open");
   openBtn.type = "button";
-  openBtn.textContent = "Open";
+  openBtn.textContent = "View";
+  if (!isTextAttachment(attachment.filename, attachment.mime)) {
+    openBtn.classList.add("is-hidden");
+  }
 
   const remove = editor.createInside.element("button");
   remove.className = "note-attachment__action note-attachment__action--danger";
@@ -607,7 +611,6 @@ const setupAttachmentHandlers = (editor: any) => {
 
       if (action === "open") {
         if (!isTextAttachment(name, mime)) {
-          alert("Preview is available for text files only.");
           return;
         }
         try {
@@ -649,6 +652,21 @@ const setupAttachmentDrop = (editor: any, getNoteId?: () => number | null) => {
   if ((editor as any).__noteAttachmentDropSetup) return;
   (editor as any).__noteAttachmentDropSetup = true;
 
+  const insertAttachmentNode = (attachment: { id: number; filename: string; size: number; mime: string }) => {
+    const node = buildAttachmentNode(editor, attachment);
+    editor.s.insertNode(node);
+    editor.s.setCursorAfter(node);
+    if (typeof editor.synchronizeValues === "function") {
+      editor.synchronizeValues();
+    } else if (typeof editor.s?.synchronizeValues === "function") {
+      editor.s.synchronizeValues();
+    } else if (typeof editor?.s?.sync === "function") {
+      editor.s.sync();
+    } else {
+      editor.events?.fire?.("change");
+    }
+  };
+
   const handleFiles = async (files: FileList, clientX: number, clientY: number) => {
     const noteId = getNoteId?.();
     if (!noteId) return;
@@ -657,37 +675,111 @@ const setupAttachmentDrop = (editor: any, getNoteId?: () => number | null) => {
     }
     for (const file of Array.from(files)) {
       const path = (file as any).path as string | undefined;
-      if (!path) {
-        logError("[attachment] file path missing", file.name);
-        continue;
-      }
       try {
-        const attachment = await importAttachment(noteId, path);
-        const node = buildAttachmentNode(editor, {
+        if (path) {
+          const attachment = await importAttachment(noteId, path);
+          insertAttachmentNode({
+            id: attachment.id,
+            filename: attachment.filename,
+            size: attachment.size,
+            mime: attachment.mime,
+          });
+          continue;
+        }
+        const buffer = await file.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        const attachment = await importAttachmentBytes(
+          noteId,
+          file.name,
+          file.type || "",
+          bytes
+        );
+        insertAttachmentNode({
           id: attachment.id,
           filename: attachment.filename,
           size: attachment.size,
           mime: attachment.mime,
         });
-        editor.s.insertNode(node);
-        editor.s.setCursorAfter(node);
-        editor.s.synchronizeValues();
       } catch (e) {
         logError("[attachment] import failed", e);
       }
     }
   };
 
-  editor.editor.addEventListener("dragover", (event: DragEvent) => {
-    if (!event.dataTransfer?.files?.length) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
+  const handlePaths = async (paths: string[], clientX: number, clientY: number) => {
+    const noteId = getNoteId?.();
+    if (!noteId) return;
+    if (editor.s?.setCursorByXy) {
+      editor.s.setCursorByXy(clientX, clientY);
+    }
+    for (const path of paths) {
+      try {
+        const attachment = await importAttachment(noteId, path);
+        insertAttachmentNode({
+          id: attachment.id,
+          filename: attachment.filename,
+          size: attachment.size,
+          mime: attachment.mime,
+        });
+      } catch (e) {
+        logError("[attachment] import failed", e);
+      }
+    }
+  };
+
+  const targets: HTMLElement[] = [];
+  if (editor.editor) targets.push(editor.editor);
+  if (editor.container) targets.push(editor.container);
+  if (editor.workplace) targets.push(editor.workplace);
+
+  const hasFiles = (event: DragEvent) => {
+    const types = Array.from(event.dataTransfer?.types || []);
+    if (types.includes("Files")) return true;
+    return !!event.dataTransfer?.files?.length;
+  };
+
+  const windowHandle = getCurrentWindow();
+  windowHandle.onDragDropEvent((event) => {
+    if (event.type !== "drop") return;
+    const paths = event.paths || [];
+    if (!paths.length) return;
+    const position = event.position;
+    if (position) {
+      const el = document.elementFromPoint(position.x, position.y);
+      const targetWithin = !!el && (editor.container?.contains(el) || editor.editor?.contains(el));
+      if (!targetWithin) return;
+      handlePaths(paths, position.x, position.y);
+      return;
+    }
+    handlePaths(paths, 0, 0);
+  }).then((unlisten) => {
+    (editor as any).__noteAttachmentUnlisten = unlisten;
   });
 
-  editor.editor.addEventListener("drop", (event: DragEvent) => {
-    if (!event.dataTransfer?.files?.length) return;
-    event.preventDefault();
-    handleFiles(event.dataTransfer.files, event.clientX, event.clientY);
+  targets.forEach((target) => {
+    target.addEventListener("dragenter", (event: DragEvent) => {
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = "copy";
+      }
+    });
+    target.addEventListener("dragover", (event: DragEvent) => {
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = "copy";
+      }
+    });
+
+    target.addEventListener("drop", (event: DragEvent) => {
+      if (!event.dataTransfer?.files?.length) return;
+      event.preventDefault();
+      event.stopPropagation();
+      handleFiles(event.dataTransfer.files, event.clientX, event.clientY);
+    });
   });
 };
 
@@ -1225,6 +1317,10 @@ export const mountEditor = (root: HTMLElement, options: EditorOptions): EditorIn
       editor.events.off("change", handleChange);
       editor.events.off("focus", handleFocus);
       editor.events.off("blur", handleBlur);
+      const unlisten = (editor as any).__noteAttachmentUnlisten;
+      if (typeof unlisten === "function") {
+        unlisten();
+      }
       editor.destruct();
       container.remove();
     },
