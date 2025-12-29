@@ -45,6 +45,72 @@ hljs.registerLanguage("php", php);
 
 const DEBUG_CODE = false;
 
+const registerToolbarIcons = () => {
+  const set = (name: string, svg: string) => {
+    Jodit.modules.Icon.set(name, svg);
+  };
+
+  const icon = (paths: string) =>
+    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
+
+  set(
+    "bold",
+    icon("<path d=\"M6 4h8a4 4 0 0 1 0 8H6z\"></path><path d=\"M6 12h9a4 4 0 0 1 0 8H6z\"></path>")
+  );
+  set(
+    "italic",
+    icon("<line x1=\"19\" y1=\"4\" x2=\"10\" y2=\"4\"></line><line x1=\"14\" y1=\"20\" x2=\"5\" y2=\"20\"></line><line x1=\"15\" y1=\"4\" x2=\"9\" y2=\"20\"></line>")
+  );
+  set(
+    "underline",
+    icon("<path d=\"M6 3v7a6 6 0 0 0 12 0V3\"></path><line x1=\"4\" y1=\"21\" x2=\"20\" y2=\"21\"></line>")
+  );
+  set(
+    "ul",
+    icon("<circle cx=\"4\" cy=\"6\" r=\"1\"></circle><circle cx=\"4\" cy=\"12\" r=\"1\"></circle><circle cx=\"4\" cy=\"18\" r=\"1\"></circle><line x1=\"8\" y1=\"6\" x2=\"21\" y2=\"6\"></line><line x1=\"8\" y1=\"12\" x2=\"21\" y2=\"12\"></line><line x1=\"8\" y1=\"18\" x2=\"21\" y2=\"18\"></line>")
+  );
+  set(
+    "ol",
+    icon("<path d=\"M4 6h2\"></path><path d=\"M5 4v4\"></path><path d=\"M4 12h2\"></path><path d=\"M4 12l2 2\"></path><path d=\"M6 14H4\"></path><path d=\"M4 18h2\"></path><line x1=\"8\" y1=\"6\" x2=\"21\" y2=\"6\"></line><line x1=\"8\" y1=\"12\" x2=\"21\" y2=\"12\"></line><line x1=\"8\" y1=\"18\" x2=\"21\" y2=\"18\"></line>")
+  );
+  set(
+    "link",
+    icon("<path d=\"M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1\"></path><path d=\"M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1\"></path>")
+  );
+  set(
+    "image",
+    icon("<rect x=\"3\" y=\"5\" width=\"18\" height=\"14\" rx=\"2\" ry=\"2\"></rect><circle cx=\"8\" cy=\"9\" r=\"2\"></circle><path d=\"M21 17l-5-5-4 4-2-2-5 5\"></path>")
+  );
+  set(
+    "undo",
+    icon("<path d=\"M9 14l-4-4 4-4\"></path><path d=\"M20 20a8 8 0 0 0-11-10l-4 4\"></path>")
+  );
+  set(
+    "redo",
+    icon("<path d=\"M15 14l4-4-4-4\"></path><path d=\"M4 20a8 8 0 0 1 11-10l4 4\"></path>")
+  );
+  set(
+    "callout",
+    icon("<path d=\"M4 5h16v10H7l-3 3z\"></path><line x1=\"8\" y1=\"9\" x2=\"16\" y2=\"9\"></line><line x1=\"8\" y1=\"12\" x2=\"13\" y2=\"12\"></line>")
+  );
+  set(
+    "todo",
+    icon("<rect x=\"4\" y=\"4\" width=\"16\" height=\"16\" rx=\"2\"></rect><path d=\"M8 12l2 2 5-5\"></path>")
+  );
+  set(
+    "codeblock",
+    icon("<path d=\"M8 7l-4 5 4 5\"></path><path d=\"M16 7l4 5-4 5\"></path><line x1=\"13\" y1=\"6\" x2=\"11\" y2=\"18\"></line>")
+  );
+  set(
+    "attach",
+    icon("<path d=\"M21.44 11.05 12.95 19.54a5 5 0 0 1-7.07-7.07l8.49-8.49a3.5 3.5 0 0 1 4.95 4.95l-8.5 8.49a2 2 0 0 1-2.83-2.83l7.78-7.78\"></path>")
+  );
+  set(
+    "encrypt",
+    icon("<rect x=\"5\" y=\"11\" width=\"14\" height=\"10\" rx=\"2\"></rect><path d=\"M8 11V7a4 4 0 0 1 8 0v4\"></path>")
+  );
+};
+
 export type EditorInstance = {
   update: (content: string) => void;
   destroy: () => void;
@@ -784,6 +850,7 @@ const setupAttachmentDrop = (editor: any, getNoteId?: () => number | null) => {
 };
 
 const createEditorConfig = (overrides: Record<string, unknown> = {}, getNoteId?: () => number | null) => {
+  registerToolbarIcons();
   return {
     readonly: false,
     toolbarAdaptive: false,
@@ -873,7 +940,8 @@ const createEditorConfig = (overrides: Record<string, unknown> = {}, getNoteId?:
     controls: {
       callout: {
         tooltip: "Callout",
-        text: "C",
+        text: "",
+        icon: "callout",
         exec: (editor: any) => {
           if (!editor || !editor.s || editor.s.isCollapsed()) return;
           const range = editor.s.range;
@@ -899,7 +967,8 @@ const createEditorConfig = (overrides: Record<string, unknown> = {}, getNoteId?:
       },
       todo: {
         tooltip: "Todo List",
-        text: "☐",
+        text: "",
+        icon: "todo",
         exec: (editor: any) => {
           if (!editor || !editor.s) return;
           const range = editor.s.range;
@@ -942,7 +1011,8 @@ const createEditorConfig = (overrides: Record<string, unknown> = {}, getNoteId?:
       },
       codeblock: {
         tooltip: "Code Block",
-        text: "</>",
+        text: "",
+        icon: "codeblock",
         exec: (editor: any) => {
           if (!editor || !editor.s || editor.s.isCollapsed()) return;
           const range: Range = editor.s.range;
@@ -1006,7 +1076,8 @@ const createEditorConfig = (overrides: Record<string, unknown> = {}, getNoteId?:
       },
       attach: {
         tooltip: "Attach file",
-        text: "ATT",
+        text: "",
+        icon: "attach",
         exec: async (editor: any) => {
           const noteId = getNoteId?.();
           if (!noteId) return;
@@ -1033,7 +1104,8 @@ const createEditorConfig = (overrides: Record<string, unknown> = {}, getNoteId?:
       },
       encrypt: {
         tooltip: "Encrypt",
-        text: "ENC",
+        text: "",
+        icon: "encrypt",
         exec: async (editor: any) => {
           if (!editor || !editor.s || editor.s.isCollapsed()) return;
           const range: Range = editor.s.range;

@@ -24,6 +24,27 @@
   background: #ffffff;
 }
 
+.notes-editor .jodit-toolbar__box .jodit-toolbar-button__icon svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 1.5;
+}
+
+.notes-editor .jodit-toolbar__box .jodit-toolbar-button__icon svg,
+.notes-editor .jodit-toolbar__box .jodit-toolbar-button__icon svg * {
+  fill: none;
+  stroke: currentColor;
+}
+
+.notes-editor .jodit-toolbar__box [data-ref="bold"] .jodit-toolbar-button__icon svg,
+.notes-editor .jodit-toolbar__box [data-ref="italic"] .jodit-toolbar-button__icon svg,
+.notes-editor .jodit-toolbar__box [data-ref="underline"] .jodit-toolbar-button__icon svg,
+.notes-editor .jodit-toolbar__box [data-ref="ul"] .jodit-toolbar-button__icon svg,
+.notes-editor .jodit-toolbar__box [data-ref="ol"] .jodit-toolbar-button__icon svg {
+  width: 16px;
+  height: 16px;
+}
+
 .notes-editor .jodit-container .jodit-wysiwyg {
   padding: 40px 0 0 !important;
 }
