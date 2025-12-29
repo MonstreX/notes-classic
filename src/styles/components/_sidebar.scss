@@ -42,6 +42,14 @@
   outline-offset: -1px;
 }
 
+.sidebar-item--tags-root {
+  margin: 10px 4px 0;
+}
+
+.sidebar-item--trash {
+  margin-top: 15px;
+}
+
 .sidebar-item__content {
   display: flex;
   align-items: center;

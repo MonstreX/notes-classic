@@ -300,13 +300,21 @@ const renderSidebar = (state: SidebarState) => {
       <div class="sidebar-tree">
         ${renderNotebookTree(state.notebooks, state, null, 0, counts)}
       </div>
-      <div class="sidebar-section" data-tags-section="1" data-action="toggle-tags-section">
-        <span class="sidebar-section__title" data-action="toggle-tags-section">Tags</span>
-        <div class="sidebar-section__actions">
-          <button class="sidebar-section__action" data-action="add-tag-root" title="Create tag">
+      <div
+        class="sidebar-item sidebar-item--tags-root"
+        data-tags-section="1"
+        data-action="toggle-tags-section"
+        style="padding-left: 8px;"
+      >
+        <div class="sidebar-item__content">
+          ${renderTagIcon()}
+          <span class="sidebar-item__label">Tags</span>
+        </div>
+        <div class="sidebar-item__actions">
+          <button class="sidebar-action" data-action="add-tag-root" title="Create tag">
             ${renderPlus()}
           </button>
-          <button class="sidebar-section__action" data-action="toggle-tags-section" title="Expand/Collapse tags">
+          <button class="sidebar-action" data-action="toggle-tags-section" title="Expand/Collapse tags">
             ${renderChevron(state.tagsSectionExpanded)}
           </button>
         </div>
