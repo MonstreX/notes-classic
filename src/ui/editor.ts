@@ -21,6 +21,8 @@ import "jodit/esm/plugins/resizer/resizer.js";
 import "jodit/esm/plugins/select-cells/select-cells.js";
 import "jodit/esm/plugins/tab/tab.js";
 import "jodit/esm/plugins/table/table.js";
+import "jodit/esm/plugins/font/font.js";
+import "jodit/esm/plugins/color/color.js";
 import hljs from "highlight.js/lib/core";
 import javascript from "highlight.js/lib/languages/javascript";
 import xml from "highlight.js/lib/languages/xml";
@@ -94,6 +96,18 @@ const registerToolbarIcons = () => {
     icon("<path d=\"M4 5h16v10H7l-3 3z\"></path><line x1=\"8\" y1=\"9\" x2=\"16\" y2=\"9\"></line><line x1=\"8\" y1=\"12\" x2=\"13\" y2=\"12\"></line>")
   );
   set(
+    "font",
+    icon("<path d=\"M4 19h16\"></path><path d=\"M6.5 19L12 5l5.5 14\"></path><path d=\"M8.5 14h7\"></path>")
+  );
+  set(
+    "fontsize",
+    icon("<path d=\"M6 19h12\"></path><path d=\"M8 12h8\"></path><path d=\"M9 5h6\"></path>")
+  );
+  set(
+    "brush",
+    icon("<path d=\"M12 3a9 9 0 1 0 0 18h2a2 2 0 0 0 0-4h-1\"></path><circle cx=\"7.5\" cy=\"9\" r=\"1\"></circle><circle cx=\"10.5\" cy=\"6.5\" r=\"1\"></circle><circle cx=\"15.5\" cy=\"7.5\" r=\"1\"></circle><circle cx=\"17\" cy=\"12\" r=\"1\"></circle>")
+  );
+  set(
     "todo",
     icon("<rect x=\"4\" y=\"4\" width=\"16\" height=\"16\" rx=\"2\"></rect><path d=\"M8 12l2 2 5-5\"></path>")
   );
@@ -108,6 +122,10 @@ const registerToolbarIcons = () => {
   set(
     "encrypt",
     icon("<rect x=\"5\" y=\"11\" width=\"14\" height=\"10\" rx=\"2\"></rect><path d=\"M8 11V7a4 4 0 0 1 8 0v4\"></path>")
+  );
+  set(
+    "table",
+    icon("<rect x=\"4\" y=\"5\" width=\"16\" height=\"14\" rx=\"1\"></rect><line x1=\"4\" y1=\"10\" x2=\"20\" y2=\"10\"></line><line x1=\"4\" y1=\"15\" x2=\"20\" y2=\"15\"></line><line x1=\"10\" y1=\"5\" x2=\"10\" y2=\"19\"></line><line x1=\"15\" y1=\"5\" x2=\"15\" y2=\"19\"></line>")
   );
 };
 
@@ -868,17 +886,18 @@ const createEditorConfig = (overrides: Record<string, unknown> = {}, getNoteId?:
       "bold",
       "italic",
       "underline",
+      "font",
+      "fontsize",
+      "brush",
       "|",
       "ul",
       "ol",
+      "table",
       "callout",
       "todo",
       "codeblock",
       "attach",
       "encrypt",
-      "|",
-      "link",
-      "image",
       "|",
       "undo",
       "redo",
@@ -887,17 +906,18 @@ const createEditorConfig = (overrides: Record<string, unknown> = {}, getNoteId?:
       "bold",
       "italic",
       "underline",
+      "font",
+      "fontsize",
+      "brush",
       "|",
       "ul",
       "ol",
+      "table",
       "callout",
       "todo",
       "codeblock",
       "attach",
       "encrypt",
-      "|",
-      "link",
-      "image",
       "|",
       "undo",
       "redo",
@@ -905,16 +925,18 @@ const createEditorConfig = (overrides: Record<string, unknown> = {}, getNoteId?:
     buttonsSM: [
       "bold",
       "italic",
+      "font",
+      "fontsize",
+      "brush",
       "|",
       "ul",
       "ol",
+      "table",
       "callout",
       "todo",
       "codeblock",
       "attach",
       "encrypt",
-      "|",
-      "link",
       "|",
       "undo",
       "redo",
@@ -922,9 +944,13 @@ const createEditorConfig = (overrides: Record<string, unknown> = {}, getNoteId?:
     buttonsXS: [
       "bold",
       "italic",
+      "font",
+      "fontsize",
+      "brush",
       "|",
       "ul",
       "ol",
+      "table",
       "callout",
       "todo",
       "codeblock",
