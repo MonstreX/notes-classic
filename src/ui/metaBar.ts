@@ -28,7 +28,11 @@ export const mountMetaBar = (container: HTMLElement) => {
   metaBar.appendChild(metaNotebookIcon);
   metaBar.appendChild(metaNotebookText);
   metaBar.appendChild(metaUpdated);
-  container.appendChild(metaBar);
+  if (container.firstChild) {
+    container.insertBefore(metaBar, container.firstChild);
+  } else {
+    container.appendChild(metaBar);
+  }
 
   const update = (state: MetaBarState) => {
     if (!state.hasNote || state.selectedNotebookId === null) {
