@@ -18,15 +18,18 @@ export interface SidebarState {
   expandedTags: Set<number>;
   tagsSectionExpanded: boolean;
   selectedNotebookId: number | null;
+  selectedTrash: boolean;
   expandedNotebooks: Set<number>;
   noteCounts: Map<number, number>;
   totalNotes: number;
+  trashedCount: number;
 }
 
 export interface SidebarHandlers {
   onSelectNotebook: (id: number) => void;
   onSelectAll: () => void;
   onSelectTag: (id: number) => void;
+  onSelectTrash: () => void;
   onToggleNotebook: (id: number) => void;
   onToggleTag: (id: number) => void;
   onCreateNotebook: (parentId: number | null) => void;
@@ -36,6 +39,7 @@ export interface SidebarHandlers {
   onDeleteNotebook: (id: number) => void;
   onTagContextMenu: (event: MouseEvent, id: number) => void;
   onNotebookContextMenu: (event: MouseEvent, id: number) => void;
+  onTrashContextMenu: (event: MouseEvent) => void;
   onMoveTag: (tagId: number, parentId: number | null) => void;
   onMoveNotebook: (activeId: number, overId: number, position: "before" | "after" | "inside") => void;
 }
@@ -91,6 +95,15 @@ const renderAllNotesIcon = (isSelected: boolean) => {
   return `
     <svg class="sidebar-icon" width="18" height="18" aria-hidden="true" style="color: ${color}">
       <use href="#icon-note"></use>
+    </svg>
+  `;
+};
+
+const renderTrashIcon = (isSelected: boolean) => {
+  const color = isSelected ? "#00A82D" : "#6B7280";
+  return `
+    <svg class="sidebar-icon" width="18" height="18" aria-hidden="true" style="color: ${color}">
+      <use href="#icon-trash"></use>
     </svg>
   `;
 };
@@ -264,7 +277,8 @@ const renderNotebookTree = (
 
 const renderSidebar = (state: SidebarState) => {
   const counts = buildCounts(state.notebooks, state.noteCounts);
-  const allSelected = state.selectedNotebookId === null && state.selectedTagId === null;
+  const allSelected = state.selectedNotebookId === null && state.selectedTagId === null && !state.selectedTrash;
+  const trashSelected = state.selectedTrash;
   return `
     <div class="sidebar-scroll custom-scrollbar" data-sidebar-scroll="1">
       <div class="sidebar-section">
@@ -299,6 +313,16 @@ const renderSidebar = (state: SidebarState) => {
       </div>
       <div class="sidebar-tree sidebar-tree--tags" data-expanded="${state.tagsSectionExpanded ? "true" : "false"}">
         ${renderTagTree(state.tags, state, null, 0)}
+      </div>
+      <div
+        class="sidebar-item sidebar-item--trash ${trashSelected ? "is-selected" : ""}"
+        style="padding-left: 8px;"
+        data-action="select-trash"
+        data-trash-row="1"
+      >
+        ${renderTrashIcon(trashSelected)}
+        <span class="sidebar-item__label">Trash</span>
+        <span class="sidebar-item__count">${state.trashedCount}</span>
       </div>
     </div>
   `;
@@ -542,6 +566,10 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
       handlers.onSelectAll();
       return;
     }
+    if (action === "select-trash") {
+      handlers.onSelectTrash();
+      return;
+    }
     if (action === "select-notebook" && id !== null) {
       const type = actionEl.dataset.notebookType as NotebookType | undefined;
       if (type === "stack") {
@@ -594,6 +622,11 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
   const handleContextMenu = (event: MouseEvent) => {
     const target = event.target as HTMLElement | null;
     if (!target) return;
+    const trashRow = target.closest<HTMLElement>("[data-trash-row]");
+    if (trashRow) {
+      handlers.onTrashContextMenu(event);
+      return;
+    }
     const row = target.closest<HTMLElement>("[data-notebook-row]");
     if (!row) return;
     const id = Number(row.dataset.notebookId);
@@ -757,6 +790,9 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
     return root.querySelector<HTMLElement>(`[data-action="select-notebook"][data-notebook-id="${id}"]`);
   };
 
+  const findTrashSelectionEl = () =>
+    root.querySelector<HTMLElement>("[data-action=\"select-trash\"]");
+
   const findTagSelectionEl = (id: number | null) => {
     if (id === null) return null;
     return root.querySelector<HTMLElement>(`[data-action="select-tag"][data-tag-id="${id}"]`);
@@ -782,6 +818,14 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
     if (nextEl) nextEl.classList.add("is-selected");
   };
 
+  const updateTrashSelection = (prevSelected: boolean, nextSelected: boolean) => {
+    if (prevSelected === nextSelected) return;
+    const trashEl = findTrashSelectionEl();
+    if (trashEl) {
+      trashEl.classList.toggle("is-selected", nextSelected);
+    }
+  };
+
   return {
     update: (state: SidebarState) => {
       const prev = lastRendered;
@@ -790,11 +834,13 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
         !prev ||
         prev.notebooks !== state.notebooks ||
         prev.tags !== state.tags ||
+        prev.selectedTrash !== state.selectedTrash ||
         prev.expandedNotebooks !== state.expandedNotebooks ||
         prev.expandedTags !== state.expandedTags ||
         prev.tagsSectionExpanded !== state.tagsSectionExpanded ||
         prev.noteCounts !== state.noteCounts ||
-        prev.totalNotes !== state.totalNotes;
+        prev.totalNotes !== state.totalNotes ||
+        prev.trashedCount !== state.trashedCount;
 
       if (shouldFullRender) {
         const scrollTop = getScrollEl()?.scrollTop ?? 0;
@@ -810,8 +856,10 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
           });
         }
       } else {
-        updateSelection(prev.selectedNotebookId, state.selectedNotebookId, state.selectedTagId === null);
+        const allowAll = state.selectedTagId === null && !state.selectedTrash;
+        updateSelection(prev.selectedNotebookId, state.selectedNotebookId, allowAll);
         updateTagSelection(prev.selectedTagId, state.selectedTagId);
+        updateTrashSelection(prev.selectedTrash, state.selectedTrash);
       }
 
       if (shouldFullRender) {

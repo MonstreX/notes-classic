@@ -54,9 +54,11 @@ export const createAppRenderer = (deps: RendererDeps) => {
       expandedTags: state.expandedTags,
       tagsSectionExpanded: state.tagsSectionExpanded,
       selectedNotebookId: state.selectedNotebookId,
+      selectedTrash: state.selectedTrash,
       expandedNotebooks: state.expandedNotebooks,
       noteCounts: state.noteCounts,
       totalNotes: state.totalNotes,
+      trashedCount: state.trashedCount,
     };
 
     const notesListState: NotesListState = {
@@ -66,6 +68,7 @@ export const createAppRenderer = (deps: RendererDeps) => {
       selectedNotebookId: state.selectedNotebookId,
       selectedTagId: state.selectedTagId,
       selectedNoteId: state.selectedNoteId,
+      selectedTrash: state.selectedTrash,
       notesListView: state.notesListView,
       notesSortBy: state.notesSortBy,
       notesSortDir: state.notesSortDir,
@@ -77,11 +80,13 @@ export const createAppRenderer = (deps: RendererDeps) => {
       lastSidebarState.tags !== sidebarState.tags ||
       lastSidebarState.selectedNotebookId !== sidebarState.selectedNotebookId ||
       lastSidebarState.selectedTagId !== sidebarState.selectedTagId ||
+      lastSidebarState.selectedTrash !== sidebarState.selectedTrash ||
       lastSidebarState.expandedNotebooks !== sidebarState.expandedNotebooks ||
       lastSidebarState.expandedTags !== sidebarState.expandedTags ||
       lastSidebarState.tagsSectionExpanded !== sidebarState.tagsSectionExpanded ||
       lastSidebarState.noteCounts !== sidebarState.noteCounts ||
-      lastSidebarState.totalNotes !== sidebarState.totalNotes;
+      lastSidebarState.totalNotes !== sidebarState.totalNotes ||
+      lastSidebarState.trashedCount !== sidebarState.trashedCount;
 
     if (shouldUpdateSidebar) {
       deps.sidebar.update(sidebarState);
@@ -95,6 +100,7 @@ export const createAppRenderer = (deps: RendererDeps) => {
       lastNotesListState.tags !== notesListState.tags ||
       lastNotesListState.selectedNotebookId !== notesListState.selectedNotebookId ||
       lastNotesListState.selectedTagId !== notesListState.selectedTagId ||
+      lastNotesListState.selectedTrash !== notesListState.selectedTrash ||
       lastNotesListState.selectedNoteId !== notesListState.selectedNoteId ||
       lastNotesListState.notesListView !== notesListState.notesListView;
 

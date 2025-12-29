@@ -146,10 +146,11 @@ pub struct NoteCountItem {
 #[serde(rename_all = "camelCase")]
 pub struct NoteCounts {
     pub total: i64,
+    pub trashed: i64,
     pub per_notebook: Vec<NoteCountItem>,
 }
 
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
 
 async fn table_exists(pool: &SqlitePool, name: &str) -> Result<bool, sqlx::Error> {
     let row: Option<(String,)> = sqlx::query_as(
@@ -228,6 +229,8 @@ async fn create_schema_v3(pool: &SqlitePool) -> Result<(), sqlx::Error> {
             meta TEXT,
             content_hash TEXT,
             content_size INTEGER,
+            deleted_at INTEGER,
+            deleted_from_notebook_id INTEGER,
             FOREIGN KEY(notebook_id) REFERENCES notebooks(id) ON DELETE SET NULL
         )",
     )
@@ -353,6 +356,12 @@ async fn create_schema_v3(pool: &SqlitePool) -> Result<(), sqlx::Error> {
         .execute(pool)
         .await?;
 
+    if column_exists(pool, "notes", "deleted_at").await? {
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_notes_deleted_at ON notes(deleted_at)")
+            .execute(pool)
+            .await?;
+    }
+
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS tags (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -412,7 +421,7 @@ async fn create_schema_v3(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     Ok(())
 }
 
-async fn migrate_to_v3(pool: &SqlitePool) -> Result<(), sqlx::Error> {
+async fn migrate_to_v4(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     create_schema_v3(pool).await?;
 
     if !column_exists(pool, "notes", "sync_status").await? {
@@ -442,6 +451,16 @@ async fn migrate_to_v3(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     }
     if !column_exists(pool, "notes", "content_size").await? {
         sqlx::query("ALTER TABLE notes ADD COLUMN content_size INTEGER")
+            .execute(pool)
+            .await?;
+    }
+    if !column_exists(pool, "notes", "deleted_at").await? {
+        sqlx::query("ALTER TABLE notes ADD COLUMN deleted_at INTEGER")
+            .execute(pool)
+            .await?;
+    }
+    if !column_exists(pool, "notes", "deleted_from_notebook_id").await? {
+        sqlx::query("ALTER TABLE notes ADD COLUMN deleted_from_notebook_id INTEGER")
             .execute(pool)
             .await?;
     }
@@ -496,12 +515,12 @@ pub async fn init_db(data_dir: &Path) -> SqlitePool {
     if version == 0 {
         create_schema_v3(&pool)
             .await
-            .expect("Failed to create schema v2");
+            .expect("Failed to create schema v4");
         set_schema_version(&pool, SCHEMA_VERSION)
             .await
             .expect("Failed to set schema version");
     } else if version < SCHEMA_VERSION {
-        migrate_to_v3(&pool)
+        migrate_to_v4(&pool)
             .await
             .expect("Failed to migrate schema");
         set_schema_version(&pool, SCHEMA_VERSION)
@@ -847,7 +866,8 @@ impl SqliteRepository {
                     JOIN descendant_notebooks dn ON n.parent_id = dn.id
                 )
                 SELECT id, title, substr(content, 1, 4000) AS content, updated_at, notebook_id, 0 AS ocr_match FROM notes
-                WHERE notebook_id IN (SELECT id FROM descendant_notebooks)
+                WHERE deleted_at IS NULL
+                  AND notebook_id IN (SELECT id FROM descendant_notebooks)
                 ORDER BY updated_at DESC, created_at DESC, id DESC",
             )
             .bind(id)
@@ -855,7 +875,10 @@ impl SqliteRepository {
             .await
         } else {
             sqlx::query_as::<_, NoteListItem>(
-                "SELECT id, title, substr(content, 1, 4000) AS content, updated_at, notebook_id, 0 AS ocr_match FROM notes ORDER BY updated_at DESC, created_at DESC, id DESC",
+                "SELECT id, title, substr(content, 1, 4000) AS content, updated_at, notebook_id, 0 AS ocr_match
+                 FROM notes
+                 WHERE deleted_at IS NULL
+                 ORDER BY updated_at DESC, created_at DESC, id DESC",
             )
                 .fetch_all(&self.pool)
                 .await
@@ -870,15 +893,21 @@ impl SqliteRepository {
     }
 
     pub async fn get_note_counts(&self) -> Result<NoteCounts, sqlx::Error> {
-        let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM notes")
+        let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM notes WHERE deleted_at IS NULL")
+            .fetch_one(&self.pool)
+            .await?;
+        let trashed: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM notes WHERE deleted_at IS NOT NULL")
             .fetch_one(&self.pool)
             .await?;
         let per_notebook = sqlx::query_as::<_, NoteCountItem>(
-            "SELECT notebook_id, COUNT(*) AS count FROM notes WHERE notebook_id IS NOT NULL GROUP BY notebook_id",
+            "SELECT notebook_id, COUNT(*) AS count
+             FROM notes
+             WHERE notebook_id IS NOT NULL AND deleted_at IS NULL
+             GROUP BY notebook_id",
         )
             .fetch_all(&self.pool)
             .await?;
-        Ok(NoteCounts { total: total.0, per_notebook })
+        Ok(NoteCounts { total: total.0, trashed: trashed.0, per_notebook })
     }
 
     pub async fn create_note(&self, title: &str, content: &str, notebook_id: Option<i64>, data_dir: &Path) -> Result<i64, sqlx::Error> {
@@ -948,6 +977,7 @@ impl SqliteRepository {
                     FROM notes_fts
                     JOIN notes n ON n.id = notes_fts.rowid
                     WHERE notes_fts MATCH ?
+                      AND n.deleted_at IS NULL
                       AND n.notebook_id IN (SELECT id FROM descendant_notebooks)
                 ),
                 ocr_matches AS (
@@ -959,6 +989,7 @@ impl SqliteRepository {
                     JOIN note_files nf ON nf.file_id = ocr_fts.rowid
                     JOIN notes n ON n.id = nf.note_id
                     WHERE ocr_fts MATCH ?
+                      AND n.deleted_at IS NULL
                       AND n.notebook_id IN (SELECT id FROM descendant_notebooks)
                 )
                 SELECT id, title,
@@ -988,6 +1019,7 @@ impl SqliteRepository {
                     FROM notes_fts
                     JOIN notes n ON n.id = notes_fts.rowid
                     WHERE notes_fts MATCH ?
+                      AND n.deleted_at IS NULL
                 ),
                 ocr_matches AS (
                     SELECT n.id, n.title,
@@ -998,6 +1030,7 @@ impl SqliteRepository {
                     JOIN note_files nf ON nf.file_id = ocr_fts.rowid
                     JOIN notes n ON n.id = nf.note_id
                     WHERE ocr_fts MATCH ?
+                      AND n.deleted_at IS NULL
                 )
                 SELECT id, title,
                        MAX(content) AS content,
@@ -1024,9 +1057,21 @@ impl SqliteRepository {
              FROM notes n
              JOIN note_tags nt ON nt.note_id = n.id
              WHERE nt.tag_id = ?
+               AND n.deleted_at IS NULL
              ORDER BY n.updated_at DESC, n.created_at DESC, n.id DESC",
         )
         .bind(tag_id)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn get_trashed_notes(&self) -> Result<Vec<NoteListItem>, sqlx::Error> {
+        sqlx::query_as::<_, NoteListItem>(
+            "SELECT id, title, substr(content, 1, 4000) AS content, updated_at, notebook_id, 0 AS ocr_match
+             FROM notes
+             WHERE deleted_at IS NOT NULL
+             ORDER BY deleted_at DESC, updated_at DESC, id DESC",
+        )
         .fetch_all(&self.pool)
         .await
     }
@@ -1061,6 +1106,78 @@ impl SqliteRepository {
                 let _ = fs::remove_dir(parent);
             }
         }
+        Ok(())
+    }
+
+    pub async fn trash_note(&self, id: i64) -> Result<(), sqlx::Error> {
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query(
+            "UPDATE notes
+             SET deleted_at = ?,
+                 deleted_from_notebook_id = notebook_id,
+                 notebook_id = NULL
+             WHERE id = ? AND deleted_at IS NULL",
+        )
+        .bind(now)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn restore_note(&self, id: i64) -> Result<(), sqlx::Error> {
+        let mut tx = self.pool.begin().await?;
+        let row: Option<(Option<i64>,)> = sqlx::query_as(
+            "SELECT deleted_from_notebook_id FROM notes WHERE id = ?",
+        )
+        .bind(id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let target_notebook_id = if let Some((candidate,)) = row {
+            if let Some(notebook_id) = candidate {
+                let exists: Option<(i64,)> = sqlx::query_as("SELECT id FROM notebooks WHERE id = ?")
+                    .bind(notebook_id)
+                    .fetch_optional(&mut *tx)
+                    .await?;
+                if exists.is_some() {
+                    Some(notebook_id)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        sqlx::query(
+            "UPDATE notes
+             SET deleted_at = NULL,
+                 deleted_from_notebook_id = NULL,
+                 notebook_id = ?
+             WHERE id = ?",
+        )
+        .bind(target_notebook_id)
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    pub async fn restore_all_notes(&self) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE notes
+             SET notebook_id = (
+                 SELECT id FROM notebooks WHERE id = notes.deleted_from_notebook_id
+             ),
+                 deleted_at = NULL,
+                 deleted_from_notebook_id = NULL
+             WHERE deleted_at IS NOT NULL",
+        )
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 

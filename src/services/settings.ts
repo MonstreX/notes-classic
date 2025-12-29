@@ -21,6 +21,7 @@ export const persistSettings = (state: AppState) => {
       notesListView: state.notesListView,
       notesSortBy: state.notesSortBy,
       notesSortDir: state.notesSortDir,
+      deleteToTrash: state.deleteToTrash,
     };
     invoke("set_settings", { settings: payload }).catch((e) => {
       logError("[settings] persist failed", e);
@@ -83,6 +84,9 @@ export const loadSettings = async () => {
         if (stored.notesSortDir === "asc" || stored.notesSortDir === "desc") {
           draft.notesSortDir = stored.notesSortDir;
         }
+        if (stored.deleteToTrash !== undefined) {
+          draft.deleteToTrash = Boolean(stored.deleteToTrash);
+        }
       });
       return;
     }
@@ -127,6 +131,9 @@ export const loadSettings = async () => {
         }
         if (legacy.notesSortDir === "asc" || legacy.notesSortDir === "desc") {
           draft.notesSortDir = legacy.notesSortDir;
+        }
+        if (legacy.deleteToTrash !== undefined) {
+          draft.deleteToTrash = Boolean(legacy.deleteToTrash);
         }
       });
       await invoke("set_settings", { settings: legacy });

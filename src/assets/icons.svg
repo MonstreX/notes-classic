@@ -51,6 +51,13 @@
   <symbol id="icon-attach" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <path d="M21.44 11.05 12.95 19.54a5 5 0 0 1-7.07-7.07l8.49-8.49a3.5 3.5 0 0 1 4.95 4.95l-8.5 8.49a2 2 0 0 1-2.83-2.83l7.78-7.78"></path>
   </symbol>
+  <symbol id="icon-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 6h18"></path>
+    <path d="M8 6V4h8v2"></path>
+    <path d="M6 6l1 14h10l1-14"></path>
+    <path d="M10 11v6"></path>
+    <path d="M14 11v6"></path>
+  </symbol>
   <symbol id="icon-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <polyline points="9 18 15 12 9 6"></polyline>
   </symbol>

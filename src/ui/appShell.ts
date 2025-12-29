@@ -1,4 +1,4 @@
-import { openNoteContextMenu, openNotebookContextMenu, openTagContextMenu } from "./contextMenu";
+import { openNoteContextMenu, openNotebookContextMenu, openTagContextMenu, openTrashContextMenu, openTrashNoteContextMenu } from "./contextMenu";
 import { mountEditor, type EditorInstance } from "./editor";
 import { mountMetaBar } from "./metaBar";
 import { mountNotesList, type NotesListHandlers, type NotesListInstance } from "./notesList";
@@ -53,6 +53,7 @@ export const mountApp = (root: HTMLElement) => {
     onSelectNotebook: (id) => actions.selectNotebook(id),
     onSelectAll: () => actions.selectNotebook(null),
     onSelectTag: (id) => actions.selectTag(id),
+    onSelectTrash: () => actions.selectTrash(),
     onToggleNotebook: (id) => actions.toggleNotebook(id),
     onToggleTag: (id) => actions.toggleTag(id),
     onCreateNotebook: (parentId) => actions.createNotebook(parentId),
@@ -78,6 +79,14 @@ export const mountApp = (root: HTMLElement) => {
         onDelete: actions.deleteNotebook,
       });
     },
+    onTrashContextMenu: (event) => {
+      event.preventDefault();
+      openTrashContextMenu({
+        x: event.clientX,
+        y: event.clientY,
+        onRestoreAll: actions.restoreAllTrash,
+      });
+    },
     onMoveTag: (tagId, parentId) => actions.moveTag(tagId, parentId),
     onMoveNotebook: (activeId, overId, position) => actions.moveNotebookByDrag(activeId, overId, position),
   };
@@ -95,6 +104,16 @@ export const mountApp = (root: HTMLElement) => {
     onNoteContextMenu: (event, id) => {
       event.preventDefault();
       const state = appStore.getState();
+      if (state.selectedTrash) {
+        openTrashNoteContextMenu({
+          x: event.clientX,
+          y: event.clientY,
+          noteId: id,
+          onRestore: actions.restoreNote,
+          onDelete: actions.purgeNote,
+        });
+        return;
+      }
       const nodes = buildMenuNodes(null, state);
       openNoteContextMenu({
         x: event.clientX,
@@ -105,7 +124,12 @@ export const mountApp = (root: HTMLElement) => {
         onMove: actions.moveNoteToNotebook,
       });
     },
-    onMoveNote: (noteId, notebookId) => actions.moveNoteToNotebook(noteId, notebookId),
+    onMoveNote: (noteId, notebookId) => {
+      if (appStore.getState().selectedTrash) return;
+      actions.moveNoteToNotebook(noteId, notebookId);
+    },
+    onDropToTrash: (noteId) => actions.deleteNote(noteId),
+    onDropToTag: (noteId, tagId) => actions.addTagToNoteById(noteId, tagId),
   };
 
   const sidebarInstance: SidebarInstance = mountSidebar(layout.sidebarHost, sidebarHandlers);

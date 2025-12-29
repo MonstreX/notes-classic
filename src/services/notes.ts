@@ -6,6 +6,9 @@ export const getNotebooks = () => invoke<Notebook[]>("get_notebooks");
 export const getNotes = (notebookId: number | null) =>
   invoke<NoteListItem[]>("get_notes", { notebookId });
 
+export const getTrashedNotes = () =>
+  invoke<NoteListItem[]>("get_trashed_notes");
+
 export const getNotesByTag = (tagId: number) =>
   invoke<NoteListItem[]>("get_notes_by_tag", { tagId });
 
@@ -26,6 +29,12 @@ export const setNotesListView = (view: "compact" | "detailed") =>
   invoke("set_notes_list_view", { view });
 
 export const deleteNote = (id: number) => invoke("delete_note", { id });
+
+export const trashNote = (id: number) => invoke("trash_note", { id });
+
+export const restoreNote = (id: number) => invoke("restore_note", { id });
+
+export const restoreAllNotes = () => invoke("restore_all_notes");
 
 export const moveNote = (noteId: number, notebookId: number | null) =>
   invoke("move_note", { noteId, notebookId });

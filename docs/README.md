@@ -76,7 +76,12 @@ notes-classic/
 - Text search uses `notes_text` index.
 - OCR search uses `ocr_text` index and returns notes with image matches.
 
-### 5. OCR Pipeline
+### 5. Trash
+- Notes are deleted to Trash by default (configurable).
+- Restore single notes or restore all from the sidebar context menu.
+- Trash list shows recently deleted notes.
+
+### 6. OCR Pipeline
 - OCR is queued in the frontend via tesseract.js worker.
 - Images are processed in background batches with retry/backoff.
 - Results are stored in `ocr_text` for search.
@@ -103,5 +108,4 @@ npm run tauri build
 
 ## Future Roadmap (Planned)
 - Evernote import (EXB/ENEX).
-- Attachments (non-image files) support.
 - Optional sync with remote server.

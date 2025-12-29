@@ -14,10 +14,13 @@ import {
   getNotes,
   moveNotebook,
   moveNote,
+  restoreAllNotes,
+  restoreNote,
   setNotesListView,
+  trashNote,
   updateNote,
 } from "../services/notes";
-import { addNoteTag, createTag as createTagService, deleteTag as deleteTagService, getTags, removeNoteTag, updateTagParent } from "../services/tags";
+import { addNoteTag, createTag as createTagService, deleteTag as deleteTagService, getNoteTags, getTags, removeNoteTag, updateTagParent } from "../services/tags";
 import { loadSelectedNote } from "./noteLoader";
 import { fetchNotesData, resortNotes } from "./dataLoader";
 
@@ -94,8 +97,9 @@ export const actions = {
     appStore.setState({ selectedNoteId: id, isNoteLoading: true });
     await loadSelectedNote();
   },
-  selectNotebook: (id: number | null) => appStore.setState({ selectedNotebookId: id, selectedTagId: null }),
-  selectTag: (id: number) => appStore.setState({ selectedTagId: id, selectedNotebookId: null }),
+  selectNotebook: (id: number | null) => appStore.setState({ selectedNotebookId: id, selectedTagId: null, selectedTrash: false }),
+  selectTag: (id: number) => appStore.setState({ selectedTagId: id, selectedNotebookId: null, selectedTrash: false }),
+  selectTrash: () => appStore.setState({ selectedTrash: true, selectedNotebookId: null, selectedTagId: null }),
   toggleNotebook: (id: number) => {
     const current = appStore.getState().expandedNotebooks;
     const next = new Set(current);
@@ -118,6 +122,7 @@ export const actions = {
   setNotesSort: (sortBy: "updated" | "title", sortDir: "asc" | "desc") => {
     resortNotes(sortBy, sortDir);
   },
+  setDeleteToTrash: (value: boolean) => appStore.setState({ deleteToTrash: value }),
   addTagToNote: async (name: string) => {
     const state = appStore.getState();
     const noteId = state.selectedNoteId;
@@ -133,6 +138,18 @@ export const actions = {
     await addNoteTag(noteId, tagId);
     const updated = await getNoteTags(noteId);
     appStore.setState({ noteTags: updated });
+  },
+  addTagToNoteById: async (noteId: number, tagId: number) => {
+    try {
+      await addNoteTag(noteId, tagId);
+      const state = appStore.getState();
+      if (state.selectedNoteId === noteId) {
+        const updated = await getNoteTags(noteId);
+        appStore.setState({ noteTags: updated });
+      }
+    } catch (e) {
+      logError("[tag] add failed", e);
+    }
   },
   createTag: async (parentId: number | null) => {
     const name = await openTagDialog({ parentId });
@@ -196,12 +213,15 @@ export const actions = {
   },
   createNote: async () => {
     const state = appStore.getState();
+    if (state.selectedTrash) {
+      appStore.setState({ selectedTrash: false, selectedNotebookId: null, selectedTagId: null });
+    }
     const id = await createNote("New Note", "", state.selectedNotebookId);
     await fetchData();
     await actions.selectNote(id);
   },
   createNoteInNotebook: async (notebookId: number) => {
-    appStore.setState({ selectedNotebookId: notebookId });
+    appStore.setState({ selectedNotebookId: notebookId, selectedTrash: false });
     const id = await createNote("New Note", "", notebookId);
     await fetchData();
     await actions.selectNote(id);
@@ -214,6 +234,53 @@ export const actions = {
       danger: true,
     });
     if (!ok) return;
+    const state = appStore.getState();
+    if (!state.deleteToTrash || state.selectedTrash) {
+      await actions.purgeNote(id);
+      return;
+    }
+    try {
+      await trashNote(id);
+    } catch (e) {
+      logError("[note] trash failed", e);
+      return;
+    }
+    const isCurrent = state.selectedNoteId === id;
+    const nextNotes = state.notes.filter((note) => note.id !== id);
+
+    if (isCurrent) {
+      if (nextNotes.length > 0) {
+        appStore.setState({ selectedNoteId: nextNotes[0].id });
+      } else if (state.selectedNotebookId !== null) {
+        try {
+          const allNotes = await getNotes(null);
+          if (allNotes.length > 0) {
+            appStore.setState({ selectedNotebookId: null, selectedNoteId: allNotes[0].id });
+          } else {
+            appStore.setState({ selectedNoteId: null, activeNote: null, title: "", content: "" });
+          }
+        } catch (e) {
+          logError("[note] fallback selection failed", e);
+          appStore.setState({ selectedNoteId: null, activeNote: null, title: "", content: "" });
+        }
+      } else {
+        appStore.setState({ selectedNoteId: null, activeNote: null, title: "", content: "" });
+      }
+    }
+
+    const postState = appStore.getState();
+    appStore.setState({
+      notes: nextNotes,
+      selectedNoteId: postState.selectedNoteId,
+      activeNote: postState.activeNote,
+      title: postState.title,
+      content: postState.content,
+    });
+    document.querySelectorAll("[data-dialog-overlay], .context-menu").forEach((el) => el.remove());
+    document.body.style.cursor = "";
+    fetchData();
+  },
+  purgeNote: async (id: number) => {
     const state = appStore.getState();
     const isCurrent = state.selectedNoteId === id;
     const nextNotes = state.notes.filter((note) => note.id !== id);
@@ -249,6 +316,33 @@ export const actions = {
     });
     document.querySelectorAll("[data-dialog-overlay], .context-menu").forEach((el) => el.remove());
     document.body.style.cursor = "";
+    fetchData();
+  },
+  restoreNote: async (id: number) => {
+    try {
+      await restoreNote(id);
+    } catch (e) {
+      logError("[note] restore failed", e);
+      return;
+    }
+    const state = appStore.getState();
+    if (state.selectedTrash) {
+      const nextNotes = state.notes.filter((note) => note.id !== id);
+      const nextSelected = nextNotes[0]?.id ?? null;
+      appStore.setState({ notes: nextNotes, selectedNoteId: nextSelected });
+    }
+    fetchData();
+  },
+  restoreAllTrash: async () => {
+    try {
+      await restoreAllNotes();
+    } catch (e) {
+      logError("[note] restore all failed", e);
+      return;
+    }
+    if (appStore.getState().selectedTrash) {
+      appStore.setState({ notes: [], selectedNoteId: null });
+    }
     fetchData();
   },
   createNotebook: async (parentId: number | null) => {

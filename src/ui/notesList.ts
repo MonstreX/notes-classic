@@ -24,6 +24,7 @@ export interface NotesListState {
   tags: Tag[];
   selectedNotebookId: number | null;
   selectedTagId: number | null;
+  selectedTrash: boolean;
   selectedNoteId: number | null;
   notesListView: NotesListView;
   notesSortBy: "updated" | "title";
@@ -38,6 +39,8 @@ export interface NotesListHandlers {
   onFilterClick: () => void;
   onNoteContextMenu: (event: MouseEvent, id: number) => void;
   onMoveNote: (noteId: number, notebookId: number | null) => void;
+  onDropToTrash: (noteId: number) => void;
+  onDropToTag: (noteId: number, tagId: number) => void;
 }
 
 export interface NotesListInstance {
@@ -89,6 +92,7 @@ const renderViewIcon = () => `
 `;
 
 const getHeaderTitle = (state: NotesListState) => {
+  if (state.selectedTrash) return "Trash";
   const tagTitle = state.selectedTagId
     ? state.tags.find((tag) => tag.id === state.selectedTagId)?.name || "Tag"
     : null;
@@ -190,7 +194,7 @@ const renderList = (state: NotesListState) => {
   `;
 };
 
-const renderNotesList = (state: NotesListState) => `
+  const renderNotesList = (state: NotesListState) => `
   <div class="notes-list">
     ${renderHeader(state)}
     ${renderList(state)}
@@ -213,6 +217,8 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
   let dragOverlay: HTMLDivElement | null = null;
   let dragOverEl: HTMLElement | null = null;
   let dragOverNotebookId: number | null = null;
+  let dragOverTagId: number | null = null;
+  let dragOverTrash = false;
   let dragHasTarget = false;
   let sortMenu: HTMLDivElement | null = null;
   let sortMenuClickBound = false;
@@ -300,7 +306,7 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
       dragOverlay = null;
     }
     if (dragOverEl) {
-      dragOverEl.classList.remove("notes-list__drop-target");
+      dragOverEl.classList.remove("is-drag-over");
       dragOverEl = null;
     }
     document.body.style.cursor = "";
@@ -333,9 +339,19 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
   const resolveDropTarget = (clientX: number, clientY: number) => {
     const el = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
     if (!el) return null;
+    const trashRow = el.closest<HTMLElement>("[data-trash-row]");
+    if (trashRow) {
+      return { kind: "trash" as const, el: trashRow };
+    }
+    const tagRow = el.closest<HTMLElement>("[data-tag-row]");
+    if (tagRow) {
+      const id = Number(tagRow.dataset.tagId);
+      if (!Number.isFinite(id)) return null;
+      return { kind: "tag" as const, el: tagRow, tagId: id };
+    }
     const allNotes = el.closest<HTMLElement>("[data-drop-all]");
     if (allNotes) {
-      return { el: allNotes, notebookId: null };
+      return { kind: "all" as const, el: allNotes, notebookId: null };
     }
     const row = el.closest<HTMLElement>("[data-notebook-row]");
     if (!row) return null;
@@ -343,27 +359,38 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
     if (type !== "notebook") return null;
     const id = Number(row.dataset.notebookId);
     if (!Number.isFinite(id)) return null;
-    return { el: row, notebookId: id };
+    return { kind: "notebook" as const, el: row, notebookId: id };
   };
 
-  const updateDropHighlight = (target: { el: HTMLElement; notebookId: number | null } | null) => {
+  const updateDropHighlight = (
+    target:
+      | { kind: "notebook" | "all"; el: HTMLElement; notebookId: number | null }
+      | { kind: "tag"; el: HTMLElement; tagId: number }
+      | { kind: "trash"; el: HTMLElement }
+      | null
+  ) => {
     if (dragOverEl && dragOverEl !== target?.el) {
-      dragOverEl.classList.remove("notes-list__drop-target");
+      dragOverEl.classList.remove("is-drag-over");
       dragOverEl = null;
     }
     if (!target) {
       dragOverNotebookId = null;
+      dragOverTagId = null;
+      dragOverTrash = false;
       dragHasTarget = false;
       return;
     }
     dragOverEl = target.el;
-    dragOverNotebookId = target.notebookId;
+    dragOverNotebookId = target.kind === "notebook" || target.kind === "all" ? target.notebookId : null;
+    dragOverTagId = target.kind === "tag" ? target.tagId : null;
+    dragOverTrash = target.kind === "trash";
     dragHasTarget = true;
-    dragOverEl.classList.add("notes-list__drop-target");
+    dragOverEl.classList.add("is-drag-over");
   };
 
   const handlePointerDown = (event: PointerEvent) => {
     if (event.button !== 0) return;
+    if (currentState?.selectedTrash) return;
     const target = event.target as HTMLElement | null;
     if (!target) return;
     if (target.closest("button")) return;
@@ -409,7 +436,13 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
       return;
     }
     if (dragStarted && dragNoteId && dragHasTarget) {
-      handlers.onMoveNote(dragNoteId, dragOverNotebookId);
+      if (dragOverTrash) {
+        handlers.onDropToTrash(dragNoteId);
+      } else if (dragOverTagId !== null) {
+        handlers.onDropToTag(dragNoteId, dragOverTagId);
+      } else {
+        handlers.onMoveNote(dragNoteId, dragOverNotebookId);
+      }
     }
     cleanupDrag();
   };
@@ -539,6 +572,7 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
         shouldFullRender ||
         prev.selectedNotebookId !== state.selectedNotebookId ||
         prev.selectedTagId !== state.selectedTagId ||
+        prev.selectedTrash !== state.selectedTrash ||
         prev.tags !== state.tags ||
         prev.notes.length !== state.notes.length ||
         prev.notesSortBy !== state.notesSortBy ||

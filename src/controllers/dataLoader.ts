@@ -1,5 +1,5 @@
 import { appStore } from "../state/store";
-import { getNoteCounts, getNotes, getNotesByTag, getNotebooks } from "../services/notes";
+import { getNoteCounts, getNotes, getNotesByTag, getNotebooks, getTrashedNotes } from "../services/notes";
 
 const stripTags = (value: string) => value.replace(/<[^>]*>/g, "");
 const buildExcerpt = (value: string) => stripTags(value || "");
@@ -27,9 +27,11 @@ const sortNotes = (
 export const fetchNotesData = async () => {
   const state = appStore.getState();
   if (!state.isLoaded) return;
-  const notesPromise = state.selectedTagId !== null
-    ? getNotesByTag(state.selectedTagId)
-    : getNotes(state.selectedNotebookId);
+  const notesPromise = state.selectedTrash
+    ? getTrashedNotes()
+    : state.selectedTagId !== null
+      ? getNotesByTag(state.selectedTagId)
+      : getNotes(state.selectedNotebookId);
   const [nbs, filteredNotes, counts] = await Promise.all([
     getNotebooks(),
     notesPromise,
@@ -39,14 +41,16 @@ export const fetchNotesData = async () => {
     ...note,
     excerpt: buildExcerpt(note.content || ""),
   }));
-  const sortedNotes = sortNotes(notesWithExcerpt, state.notesSortBy, state.notesSortDir);
+  const sortedNotes = state.selectedTrash
+    ? notesWithExcerpt
+    : sortNotes(notesWithExcerpt, state.notesSortBy, state.notesSortDir);
   const map = new Map<number, number>();
   counts.perNotebook.forEach((item) => {
     map.set(item.notebookId, item.count);
   });
   let nextSelectedNoteId = state.selectedNoteId;
   const hasSelected = notesWithExcerpt.some((note) => note.id === state.selectedNoteId);
-  if (state.selectedTagId !== null || state.selectedNotebookId !== null) {
+  if (state.selectedTrash || state.selectedTagId !== null || state.selectedNotebookId !== null) {
     nextSelectedNoteId = hasSelected ? state.selectedNoteId : (sortedNotes[0]?.id ?? null);
   }
   const selectionChanged = nextSelectedNoteId !== state.selectedNoteId;
@@ -55,6 +59,7 @@ export const fetchNotesData = async () => {
     notes: sortedNotes,
     noteCounts: map,
     totalNotes: counts.total,
+    trashedCount: counts.trashed,
     selectedNoteId: nextSelectedNoteId,
   };
   if (selectionChanged && nextSelectedNoteId !== null) {

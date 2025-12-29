@@ -5,6 +5,7 @@ export type AppState = {
   notes: NoteListItem[];
   noteCounts: Map<number, number>;
   totalNotes: number;
+  trashedCount: number;
   notesListView: NotesListView;
   notesSortBy: NotesSortBy;
   notesSortDir: NotesSortDir;
@@ -13,11 +14,13 @@ export type AppState = {
   selectedNotebookId: number | null;
   selectedTagId: number | null;
   selectedNoteId: number | null;
+  selectedTrash: boolean;
   expandedNotebooks: Set<number>;
   expandedTags: Set<number>;
   tagsSectionExpanded: boolean;
   sidebarWidth: number;
   listWidth: number;
+  deleteToTrash: boolean;
   title: string;
   content: string;
   activeNote: NoteDetail | null;
@@ -32,6 +35,7 @@ let state: AppState = {
   notes: [],
   noteCounts: new Map(),
   totalNotes: 0,
+  trashedCount: 0,
   notesListView: "detailed",
   notesSortBy: "updated",
   notesSortDir: "desc",
@@ -40,11 +44,13 @@ let state: AppState = {
   selectedNotebookId: null,
   selectedTagId: null,
   selectedNoteId: null,
+  selectedTrash: false,
   expandedNotebooks: new Set(),
   expandedTags: new Set(),
   tagsSectionExpanded: true,
   sidebarWidth: 240,
   listWidth: 350,
+  deleteToTrash: true,
   title: "",
   content: "",
   activeNote: null,

@@ -802,7 +802,7 @@ Storage:
 Limitations:
 
 - Preview is text-only.
-- No versioning or trash yet (planned).
+- Trash is implemented for notes (restore single/all).
 
 ----------------------------------------------------------------
 

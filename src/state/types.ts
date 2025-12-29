@@ -39,6 +39,7 @@ export interface Tag {
 export interface NoteCounts {
   total: number;
   perNotebook: { notebookId: number; count: number }[];
+  trashed: number;
 }
 
 export type NotesListView = "detailed" | "compact";

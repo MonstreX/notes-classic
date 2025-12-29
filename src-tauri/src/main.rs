@@ -280,6 +280,14 @@ async fn get_notes_by_tag(tagId: i64, state: State<'_, AppState>) -> Result<Vec<
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn get_trashed_notes(state: State<'_, AppState>) -> Result<Vec<NoteListItem>, String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    repo.get_trashed_notes()
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[allow(non_snake_case)]
 #[tauri::command]
 async fn search_notes(query: String, notebookId: Option<i64>, state: State<'_, AppState>) -> Result<Vec<NoteListItem>, String> {
@@ -329,6 +337,23 @@ async fn delete_note(id: i64, state: State<'_, AppState>) -> Result<(), String> 
     repo.delete_note(id, &state.data_dir).await.map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn trash_note(id: i64, state: State<'_, AppState>) -> Result<(), String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    repo.trash_note(id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn restore_note(id: i64, state: State<'_, AppState>) -> Result<(), String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    repo.restore_note(id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn restore_all_notes(state: State<'_, AppState>) -> Result<(), String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    repo.restore_all_notes().await.map_err(|e| e.to_string())
+}
 #[allow(non_snake_case)]
 #[tauri::command]
 async fn import_attachment(noteId: i64, sourcePath: String, state: State<'_, AppState>) -> Result<Attachment, String> {
@@ -635,12 +660,16 @@ fn main() {
             move_note,
             get_notes,
             get_notes_by_tag,
+            get_trashed_notes,
             search_notes,
             get_note,
             get_note_counts,
             get_data_dir,
             upsert_note,
             delete_note,
+            trash_note,
+            restore_note,
+            restore_all_notes,
             import_attachment,
             import_attachment_bytes,
             delete_attachment,

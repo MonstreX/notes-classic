@@ -14,6 +14,14 @@ type NoteMenuOptions = {
   onMove: (noteId: number, notebookId: number | null) => void;
 };
 
+type TrashNoteMenuOptions = {
+  x: number;
+  y: number;
+  noteId: number;
+  onRestore: (id: number) => void;
+  onDelete: (id: number) => void;
+};
+
 type NotebookMenuOptions = {
   x: number;
   y: number;
@@ -26,6 +34,12 @@ type TagMenuOptions = {
   y: number;
   tagId: number;
   onDelete: (id: number) => void;
+};
+
+type TrashMenuOptions = {
+  x: number;
+  y: number;
+  onRestoreAll: () => void;
 };
 
 let activeMenu: HTMLDivElement | null = null;
@@ -156,6 +170,67 @@ export const openNoteContextMenu = ({ x, y, noteId, nodes, onDelete, onMove }: N
   };
 };
 
+export const openTrashNoteContextMenu = ({ x, y, noteId, onRestore, onDelete }: TrashNoteMenuOptions) => {
+  closeMenu();
+
+  const menu = document.createElement("div");
+  menu.className = "context-menu";
+
+  menu.appendChild(createItem("Restore Note", () => onRestore(noteId)));
+  menu.appendChild(createSeparator());
+  menu.appendChild(createItem("Delete Permanently", () => onDelete(noteId), "is-danger"));
+
+  document.body.appendChild(menu);
+  activeMenu = menu;
+
+  const adjustPosition = () => {
+    const rect = menu.getBoundingClientRect();
+    let left = x;
+    let top = y;
+    if (left + rect.width > window.innerWidth - 8) {
+      left = window.innerWidth - rect.width - 8;
+    }
+    if (top + rect.height > window.innerHeight - 8) {
+      top = window.innerHeight - rect.height - 8;
+    }
+    menu.style.left = `${Math.max(8, left)}px`;
+    menu.style.top = `${Math.max(8, top)}px`;
+  };
+
+  menu.style.left = "0px";
+  menu.style.top = "0px";
+  menu.style.position = "fixed";
+  menu.style.zIndex = "9999";
+  adjustPosition();
+
+  const onOutsideClick = (event: MouseEvent) => {
+    if (!activeMenu) return;
+    if (event.target instanceof Node && activeMenu.contains(event.target)) return;
+    closeMenu();
+  };
+
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "Escape") closeMenu();
+  };
+
+  const onScroll = () => closeMenu();
+
+  document.addEventListener("mousedown", onOutsideClick, true);
+  document.addEventListener("contextmenu", onOutsideClick, true);
+  window.addEventListener("keydown", onKeyDown);
+  window.addEventListener("scroll", onScroll, true);
+  window.addEventListener("resize", onScroll);
+
+  cleanupMenu = () => {
+    document.removeEventListener("mousedown", onOutsideClick, true);
+    document.removeEventListener("contextmenu", onOutsideClick, true);
+    window.removeEventListener("keydown", onKeyDown);
+    window.removeEventListener("scroll", onScroll, true);
+    window.removeEventListener("resize", onScroll);
+    if (activeMenu) activeMenu.remove();
+  };
+};
+
 export const openNotebookContextMenu = ({ x, y, notebookId, onDelete }: NotebookMenuOptions) => {
   closeMenu();
 
@@ -222,6 +297,65 @@ export const openTagContextMenu = ({ x, y, tagId, onDelete }: TagMenuOptions) =>
   menu.className = "context-menu";
 
   menu.appendChild(createItem("Delete Tag", () => onDelete(tagId), "is-danger"));
+
+  document.body.appendChild(menu);
+  activeMenu = menu;
+
+  const adjustPosition = () => {
+    const rect = menu.getBoundingClientRect();
+    let left = x;
+    let top = y;
+    if (left + rect.width > window.innerWidth - 8) {
+      left = window.innerWidth - rect.width - 8;
+    }
+    if (top + rect.height > window.innerHeight - 8) {
+      top = window.innerHeight - rect.height - 8;
+    }
+    menu.style.left = `${Math.max(8, left)}px`;
+    menu.style.top = `${Math.max(8, top)}px`;
+  };
+
+  menu.style.left = "0px";
+  menu.style.top = "0px";
+  menu.style.position = "fixed";
+  menu.style.zIndex = "9999";
+  adjustPosition();
+
+  const onOutsideClick = (event: MouseEvent) => {
+    if (!activeMenu) return;
+    if (event.target instanceof Node && activeMenu.contains(event.target)) return;
+    closeMenu();
+  };
+
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "Escape") closeMenu();
+  };
+
+  const onScroll = () => closeMenu();
+
+  document.addEventListener("mousedown", onOutsideClick, true);
+  document.addEventListener("contextmenu", onOutsideClick, true);
+  window.addEventListener("keydown", onKeyDown);
+  window.addEventListener("scroll", onScroll, true);
+  window.addEventListener("resize", onScroll);
+
+  cleanupMenu = () => {
+    document.removeEventListener("mousedown", onOutsideClick, true);
+    document.removeEventListener("contextmenu", onOutsideClick, true);
+    window.removeEventListener("keydown", onKeyDown);
+    window.removeEventListener("scroll", onScroll, true);
+    window.removeEventListener("resize", onScroll);
+    if (activeMenu) activeMenu.remove();
+  };
+};
+
+export const openTrashContextMenu = ({ x, y, onRestoreAll }: TrashMenuOptions) => {
+  closeMenu();
+
+  const menu = document.createElement("div");
+  menu.className = "context-menu";
+
+  menu.appendChild(createItem("Restore All", () => onRestoreAll()));
 
   document.body.appendChild(menu);
   activeMenu = menu;
