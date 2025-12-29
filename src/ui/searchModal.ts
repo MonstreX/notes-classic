@@ -348,13 +348,13 @@ export const mountSearchModal = (container: HTMLElement, handlers: SearchModalHa
     try {
       const stats = await getOcrStats();
       if (stats.total === 0) {
-        searchOcrText.textContent = "No images found";
+        searchOcrText.textContent = "No images indexed";
         searchOcrStatus.classList.remove("is-active");
       } else if (stats.pending === 0) {
-        searchOcrText.textContent = `${stats.done} of ${stats.total} images indexed`;
+        searchOcrText.textContent = `${stats.done} images indexed`;
         searchOcrStatus.classList.remove("is-active");
       } else {
-        searchOcrText.textContent = `${stats.done} of ${stats.total} images indexed`;
+        searchOcrText.textContent = `${stats.done} images indexed`;
         searchOcrStatus.classList.add("is-active");
       }
     } catch (e) {
