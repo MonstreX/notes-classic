@@ -121,6 +121,7 @@ export const mountApp = (root: HTMLElement) => {
     onBlur: () => {
       editorFocused = false;
     },
+    getNoteId: () => appStore.getState().selectedNoteId,
   });
 
   const editorScheduler = createEditorScheduler({

@@ -145,3 +145,24 @@
 .secure-dialog__content .jodit-wysiwyg {
   padding: 0 !important;
 }
+
+.attachment-dialog {
+  width: min(700px, 90vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.attachment-dialog .dialog__body {
+  flex: 1;
+}
+
+.attachment-dialog__content {
+  max-height: 60vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #111827;
+}

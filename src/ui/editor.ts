@@ -27,11 +27,13 @@ import xml from "highlight.js/lib/languages/xml";
 import css from "highlight.js/lib/languages/css";
 import php from "highlight.js/lib/languages/php";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { open } from "@tauri-apps/plugin-shell";
+import { open as openShell } from "@tauri-apps/plugin-shell";
+import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { logError } from "../services/logger";
 import { decryptHtml, encryptHtml } from "../services/crypto";
-import { openPasswordDialog } from "./dialogs";
+import { openConfirmDialog, openPasswordDialog } from "./dialogs";
 import { createIcon } from "./icons";
+import { importAttachment, deleteAttachment, readAttachmentText, saveAttachmentAs } from "../services/attachments";
 
 hljs.registerLanguage("javascript", javascript);
 hljs.registerLanguage("js", javascript);
@@ -52,6 +54,7 @@ type EditorOptions = {
   onChange: (value: string) => void;
   onFocus?: () => void;
   onBlur?: () => void;
+  getNoteId?: () => number | null;
 };
 
 const findCallout = (node: Node | null, root: HTMLElement) => {
@@ -89,7 +92,45 @@ const findSecureBlock = (node: Node | null, root: HTMLElement) => {
 
 const fragmentHasContent = (fragment: DocumentFragment) => {
   if (fragment.textContent && fragment.textContent.trim().length > 0) return true;
-  return !!fragment.querySelector("img,table,ul,ol,li,hr,pre,blockquote");
+  return !!fragment.querySelector("img,table,ul,ol,li,hr,pre,blockquote,.note-attachment,.note-secure");
+};
+
+const formatBytes = (value: number) => {
+  if (!Number.isFinite(value)) return "";
+  const units = ["B", "KB", "MB", "GB"];
+  let size = value;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  const precision = unitIndex === 0 ? 0 : size < 10 ? 1 : 0;
+  return `${size.toFixed(precision)} ${units[unitIndex]}`;
+};
+
+const isTextAttachment = (name: string, mime: string) => {
+  if (mime.startsWith("text/")) return true;
+  const lower = name.toLowerCase();
+  return [
+    ".txt",
+    ".md",
+    ".markdown",
+    ".json",
+    ".xml",
+    ".csv",
+    ".log",
+    ".yaml",
+    ".yml",
+    ".ini",
+    ".js",
+    ".ts",
+    ".css",
+    ".html",
+    ".htm",
+    ".rs",
+    ".py",
+    ".php",
+  ].some((ext) => lower.endsWith(ext));
 };
 
 const isRangeAtStart = (callout: HTMLElement, range: Range) => {
@@ -108,12 +149,12 @@ const isRangeAtEnd = (callout: HTMLElement, range: Range) => {
 
 const isCalloutEmpty = (callout: HTMLElement) => {
   if (callout.textContent && callout.textContent.trim().length > 0) return false;
-  return !callout.querySelector("img,table,ul,ol,li,hr,pre,blockquote");
+  return !callout.querySelector("img,table,ul,ol,li,hr,pre,blockquote,.note-attachment,.note-secure");
 };
 
 const isBlockEmpty = (block: HTMLElement) => {
   if (block.textContent && block.textContent.trim().length > 0) return false;
-  return !block.querySelector("img,table,ul,ol,li,hr,pre,blockquote,code");
+  return !block.querySelector("img,table,ul,ol,li,hr,pre,blockquote,code,.note-attachment,.note-secure");
 };
 
 const extractTextWithLineBreaks = (fragment: DocumentFragment) => {
@@ -213,6 +254,109 @@ const buildSecureNode = (editor: any, payload: { cipher: string; salt: string; i
 
   wrapper.appendChild(handle);
   return wrapper;
+};
+
+const buildAttachmentNode = (
+  editor: any,
+  attachment: { id: number; filename: string; size: number; mime: string }
+) => {
+  const wrapper = editor.createInside.element("div");
+  wrapper.className = "note-attachment";
+  wrapper.setAttribute("data-attachment-id", String(attachment.id));
+  wrapper.setAttribute("data-attachment-name", attachment.filename);
+  wrapper.setAttribute("data-attachment-size", String(attachment.size));
+  wrapper.setAttribute("data-attachment-mime", attachment.mime);
+  wrapper.setAttribute("contenteditable", "false");
+
+  const main = editor.createInside.element("div");
+  main.className = "note-attachment__main";
+  const icon = createIcon("icon-attach", "note-attachment__icon");
+  const meta = editor.createInside.element("div");
+  meta.className = "note-attachment__meta";
+  const name = editor.createInside.element("span");
+  name.className = "note-attachment__name";
+  name.textContent = attachment.filename;
+  const size = editor.createInside.element("span");
+  size.className = "note-attachment__size";
+  size.textContent = formatBytes(attachment.size);
+  meta.appendChild(name);
+  meta.appendChild(size);
+  main.appendChild(icon);
+  main.appendChild(meta);
+
+  const actions = editor.createInside.element("div");
+  actions.className = "note-attachment__actions";
+  actions.setAttribute("contenteditable", "false");
+
+  const download = editor.createInside.element("button");
+  download.className = "note-attachment__action";
+  download.setAttribute("data-attachment-action", "download");
+  download.type = "button";
+  download.textContent = "Download";
+
+  const openBtn = editor.createInside.element("button");
+  openBtn.className = "note-attachment__action";
+  openBtn.setAttribute("data-attachment-action", "open");
+  openBtn.type = "button";
+  openBtn.textContent = "Open";
+
+  const remove = editor.createInside.element("button");
+  remove.className = "note-attachment__action note-attachment__action--danger";
+  remove.setAttribute("data-attachment-action", "delete");
+  remove.type = "button";
+  remove.textContent = "Delete";
+
+  actions.appendChild(download);
+  actions.appendChild(openBtn);
+  actions.appendChild(remove);
+
+  wrapper.appendChild(main);
+  wrapper.appendChild(actions);
+  return wrapper;
+};
+
+const openAttachmentPreview = (title: string, content: string) => {
+  const overlay = document.createElement("div");
+  overlay.className = "dialog-overlay";
+  overlay.dataset.dialogOverlay = "1";
+
+  overlay.innerHTML = `
+    <div class="dialog attachment-dialog">
+      <div class="dialog__header">
+        <h3 class="dialog__title"></h3>
+      </div>
+      <div class="dialog__body">
+        <pre class="attachment-dialog__content"></pre>
+      </div>
+      <div class="dialog__footer">
+        <button class="dialog__button dialog__button--primary" data-attachment-close="1">Close</button>
+      </div>
+    </div>
+  `;
+
+  const titleEl = overlay.querySelector(".dialog__title") as HTMLElement | null;
+  if (titleEl) {
+    titleEl.textContent = title;
+  }
+  const pre = overlay.querySelector(".attachment-dialog__content") as HTMLElement | null;
+  if (pre) {
+    pre.textContent = content;
+  }
+
+  const cleanup = () => overlay.remove();
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) cleanup();
+  });
+  overlay.querySelector("[data-attachment-close]")?.addEventListener("click", cleanup);
+  window.addEventListener(
+    "keydown",
+    (event) => {
+      if (event.key === "Escape") cleanup();
+    },
+    { once: true }
+  );
+
+  document.body.appendChild(overlay);
 };
 
 const openSecureEditor = (html: string): Promise<string | null> => {
@@ -417,7 +561,7 @@ const setupLinkHandlers = (editor: any) => {
       event.preventDefault();
       event.stopPropagation();
       try {
-        await open(href);
+        await openShell(href);
       } catch (e) {
         logError("[note-link] open failed", e);
       }
@@ -426,7 +570,128 @@ const setupLinkHandlers = (editor: any) => {
   );
 };
 
-const createEditorConfig = (overrides: Record<string, unknown> = {}) => {
+const setupAttachmentHandlers = (editor: any) => {
+  if (!editor || !editor.editor) return;
+  if ((editor as any).__noteAttachmentSetup) return;
+  (editor as any).__noteAttachmentSetup = true;
+
+  editor.editor.addEventListener(
+    "click",
+    async (event: Event) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      const actionEl = target.closest<HTMLElement>("[data-attachment-action]");
+      if (!actionEl) return;
+      const wrapper = target.closest<HTMLElement>(".note-attachment");
+      if (!wrapper) return;
+      const idRaw = wrapper.dataset.attachmentId;
+      const name = wrapper.dataset.attachmentName || "attachment";
+      const mime = wrapper.dataset.attachmentMime || "";
+      if (!idRaw) return;
+      const id = Number(idRaw);
+      if (!Number.isFinite(id)) return;
+      const action = actionEl.dataset.attachmentAction;
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (action === "download") {
+        const dest = await saveDialog({ defaultPath: name });
+        if (!dest) return;
+        try {
+          await saveAttachmentAs(id, dest);
+        } catch (e) {
+          logError("[attachment] save failed", e);
+        }
+        return;
+      }
+
+      if (action === "open") {
+        if (!isTextAttachment(name, mime)) {
+          alert("Preview is available for text files only.");
+          return;
+        }
+        try {
+          const content = await readAttachmentText(id, 1024 * 1024);
+          openAttachmentPreview(name, content);
+        } catch (e) {
+          logError("[attachment] preview failed", e);
+        }
+        return;
+      }
+
+      if (action === "delete") {
+        const ok = await openConfirmDialog({
+          title: "Delete attachment",
+          message: "Remove this attachment from the note?",
+          confirmLabel: "Delete",
+          danger: true,
+        });
+        if (!ok) return;
+        let removed = false;
+        try {
+          await deleteAttachment(id);
+          removed = true;
+        } catch (e) {
+          logError("[attachment] delete failed", e);
+        }
+        if (removed) {
+          wrapper.remove();
+          editor.synchronizeValues();
+        }
+      }
+    },
+    true
+  );
+};
+
+const setupAttachmentDrop = (editor: any, getNoteId?: () => number | null) => {
+  if (!editor || !editor.editor) return;
+  if ((editor as any).__noteAttachmentDropSetup) return;
+  (editor as any).__noteAttachmentDropSetup = true;
+
+  const handleFiles = async (files: FileList, clientX: number, clientY: number) => {
+    const noteId = getNoteId?.();
+    if (!noteId) return;
+    if (editor.s?.setCursorByXy) {
+      editor.s.setCursorByXy(clientX, clientY);
+    }
+    for (const file of Array.from(files)) {
+      const path = (file as any).path as string | undefined;
+      if (!path) {
+        logError("[attachment] file path missing", file.name);
+        continue;
+      }
+      try {
+        const attachment = await importAttachment(noteId, path);
+        const node = buildAttachmentNode(editor, {
+          id: attachment.id,
+          filename: attachment.filename,
+          size: attachment.size,
+          mime: attachment.mime,
+        });
+        editor.s.insertNode(node);
+        editor.s.setCursorAfter(node);
+        editor.s.synchronizeValues();
+      } catch (e) {
+        logError("[attachment] import failed", e);
+      }
+    }
+  };
+
+  editor.editor.addEventListener("dragover", (event: DragEvent) => {
+    if (!event.dataTransfer?.files?.length) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  });
+
+  editor.editor.addEventListener("drop", (event: DragEvent) => {
+    if (!event.dataTransfer?.files?.length) return;
+    event.preventDefault();
+    handleFiles(event.dataTransfer.files, event.clientX, event.clientY);
+  });
+};
+
+const createEditorConfig = (overrides: Record<string, unknown> = {}, getNoteId?: () => number | null) => {
   return {
     readonly: false,
     toolbarAdaptive: false,
@@ -450,6 +715,7 @@ const createEditorConfig = (overrides: Record<string, unknown> = {}) => {
       "callout",
       "todo",
       "codeblock",
+      "attach",
       "encrypt",
       "|",
       "link",
@@ -468,6 +734,7 @@ const createEditorConfig = (overrides: Record<string, unknown> = {}) => {
       "callout",
       "todo",
       "codeblock",
+      "attach",
       "encrypt",
       "|",
       "link",
@@ -485,6 +752,7 @@ const createEditorConfig = (overrides: Record<string, unknown> = {}) => {
       "callout",
       "todo",
       "codeblock",
+      "attach",
       "encrypt",
       "|",
       "link",
@@ -501,6 +769,7 @@ const createEditorConfig = (overrides: Record<string, unknown> = {}) => {
       "callout",
       "todo",
       "codeblock",
+      "attach",
       "encrypt",
       "|",
       "undo",
@@ -641,6 +910,33 @@ const createEditorConfig = (overrides: Record<string, unknown> = {}) => {
           editor.s.setCursorIn(code);
           editor.s.synchronizeValues();
           applyHighlightToEditor(editor);
+        },
+      },
+      attach: {
+        tooltip: "Attach file",
+        text: "ATT",
+        exec: async (editor: any) => {
+          const noteId = getNoteId?.();
+          if (!noteId) return;
+          const selection = await openDialog({
+            multiple: false,
+            directory: false,
+          });
+          if (!selection || Array.isArray(selection)) return;
+          try {
+            const attachment = await importAttachment(noteId, selection);
+            const node = buildAttachmentNode(editor, {
+              id: attachment.id,
+              filename: attachment.filename,
+              size: attachment.size,
+              mime: attachment.mime,
+            });
+            editor.s.insertNode(node);
+            editor.s.setCursorAfter(node);
+            editor.s.synchronizeValues();
+          } catch (e) {
+            logError("[attachment] import failed", e);
+          }
         },
       },
       encrypt: {
@@ -857,7 +1153,7 @@ export const mountEditor = (root: HTMLElement, options: EditorOptions): EditorIn
   container.appendChild(editorWrapper);
   root.appendChild(container);
 
-  const editor = new Jodit(mountPoint, createEditorConfig());
+  const editor = new Jodit(mountPoint, createEditorConfig({}, options.getNoteId));
   editor.value = options.content || "";
 
   let isUpdating = false;
@@ -872,6 +1168,8 @@ export const mountEditor = (root: HTMLElement, options: EditorOptions): EditorIn
 
   setupCodeToolbarHandlers(editor);
   setupSecureHandlers(editor);
+  setupAttachmentHandlers(editor);
+  setupAttachmentDrop(editor, options.getNoteId);
   setupTodoHandlers(editor);
   setupLinkHandlers(editor);
   applyHighlightToEditor(editor);
@@ -945,15 +1243,18 @@ export const mountPreviewEditor = (root: HTMLElement): EditorInstance => {
 
   const editor = new Jodit(
     mountPoint,
-    createEditorConfig({
-      readonly: true,
-      toolbar: false,
-      statusbar: false,
-      buttons: [],
-      buttonsMD: [],
-      buttonsSM: [],
-      buttonsXS: [],
-    })
+    createEditorConfig(
+      {
+        readonly: true,
+        toolbar: false,
+        statusbar: false,
+        buttons: [],
+        buttonsMD: [],
+        buttonsSM: [],
+        buttonsXS: [],
+      },
+      undefined
+    )
   );
   editor.value = "";
 

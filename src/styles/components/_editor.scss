@@ -314,6 +314,78 @@
   background: #202020;
 }
 
+.notes-editor .jodit-wysiwyg .note-attachment {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border-radius: 4px;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  color: #374151;
+  font-size: 12px;
+  margin: 0 0 1em;
+}
+
+.notes-editor .jodit-wysiwyg .note-attachment__main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.notes-editor .jodit-wysiwyg .note-attachment__icon {
+  width: 16px;
+  height: 16px;
+  color: #6b7280;
+  flex-shrink: 0;
+}
+
+.notes-editor .jodit-wysiwyg .note-attachment__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.notes-editor .jodit-wysiwyg .note-attachment__name {
+  font-weight: 600;
+  color: #111827;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.notes-editor .jodit-wysiwyg .note-attachment__size {
+  color: #6b7280;
+  font-size: 11px;
+}
+
+.notes-editor .jodit-wysiwyg .note-attachment__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.notes-editor .jodit-wysiwyg .note-attachment__action {
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #374151;
+  font-size: 11px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.notes-editor .jodit-wysiwyg .note-attachment__action--danger {
+  color: #b91c1c;
+  border-color: #fca5a5;
+}
+
 .editor-host {
   position: relative;
 }

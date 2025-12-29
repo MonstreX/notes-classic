@@ -2,9 +2,10 @@
 
 mod db;
 
-use db::{Note, NoteCounts, NoteListItem, Notebook, OcrFileItem, OcrStats, SqliteRepository, Tag};
+use db::{Attachment, Note, NoteCounts, NoteListItem, Notebook, OcrFileItem, OcrStats, SqliteRepository, Tag};
 use serde_json::Value;
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use http::{Request, Response, StatusCode, Uri};
 use tauri::menu::{
@@ -325,7 +326,98 @@ async fn upsert_note(id: Option<i64>, title: String, content: String, notebookId
 #[tauri::command]
 async fn delete_note(id: i64, state: State<'_, AppState>) -> Result<(), String> {
     let repo = SqliteRepository { pool: state.pool.clone() };
-    repo.delete_note(id).await.map_err(|e| e.to_string())
+    repo.delete_note(id, &state.data_dir).await.map_err(|e| e.to_string())
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+async fn import_attachment(noteId: i64, sourcePath: String, state: State<'_, AppState>) -> Result<Attachment, String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    let source = PathBuf::from(&sourcePath);
+    let filename = source
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("attachment")
+        .to_string();
+    let meta = fs::metadata(&source).map_err(|e| e.to_string())?;
+    let size = meta.len() as i64;
+    let mime = mime_guess::from_path(&source)
+        .first_or_octet_stream()
+        .essence_str()
+        .to_string();
+    let id = repo
+        .create_attachment(noteId, &filename, &mime, size)
+        .await
+        .map_err(|e| e.to_string())?;
+    let rel_dir = PathBuf::from("files").join("attachments").join(id.to_string());
+    let dest_dir = state.data_dir.join(&rel_dir);
+    fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
+    let dest_path = dest_dir.join(&filename);
+    if let Err(e) = fs::copy(&source, &dest_path) {
+        let _ = repo.delete_attachment(id).await;
+        return Err(e.to_string());
+    }
+    let rel_path = rel_dir.join(&filename).to_string_lossy().replace('\\', "/");
+    repo.update_attachment_path(id, &rel_path)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(Attachment {
+        id,
+        note_id: noteId,
+        filename,
+        mime,
+        size,
+        local_path: rel_path,
+    })
+}
+
+#[tauri::command]
+async fn delete_attachment(id: i64, state: State<'_, AppState>) -> Result<(), String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    let path = repo.delete_attachment(id).await.map_err(|e| e.to_string())?;
+    if let Some(rel) = path {
+        let full_path = state.data_dir.join(rel);
+        if full_path.exists() {
+            let _ = fs::remove_file(&full_path);
+        }
+        if let Some(parent) = full_path.parent() {
+            let _ = fs::remove_dir(parent);
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn save_attachment_as(id: i64, dest_path: String, state: State<'_, AppState>) -> Result<(), String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    let attachment = repo.get_attachment(id).await.map_err(|e| e.to_string())?;
+    let Some(att) = attachment else {
+        return Err("Attachment not found".to_string());
+    };
+    if att.local_path.is_empty() {
+        return Err("Attachment file missing".to_string());
+    }
+    let source = state.data_dir.join(att.local_path);
+    fs::copy(&source, &dest_path).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn read_attachment_text(id: i64, max_bytes: i64, state: State<'_, AppState>) -> Result<String, String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    let attachment = repo.get_attachment(id).await.map_err(|e| e.to_string())?;
+    let Some(att) = attachment else {
+        return Err("Attachment not found".to_string());
+    };
+    if att.local_path.is_empty() {
+        return Err("Attachment file missing".to_string());
+    }
+    let source = state.data_dir.join(att.local_path);
+    let file = fs::File::open(&source).map_err(|e| e.to_string())?;
+    let mut buffer = Vec::new();
+    let limit = max_bytes.max(0) as usize;
+    file.take(limit as u64).read_to_end(&mut buffer).map_err(|e| e.to_string())?;
+    Ok(String::from_utf8_lossy(&buffer).to_string())
 }
 
 #[tauri::command]
@@ -504,6 +596,10 @@ fn main() {
             get_data_dir,
             upsert_note,
             delete_note,
+            import_attachment,
+            delete_attachment,
+            save_attachment_as,
+            read_attachment_text,
             get_ocr_pending_files,
             upsert_ocr_text,
             mark_ocr_failed,
