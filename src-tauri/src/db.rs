@@ -509,6 +509,14 @@ pub async fn init_db(data_dir: &Path) -> SqlitePool {
         .execute(&pool)
         .await
         .expect("Failed to enable foreign keys");
+    sqlx::query("PRAGMA journal_mode = WAL")
+        .execute(&pool)
+        .await
+        .expect("Failed to enable WAL mode");
+    sqlx::query("PRAGMA synchronous = NORMAL")
+        .execute(&pool)
+        .await
+        .expect("Failed to set synchronous mode");
     let version = ensure_schema_version(&pool)
         .await
         .expect("Failed to ensure schema_version");

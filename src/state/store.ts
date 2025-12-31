@@ -73,7 +73,13 @@ export const appStore = {
     notify();
   },
   update: (updater: (draft: AppState) => void) => {
-    const draft = { ...state };
+    const draft: AppState = {
+      ...state,
+      noteCounts: new Map(state.noteCounts),
+      selectedNoteIds: new Set(state.selectedNoteIds),
+      expandedNotebooks: new Set(state.expandedNotebooks),
+      expandedTags: new Set(state.expandedTags),
+    };
     updater(draft);
     state = draft;
     notify();

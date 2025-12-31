@@ -317,8 +317,6 @@ export const actions = {
     if (nextSelectedNoteId !== null && nextSelectedNoteId !== prevSelectedId) {
       await loadSelectedNote();
     }
-    document.querySelectorAll("[data-dialog-overlay], .context-menu").forEach((el) => el.remove());
-    document.body.style.cursor = "";
     fetchData();
   },
   restoreNote: async (id: number) => {
