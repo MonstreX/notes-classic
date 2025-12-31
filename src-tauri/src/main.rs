@@ -7,7 +7,9 @@ use serde_json::Value;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use sha2::{Digest, Sha256};
 use http::{Request, Response, StatusCode, Uri};
+use reqwest;
 use tauri::menu::{
     CheckMenuItem, Menu, MenuBuilder, MenuItem, MenuItemKind, PredefinedMenuItem, SubmenuBuilder,
 };
@@ -23,6 +25,67 @@ struct AppState {
     pool: sqlx::sqlite::SqlitePool,
     settings_dir: PathBuf,
     data_dir: PathBuf,
+}
+
+#[derive(serde::Serialize)]
+struct StoredNoteFile {
+    rel_path: String,
+    hash: String,
+    mime: String,
+}
+
+fn ext_from_filename(filename: &str) -> Option<String> {
+    Path::new(filename)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.trim().trim_start_matches('.').to_lowercase())
+        .filter(|ext| !ext.is_empty())
+}
+
+fn ext_from_mime(mime: &str) -> Option<String> {
+    mime_guess::get_mime_extensions_str(mime)
+        .and_then(|exts| exts.first().copied())
+        .map(|ext| ext.to_string())
+}
+
+fn filename_from_url(url: &str) -> Option<String> {
+    let trimmed = url.split('?').next().unwrap_or(url);
+    trimmed.rsplit('/').next().map(|s| s.to_string()).filter(|s| !s.is_empty())
+}
+
+fn store_note_bytes(data_dir: &Path, filename: &str, mime: &str, bytes: &[u8]) -> Result<StoredNoteFile, String> {
+    if bytes.is_empty() {
+        return Err("Empty file bytes".to_string());
+    }
+    let resolved_ext = ext_from_filename(filename)
+        .or_else(|| ext_from_mime(mime))
+        .unwrap_or_else(|| "bin".to_string());
+    let resolved_mime = if !mime.is_empty() {
+        mime.to_string()
+    } else {
+        mime_guess::from_ext(&resolved_ext)
+            .first_or_octet_stream()
+            .to_string()
+    };
+
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    let hash = format!("{:x}", hasher.finalize());
+    let rel_dir = PathBuf::from("files").join(&hash[0..2]);
+    let rel_file = format!("{}.{}", hash, resolved_ext);
+    let rel_path = rel_dir.join(&rel_file);
+    let full_dir = data_dir.join(&rel_dir);
+    fs::create_dir_all(&full_dir).map_err(|e| e.to_string())?;
+    let full_path = data_dir.join(&rel_path);
+    if !full_path.exists() {
+        fs::write(&full_path, bytes).map_err(|e| e.to_string())?;
+    }
+    let rel_display = PathBuf::from(&hash[0..2]).join(rel_file);
+    Ok(StoredNoteFile {
+        rel_path: rel_display.to_string_lossy().replace('\\', "/"),
+        hash,
+        mime: resolved_mime,
+    })
 }
 
 fn ensure_dir_writable(dir: &Path) -> Result<(), String> {
@@ -442,6 +505,31 @@ async fn import_attachment_bytes(
 }
 
 #[tauri::command]
+async fn store_note_file_bytes(
+    filename: String,
+    mime: String,
+    bytes: Vec<u8>,
+    state: State<'_, AppState>,
+) -> Result<StoredNoteFile, String> {
+    store_note_bytes(&state.data_dir, &filename, &mime, &bytes)
+}
+
+#[tauri::command]
+async fn download_note_file(url: String, state: State<'_, AppState>) -> Result<StoredNoteFile, String> {
+    let response = reqwest::get(&url).await.map_err(|e| e.to_string())?;
+    if !response.status().is_success() {
+        return Err(format!("Download failed: {}", response.status()));
+    }
+    let headers = response.headers().clone();
+    let bytes = response.bytes().await.map_err(|e| e.to_string())?;
+    let mime = headers
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    let filename = filename_from_url(&url).unwrap_or_else(|| "download".to_string());
+    store_note_bytes(&state.data_dir, &filename, mime, &bytes)
+}
+#[tauri::command]
 async fn delete_attachment(id: i64, state: State<'_, AppState>) -> Result<(), String> {
     let repo = SqliteRepository { pool: state.pool.clone() };
     let path = repo.delete_attachment(id).await.map_err(|e| e.to_string())?;
@@ -672,6 +760,8 @@ fn main() {
             restore_all_notes,
             import_attachment,
             import_attachment_bytes,
+            store_note_file_bytes,
+            download_note_file,
             delete_attachment,
             save_attachment_as,
             read_attachment_text,

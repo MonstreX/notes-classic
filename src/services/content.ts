@@ -41,6 +41,11 @@ const buildAssetUrl = async (relPath: string) => {
   return assetUrl;
 };
 
+export const toAssetUrl = async (relPath: string) => {
+  const normalized = relPath.replace(/^files\//i, "");
+  return buildAssetUrl(normalized);
+};
+
 export const toDisplayContent = async (raw: string) => {
   if (!raw) return raw;
   const normalized = ensureNotesScheme(raw);
