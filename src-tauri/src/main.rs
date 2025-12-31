@@ -20,6 +20,7 @@ const NOTES_VIEW_DETAILED: &str = "view_notes_detailed";
 const NOTES_VIEW_COMPACT: &str = "view_notes_compact";
 const SETTINGS_FILE_NAME: &str = "app.json";
 const FILE_IMPORT_EVERNOTE: &str = "file_import_evernote";
+const MAX_NOTE_FILE_BYTES: usize = 25 * 1024 * 1024;
 
 struct AppState {
     pool: sqlx::sqlite::SqlitePool,
@@ -56,6 +57,9 @@ fn filename_from_url(url: &str) -> Option<String> {
 fn store_note_bytes(data_dir: &Path, filename: &str, mime: &str, bytes: &[u8]) -> Result<StoredNoteFile, String> {
     if bytes.is_empty() {
         return Err("Empty file bytes".to_string());
+    }
+    if bytes.len() > MAX_NOTE_FILE_BYTES {
+        return Err("File exceeds maximum size".to_string());
     }
     let resolved_ext = ext_from_filename(filename)
         .or_else(|| ext_from_mime(mime))
@@ -516,12 +520,28 @@ async fn store_note_file_bytes(
 
 #[tauri::command]
 async fn download_note_file(url: String, state: State<'_, AppState>) -> Result<StoredNoteFile, String> {
-    let response = reqwest::get(&url).await.map_err(|e| e.to_string())?;
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let response = client.get(&url).send().await.map_err(|e| e.to_string())?;
     if !response.status().is_success() {
         return Err(format!("Download failed: {}", response.status()));
     }
     let headers = response.headers().clone();
+    if let Some(length) = headers
+        .get(reqwest::header::CONTENT_LENGTH)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<usize>().ok())
+    {
+        if length > MAX_NOTE_FILE_BYTES {
+            return Err("File exceeds maximum size".to_string());
+        }
+    }
     let bytes = response.bytes().await.map_err(|e| e.to_string())?;
+    if bytes.len() > MAX_NOTE_FILE_BYTES {
+        return Err("File exceeds maximum size".to_string());
+    }
     let mime = headers
         .get(reqwest::header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
@@ -710,6 +730,17 @@ fn main() {
             let pool = tauri::async_runtime::block_on(async {
                 db::init_db(&data_dir).await
             });
+            let pool = match pool {
+                Ok(pool) => pool,
+                Err(err) => {
+                    app_handle
+                        .dialog()
+                        .message(err.clone())
+                        .title("Storage Error")
+                        .show(|_| {});
+                    return Err(err.into());
+                }
+            };
             app.manage(AppState { pool, settings_dir, data_dir });
             let pool = app.state::<AppState>().pool.clone();
             let data_dir = app.state::<AppState>().data_dir.clone();

@@ -489,61 +489,68 @@ async fn migrate_to_v4(pool: &SqlitePool) -> Result<(), sqlx::Error> {
 }
 
 
-pub async fn init_db(data_dir: &Path) -> SqlitePool {
+pub async fn init_db(data_dir: &Path) -> Result<SqlitePool, String> {
     if !data_dir.exists() {
-        fs::create_dir_all(data_dir).expect("Could not create data directory");
+        fs::create_dir_all(data_dir).map_err(|e| e.to_string())?;
     }
     let ocr_dir = data_dir.join("ocr").join("tessdata");
     if !ocr_dir.exists() {
-        fs::create_dir_all(&ocr_dir).ok();
+        fs::create_dir_all(&ocr_dir).map_err(|e| e.to_string())?;
     }
 
     let db_path = data_dir.join("notes.db");
     if !db_path.exists() {
-        fs::File::create(&db_path).expect("Failed to create database file");
+        fs::File::create(&db_path).map_err(|e| e.to_string())?;
     }
 
-    let db_url = format!("sqlite:{}", db_path.to_str().expect("Path is not valid UTF-8"));
-    let pool = SqlitePool::connect(&db_url).await.expect("Failed to connect to SQLite");
+    let db_url = format!(
+        "sqlite:{}",
+        db_path
+            .to_str()
+            .ok_or_else(|| "Path is not valid UTF-8".to_string())?
+    );
+    let pool = SqlitePool::connect(&db_url)
+        .await
+        .map_err(|e| e.to_string())?;
     sqlx::query("PRAGMA foreign_keys = ON")
         .execute(&pool)
         .await
-        .expect("Failed to enable foreign keys");
+        .map_err(|e| e.to_string())?;
     sqlx::query("PRAGMA journal_mode = WAL")
         .execute(&pool)
         .await
-        .expect("Failed to enable WAL mode");
+        .map_err(|e| e.to_string())?;
     sqlx::query("PRAGMA synchronous = NORMAL")
         .execute(&pool)
         .await
-        .expect("Failed to set synchronous mode");
+        .map_err(|e| e.to_string())?;
     let version = ensure_schema_version(&pool)
         .await
-        .expect("Failed to ensure schema_version");
+        .map_err(|e| e.to_string())?;
     if version == 0 {
         create_schema_v3(&pool)
             .await
-            .expect("Failed to create schema v4");
+            .map_err(|e| e.to_string())?;
         set_schema_version(&pool, SCHEMA_VERSION)
             .await
-            .expect("Failed to set schema version");
+            .map_err(|e| e.to_string())?;
     } else if version < SCHEMA_VERSION {
         migrate_to_v4(&pool)
             .await
-            .expect("Failed to migrate schema");
+            .map_err(|e| e.to_string())?;
         set_schema_version(&pool, SCHEMA_VERSION)
             .await
-            .expect("Failed to set schema version");
+            .map_err(|e| e.to_string())?;
     }
     create_schema_v3(&pool)
         .await
-        .expect("Failed to ensure schema");
+        .map_err(|e| e.to_string())?;
 
     let mut structure_changed = false;
     let rows: Vec<(i64, Option<i64>)> = sqlx::query_as("SELECT id, parent_id FROM notebooks")
         .fetch_all(&pool)
         .await
-        .expect("Failed to read notebooks for normalization");
+        .map_err(|e| e.to_string())?;
     let mut parent_map = HashMap::new();
     for (id, parent_id) in &rows {
         parent_map.insert(*id, *parent_id);
@@ -562,14 +569,14 @@ pub async fn init_db(data_dir: &Path) -> SqlitePool {
                 .bind(id)
                 .execute(&pool)
                 .await
-                .expect("Failed to set stack type");
+                .map_err(|e| e.to_string())?;
         } else {
             sqlx::query("UPDATE notebooks SET notebook_type = 'notebook', parent_id = ? WHERE id = ?")
                 .bind(root_id)
                 .bind(id)
                 .execute(&pool)
                 .await
-                .expect("Failed to normalize notebook type");
+                .map_err(|e| e.to_string())?;
             if parent_id != Some(root_id) {
                 structure_changed = true;
             }
@@ -580,19 +587,19 @@ pub async fn init_db(data_dir: &Path) -> SqlitePool {
         let parents: Vec<(Option<i64>,)> = sqlx::query_as("SELECT DISTINCT parent_id FROM notebooks")
             .fetch_all(&pool)
             .await
-            .expect("Failed to read notebook parents");
+            .map_err(|e| e.to_string())?;
         for (parent_id,) in parents {
             let ids: Vec<(i64,)> = if let Some(pid) = parent_id {
                 sqlx::query_as("SELECT id FROM notebooks WHERE parent_id = ? ORDER BY name ASC, created_at ASC")
                     .bind(pid)
                     .fetch_all(&pool)
                     .await
-                    .expect("Failed to read notebooks")
+                    .map_err(|e| e.to_string())?
             } else {
                 sqlx::query_as("SELECT id FROM notebooks WHERE parent_id IS NULL ORDER BY name ASC, created_at ASC")
                     .fetch_all(&pool)
                     .await
-                    .expect("Failed to read notebooks")
+                    .map_err(|e| e.to_string())?
             };
             for (index, (id,)) in ids.iter().enumerate() {
                 sqlx::query("UPDATE notebooks SET sort_order = ? WHERE id = ?")
@@ -600,7 +607,7 @@ pub async fn init_db(data_dir: &Path) -> SqlitePool {
                     .bind(id)
                     .execute(&pool)
                     .await
-                    .expect("Failed to update sort_order");
+                    .map_err(|e| e.to_string())?;
             }
         }
     }
@@ -608,11 +615,11 @@ pub async fn init_db(data_dir: &Path) -> SqlitePool {
     let text_count: Option<(i64,)> = sqlx::query_as("SELECT COUNT(*) FROM notes_text")
         .fetch_optional(&pool)
         .await
-        .expect("Failed to read notes_text count");
+        .map_err(|e| e.to_string())?;
     let notes_count: Option<(i64,)> = sqlx::query_as("SELECT COUNT(*) FROM notes")
         .fetch_optional(&pool)
         .await
-        .expect("Failed to read notes count");
+        .map_err(|e| e.to_string())?;
     let needs_text = match (text_count, notes_count) {
         (Some((text,)), Some((notes,))) => text < notes,
         _ => true,
@@ -621,7 +628,7 @@ pub async fn init_db(data_dir: &Path) -> SqlitePool {
         let notes: Vec<(i64, String, String)> = sqlx::query_as("SELECT id, title, content FROM notes")
             .fetch_all(&pool)
             .await
-            .expect("Failed to read notes for text index");
+            .map_err(|e| e.to_string())?;
         for (id, title, content) in notes {
             let plain = strip_html(&content);
             sqlx::query(
@@ -634,11 +641,11 @@ pub async fn init_db(data_dir: &Path) -> SqlitePool {
             .bind(plain)
             .execute(&pool)
             .await
-            .expect("Failed to backfill notes_text");
+            .map_err(|e| e.to_string())?;
         }
     }
 
-    pool
+    Ok(pool)
 }
 
 pub struct SqliteRepository {

@@ -42,14 +42,18 @@ const scheduleAutosave = () => {
     const currentNote = state.activeNote;
     if (!currentNote || currentNote.id !== state.selectedNoteId) return;
     if (state.title !== currentNote.title || state.content !== currentNote.content) {
-      const storageContent = toStorageContent(state.content);
-      await updateNote(state.selectedNoteId, state.title, storageContent, currentNote.notebookId);
-      const updatedAt = Date.now() / 1000;
-      const excerpt = buildExcerpt(state.content);
-      appStore.setState({
-        activeNote: { ...currentNote, title: state.title, content: state.content, updatedAt },
-        notes: state.notes.map((n) => n.id === state.selectedNoteId ? { ...n, title: state.title, content: state.content, excerpt, updatedAt } : n),
-      });
+      try {
+        const storageContent = toStorageContent(state.content);
+        await updateNote(state.selectedNoteId, state.title, storageContent, currentNote.notebookId);
+        const updatedAt = Date.now() / 1000;
+        const excerpt = buildExcerpt(state.content);
+        appStore.setState({
+          activeNote: { ...currentNote, title: state.title, content: state.content, updatedAt },
+          notes: state.notes.map((n) => n.id === state.selectedNoteId ? { ...n, title: state.title, content: state.content, excerpt, updatedAt } : n),
+        });
+      } catch (err) {
+        logError("[autosave] failed", err);
+      }
     }
   }, 1000);
 };
