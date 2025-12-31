@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use sqlx::{sqlite::SqlitePool, FromRow};
 use regex::Regex;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
@@ -54,6 +54,27 @@ fn extract_note_files(content: &str) -> Vec<String> {
     }
     results.sort();
     results.dedup();
+    results
+}
+
+fn extract_attachment_ids(content: &str) -> HashSet<i64> {
+    let mut results = HashSet::new();
+    let re_double = Regex::new(r#"data-attachment-id="(\d+)""#).unwrap();
+    for caps in re_double.captures_iter(content) {
+        if let Some(value) = caps.get(1) {
+            if let Ok(id) = value.as_str().parse::<i64>() {
+                results.insert(id);
+            }
+        }
+    }
+    let re_single = Regex::new(r#"data-attachment-id='(\d+)'"#).unwrap();
+    for caps in re_single.captures_iter(content) {
+        if let Some(value) = caps.get(1) {
+            if let Ok(id) = value.as_str().parse::<i64>() {
+                results.insert(id);
+            }
+        }
+    }
     results
 }
 
@@ -705,6 +726,57 @@ impl SqliteRepository {
         Ok(mapped)
     }
 
+    async fn cleanup_orphan_note_files_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    ) -> Result<Vec<String>, sqlx::Error> {
+        let orphan_files: Vec<(i64, String)> = sqlx::query_as(
+            "SELECT f.id, f.file_path
+             FROM ocr_files f
+             LEFT JOIN note_files nf ON nf.file_id = f.id
+             WHERE nf.file_id IS NULL",
+        )
+        .fetch_all(&mut **tx)
+        .await?;
+        for (id, _) in &orphan_files {
+            sqlx::query("DELETE FROM ocr_files WHERE id = ?")
+                .bind(id)
+                .execute(&mut **tx)
+                .await?;
+        }
+        Ok(orphan_files.into_iter().map(|(_, path)| path).collect())
+    }
+
+    async fn cleanup_note_attachments_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        note_id: i64,
+        keep_ids: &HashSet<i64>,
+    ) -> Result<Vec<String>, sqlx::Error> {
+        let existing: Vec<(i64, Option<String>)> = sqlx::query_as(
+            "SELECT id, local_path FROM attachments WHERE note_id = ?",
+        )
+        .bind(note_id)
+        .fetch_all(&mut **tx)
+        .await?;
+        let mut removed = Vec::new();
+        for (id, path) in existing {
+            if keep_ids.contains(&id) {
+                continue;
+            }
+            sqlx::query("DELETE FROM attachments WHERE id = ?")
+                .bind(id)
+                .execute(&mut **tx)
+                .await?;
+            if let Some(path) = path {
+                if !path.is_empty() {
+                    removed.push(path);
+                }
+            }
+        }
+        Ok(removed)
+    }
+
     async fn sync_note_files(&self, note_id: i64, content: &str) -> Result<Vec<(i64, String)>, sqlx::Error> {
         let mut tx = self.pool.begin().await?;
         let mapped = self.sync_note_files_tx(&mut tx, note_id, content).await?;
@@ -954,7 +1026,7 @@ impl SqliteRepository {
     }
 
     pub async fn update_note(&self, id: i64, title: &str, content: &str, notebook_id: Option<i64>, data_dir: &Path) -> Result<(), sqlx::Error> {
-        let _ = data_dir;
+        let attachment_ids = extract_attachment_ids(content);
         let now = chrono::Utc::now().timestamp();
         let mut tx = self.pool.begin().await?;
         sqlx::query("UPDATE notes SET title = ?, content = ?, updated_at = ?, notebook_id = ? WHERE id = ?")
@@ -967,7 +1039,27 @@ impl SqliteRepository {
             .await?;
         self.upsert_note_text_tx(&mut tx, id, title, content).await?;
         let _ = self.sync_note_files_tx(&mut tx, id, content).await?;
+        let removed_attachments = self.cleanup_note_attachments_tx(&mut tx, id, &attachment_ids).await?;
+        let orphan_files = self.cleanup_orphan_note_files_tx(&mut tx).await?;
         tx.commit().await?;
+        for path in removed_attachments {
+            let full_path = data_dir.join(path);
+            if full_path.exists() {
+                let _ = fs::remove_file(&full_path);
+            }
+            if let Some(parent) = full_path.parent() {
+                let _ = fs::remove_dir(parent);
+            }
+        }
+        for rel in orphan_files {
+            let full_path = data_dir.join("files").join(&rel);
+            if full_path.exists() {
+                let _ = fs::remove_file(&full_path);
+            }
+            if let Some(parent) = full_path.parent() {
+                let _ = fs::remove_dir(parent);
+            }
+        }
         Ok(())
     }
 
@@ -1107,6 +1199,7 @@ impl SqliteRepository {
             .bind(id)
             .execute(&mut *tx)
             .await?;
+        let orphan_files = self.cleanup_orphan_note_files_tx(&mut tx).await?;
         tx.commit().await?;
         for (path_opt,) in attachment_paths {
             let Some(path) = path_opt else { continue };
@@ -1114,6 +1207,15 @@ impl SqliteRepository {
                 continue;
             }
             let full_path = data_dir.join(path);
+            if full_path.exists() {
+                let _ = fs::remove_file(&full_path);
+            }
+            if let Some(parent) = full_path.parent() {
+                let _ = fs::remove_dir(parent);
+            }
+        }
+        for rel in orphan_files {
+            let full_path = data_dir.join("files").join(&rel);
             if full_path.exists() {
                 let _ = fs::remove_file(&full_path);
             }
