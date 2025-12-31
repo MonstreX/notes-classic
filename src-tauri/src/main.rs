@@ -61,9 +61,14 @@ fn store_note_bytes(data_dir: &Path, filename: &str, mime: &str, bytes: &[u8]) -
     if bytes.len() > MAX_NOTE_FILE_BYTES {
         return Err("File exceeds maximum size".to_string());
     }
-    let resolved_ext = ext_from_filename(filename)
-        .or_else(|| ext_from_mime(mime))
-        .unwrap_or_else(|| "bin".to_string());
+    let filename_ext = ext_from_filename(filename);
+    let mime_ext = ext_from_mime(mime);
+    let resolved_ext = if mime.starts_with("image/") {
+        mime_ext.clone().or(filename_ext.clone())
+    } else {
+        filename_ext.clone().or(mime_ext.clone())
+    }
+    .unwrap_or_else(|| "bin".to_string());
     let resolved_mime = if !mime.is_empty() {
         mime.to_string()
     } else {
