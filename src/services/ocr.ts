@@ -17,6 +17,7 @@ const OCR_LANG = OCR_LANGS.join("+");
 const BATCH_SIZE = 2;
 const IDLE_DELAY_MS = 30000;
 const RETRY_DELAY_MS = 5000;
+const OCR_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp"]);
 
 let dataDirPromise: Promise<string> | null = null;
 
@@ -28,6 +29,13 @@ const getDataDir = async () => {
 };
 
 const normalizePath = (value: string) => value.replace(/\\/g, "/").replace(/\/+$/, "");
+const getExtension = (value: string) => {
+  const cleaned = value.split("?")[0].split("#")[0];
+  const part = cleaned.split("/").pop() || "";
+  const idx = part.lastIndexOf(".");
+  if (idx === -1) return "";
+  return part.slice(idx + 1).toLowerCase();
+};
 
 const getLangPath = async () => {
   const base = normalizePath(await getDataDir());
@@ -145,6 +153,11 @@ export const startOcrQueue = () => {
       const workerInstance = await getWorker();
       for (const file of files) {
         if (cancelled) return;
+        const ext = getExtension(file.filePath);
+        if (!OCR_EXTENSIONS.has(ext)) {
+          await markOcrFailed(file.fileId, "unsupported");
+          continue;
+        }
         const url = await getFileUrl(file.filePath);
         const response = await fetch(url);
         if (!response.ok) {
