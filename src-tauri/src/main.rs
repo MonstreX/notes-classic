@@ -8,6 +8,8 @@ use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use sha2::{Digest, Sha256};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 use http::{Request, Response, StatusCode, Uri};
 use reqwest;
 use tauri::menu::{
@@ -21,6 +23,7 @@ const NOTES_VIEW_COMPACT: &str = "view_notes_compact";
 const SETTINGS_FILE_NAME: &str = "app.json";
 const FILE_IMPORT_EVERNOTE: &str = "file_import_evernote";
 const MAX_NOTE_FILE_BYTES: usize = 25 * 1024 * 1024;
+static NOTE_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 struct AppState {
     pool: sqlx::sqlite::SqlitePool,
@@ -79,20 +82,28 @@ fn store_note_bytes(data_dir: &Path, filename: &str, mime: &str, bytes: &[u8]) -
 
     let mut hasher = Sha256::new();
     hasher.update(bytes);
-    let hash = format!("{:x}", hasher.finalize());
-    let rel_dir = PathBuf::from("files").join(&hash[0..2]);
-    let rel_file = format!("{}.{}", hash, resolved_ext);
+    let content_hash = format!("{:x}", hasher.finalize());
+    let nonce = NOTE_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_nanos();
+    let mut name_hasher = Sha256::new();
+    name_hasher.update(bytes);
+    name_hasher.update(nanos.to_string().as_bytes());
+    name_hasher.update(nonce.to_string().as_bytes());
+    let unique_hash = format!("{:x}", name_hasher.finalize());
+    let rel_dir = PathBuf::from("files").join(&unique_hash[0..2]);
+    let rel_file = format!("{}.{}", unique_hash, resolved_ext);
     let rel_path = rel_dir.join(&rel_file);
     let full_dir = data_dir.join(&rel_dir);
     fs::create_dir_all(&full_dir).map_err(|e| e.to_string())?;
     let full_path = data_dir.join(&rel_path);
-    if !full_path.exists() {
-        fs::write(&full_path, bytes).map_err(|e| e.to_string())?;
-    }
-    let rel_display = PathBuf::from(&hash[0..2]).join(rel_file);
+    fs::write(&full_path, bytes).map_err(|e| e.to_string())?;
+    let rel_display = PathBuf::from(&unique_hash[0..2]).join(rel_file);
     Ok(StoredNoteFile {
         rel_path: rel_display.to_string_lossy().replace('\\', "/"),
-        hash,
+        hash: content_hash,
         mime: resolved_mime,
     })
 }
