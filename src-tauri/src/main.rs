@@ -660,6 +660,29 @@ async fn read_attachment_text(id: i64, max_bytes: i64, state: State<'_, AppState
 }
 
 #[tauri::command]
+async fn read_attachment_bytes(id: i64, state: State<'_, AppState>) -> Result<Vec<u8>, String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    let attachment = repo.get_attachment(id).await.map_err(|e| e.to_string())?;
+    let Some(att) = attachment else {
+        return Err("Attachment not found".to_string());
+    };
+    if att.local_path.is_empty() {
+        return Err("Attachment file missing".to_string());
+    }
+    let source = state.data_dir.join(att.local_path);
+    fs::read(&source).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn save_bytes_as(dest_path: String, bytes: Vec<u8>) -> Result<(), String> {
+    let path = PathBuf::from(dest_path);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    fs::write(path, bytes).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn get_ocr_pending_files(limit: Option<i64>, state: State<'_, AppState>) -> Result<Vec<OcrFileItem>, String> {
     let repo = SqliteRepository { pool: state.pool.clone() };
     let limit = limit.unwrap_or(5).max(1);
@@ -946,6 +969,8 @@ fn main() {
             delete_attachment,
             save_attachment_as,
             read_attachment_text,
+            read_attachment_bytes,
+            save_bytes_as,
             get_ocr_pending_files,
             upsert_ocr_text,
             mark_ocr_failed,

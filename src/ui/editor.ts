@@ -36,9 +36,17 @@ import { logError } from "../services/logger";
 import { decryptHtml, encryptHtml } from "../services/crypto";
 import { openConfirmDialog, openPasswordDialog } from "./dialogs";
 import { createIcon } from "./icons";
-import { importAttachment, importAttachmentBytes, deleteAttachment, readAttachmentText, saveAttachmentAs } from "../services/attachments";
+import {
+  importAttachment,
+  importAttachmentBytes,
+  deleteAttachment,
+  readAttachmentBytes,
+  readAttachmentText,
+  saveAttachmentAs,
+  saveBytesAs,
+} from "../services/attachments";
 import { downloadNoteFile, storeNoteFileBytes, storeNoteFileFromPath } from "../services/noteFiles";
-import { toAssetUrl } from "../services/content";
+import { toAssetUrl, toStorageContent } from "../services/content";
 
 hljs.registerLanguage("javascript", javascript);
 hljs.registerLanguage("js", javascript);
@@ -223,6 +231,40 @@ const dataUrlToBytes = (dataUrl: string) => {
   return { mime, bytes };
 };
 
+const bytesToBase64 = (bytes: Uint8Array) => {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+};
+
+const base64ToBytes = (base64: string) => {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+};
+
+const blobToDataUrl = (blob: Blob) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Failed to read blob"));
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.readAsDataURL(blob);
+  });
+
+const fetchImageDataUrl = async (url: string) => {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch image (${response.status})`);
+  }
+  const blob = await response.blob();
+  return blobToDataUrl(blob);
+};
+
 const shouldConvertImageSrc = (src: string) => {
   if (!src) return false;
   if (src.startsWith("notes-file://")) return false;
@@ -265,6 +307,110 @@ const isImageFile = (name: string, mime: string) => {
   return [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg", ".jfif"].some((ext) =>
     lower.endsWith(ext)
   );
+};
+
+const buildEmbeddedAttachmentElement = (
+  doc: Document,
+  payload: { name: string; size: number; mime: string; data: string }
+) => {
+  const wrapper = doc.createElement("div");
+  wrapper.className = "note-attachment note-attachment--embedded";
+  wrapper.setAttribute("data-attachment-embedded", "1");
+  wrapper.setAttribute("data-attachment-name", payload.name);
+  wrapper.setAttribute("data-attachment-size", String(payload.size));
+  wrapper.setAttribute("data-attachment-mime", payload.mime);
+  wrapper.setAttribute("data-attachment-data", payload.data);
+  wrapper.setAttribute("contenteditable", "false");
+
+  const main = doc.createElement("div");
+  main.className = "note-attachment__main";
+  const icon = createIcon("icon-attach", "note-attachment__icon");
+  const meta = doc.createElement("div");
+  meta.className = "note-attachment__meta";
+  const name = doc.createElement("span");
+  name.className = "note-attachment__name";
+  name.textContent = payload.name;
+  const size = doc.createElement("span");
+  size.className = "note-attachment__size";
+  size.textContent = formatBytes(payload.size);
+  meta.appendChild(name);
+  meta.appendChild(size);
+  main.appendChild(icon);
+  main.appendChild(meta);
+
+  const actions = doc.createElement("div");
+  actions.className = "note-attachment__actions";
+  actions.setAttribute("contenteditable", "false");
+
+  const download = doc.createElement("button");
+  download.className = "note-attachment__action";
+  download.setAttribute("data-attachment-action", "download");
+  download.type = "button";
+  download.textContent = "Download";
+
+  const openBtn = doc.createElement("button");
+  openBtn.className = "note-attachment__action";
+  openBtn.setAttribute("data-attachment-action", "open");
+  openBtn.type = "button";
+  openBtn.textContent = "View";
+  if (!isTextAttachment(payload.name, payload.mime)) {
+    openBtn.classList.add("is-hidden");
+  }
+
+  actions.appendChild(download);
+  actions.appendChild(openBtn);
+
+  wrapper.appendChild(main);
+  wrapper.appendChild(actions);
+  return wrapper;
+};
+
+const inlineSecureResources = async (raw: string) => {
+  const normalized = toStorageContent(raw);
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = normalized;
+  wrapper.querySelectorAll("[data-jodit-selection_marker]").forEach((el) => el.remove());
+
+  const images = Array.from(wrapper.querySelectorAll("img"));
+  for (const img of images) {
+    const src = img.getAttribute("src") || "";
+    if (!src || src.startsWith("data:")) continue;
+    try {
+      let fetchUrl = src;
+      if (src.startsWith("files/")) {
+        fetchUrl = await toAssetUrl(src);
+      }
+      const dataUrl = await fetchImageDataUrl(fetchUrl);
+      img.setAttribute("src", dataUrl);
+      img.removeAttribute("data-en-hash");
+    } catch (e) {
+      logError("[note-secure] inline image failed", e);
+    }
+  }
+
+  const attachments = Array.from(wrapper.querySelectorAll<HTMLElement>(".note-attachment"));
+  for (const attachment of attachments) {
+    if (attachment.dataset.attachmentEmbedded === "1") continue;
+    const idRaw = attachment.dataset.attachmentId;
+    if (!idRaw) continue;
+    const name = attachment.dataset.attachmentName || "attachment";
+    const mime = attachment.dataset.attachmentMime || "application/octet-stream";
+    try {
+      const bytes = await readAttachmentBytes(Number(idRaw));
+      const payload = {
+        name,
+        mime,
+        size: bytes.length,
+        data: bytesToBase64(bytes),
+      };
+      const embedded = buildEmbeddedAttachmentElement(wrapper.ownerDocument || document, payload);
+      attachment.replaceWith(embedded);
+    } catch (e) {
+      logError("[note-secure] inline attachment failed", e);
+    }
+  }
+
+  return wrapper.innerHTML;
 };
 
 const isRangeAtStart = (callout: HTMLElement, range: Range) => {
@@ -452,6 +598,68 @@ const buildAttachmentNode = (
   return wrapper;
 };
 
+const buildAttachmentElement = (
+  doc: Document,
+  attachment: { id: number; filename: string; size: number; mime: string }
+) => {
+  const wrapper = doc.createElement("div");
+  wrapper.className = "note-attachment";
+  wrapper.setAttribute("data-attachment-id", String(attachment.id));
+  wrapper.setAttribute("data-attachment-name", attachment.filename);
+  wrapper.setAttribute("data-attachment-size", String(attachment.size));
+  wrapper.setAttribute("data-attachment-mime", attachment.mime);
+  wrapper.setAttribute("contenteditable", "false");
+
+  const main = doc.createElement("div");
+  main.className = "note-attachment__main";
+  const icon = createIcon("icon-attach", "note-attachment__icon");
+  const meta = doc.createElement("div");
+  meta.className = "note-attachment__meta";
+  const name = doc.createElement("span");
+  name.className = "note-attachment__name";
+  name.textContent = attachment.filename;
+  const size = doc.createElement("span");
+  size.className = "note-attachment__size";
+  size.textContent = formatBytes(attachment.size);
+  meta.appendChild(name);
+  meta.appendChild(size);
+  main.appendChild(icon);
+  main.appendChild(meta);
+
+  const actions = doc.createElement("div");
+  actions.className = "note-attachment__actions";
+  actions.setAttribute("contenteditable", "false");
+
+  const download = doc.createElement("button");
+  download.className = "note-attachment__action";
+  download.setAttribute("data-attachment-action", "download");
+  download.type = "button";
+  download.textContent = "Download";
+
+  const openBtn = doc.createElement("button");
+  openBtn.className = "note-attachment__action";
+  openBtn.setAttribute("data-attachment-action", "open");
+  openBtn.type = "button";
+  openBtn.textContent = "View";
+  if (!isTextAttachment(attachment.filename, attachment.mime)) {
+    openBtn.classList.add("is-hidden");
+  }
+
+  const remove = doc.createElement("button");
+  remove.className = "note-attachment__action note-attachment__action--danger";
+  remove.setAttribute("data-attachment-action", "delete");
+  remove.type = "button";
+  remove.textContent = "Delete";
+
+  actions.appendChild(download);
+  actions.appendChild(openBtn);
+  actions.appendChild(remove);
+
+  wrapper.appendChild(main);
+  wrapper.appendChild(actions);
+  return wrapper;
+};
+
 const openAttachmentPreview = (title: string, content: string) => {
   const overlay = document.createElement("div");
   overlay.className = "dialog-overlay";
@@ -496,7 +704,7 @@ const openAttachmentPreview = (title: string, content: string) => {
   document.body.appendChild(overlay);
 };
 
-const openSecureEditor = (html: string): Promise<string | null> => {
+const openSecureEditor = (html: string): Promise<void> => {
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
     overlay.className = "dialog-overlay";
@@ -510,13 +718,12 @@ const openSecureEditor = (html: string): Promise<string | null> => {
         <div class="dialog__body">
           <div class="secure-dialog__content">
             <div class="notes-editor notes-editor--preview">
-              <div class="jodit-wysiwyg" contenteditable="true"></div>
+              <div class="jodit-wysiwyg" contenteditable="false"></div>
             </div>
           </div>
         </div>
         <div class="dialog__footer">
-          <button class="dialog__button dialog__button--ghost" data-secure-cancel="1">Cancel</button>
-          <button class="dialog__button dialog__button--primary" data-secure-save="1">Save</button>
+          <button class="dialog__button dialog__button--primary" data-secure-close="1">Close</button>
         </div>
       </div>
     `;
@@ -524,29 +731,147 @@ const openSecureEditor = (html: string): Promise<string | null> => {
     const content = overlay.querySelector(".secure-dialog__content .jodit-wysiwyg") as HTMLElement | null;
     if (content) {
       content.innerHTML = html;
+      content.querySelectorAll(".note-attachment[data-attachment-embedded='1'] [data-attachment-action='delete']").forEach((el) => el.remove());
       content.focus();
     }
 
-    const cleanup = (result: string | null) => {
+    const onAttachmentAction = async (event: Event) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      const actionEl = target.closest<HTMLElement>("[data-attachment-action]");
+      if (!actionEl) return;
+      const wrapper = target.closest<HTMLElement>(".note-attachment");
+      if (!wrapper || wrapper.dataset.attachmentEmbedded !== "1") return;
+      event.preventDefault();
+      event.stopPropagation();
+
+      const name = wrapper.dataset.attachmentName || "attachment";
+      const mime = wrapper.dataset.attachmentMime || "application/octet-stream";
+      const data = wrapper.dataset.attachmentData || "";
+      const bytes = base64ToBytes(data);
+      const action = actionEl.dataset.attachmentAction;
+
+      if (action === "download") {
+        const dest = await saveDialog({ defaultPath: name });
+        if (!dest) return;
+        try {
+          await saveBytesAs(dest, bytes);
+        } catch (e) {
+          logError("[note-secure] download failed", e);
+        }
+        return;
+      }
+
+      if (action === "open") {
+        if (!isTextAttachment(name, mime)) return;
+        try {
+          const text = new TextDecoder().decode(bytes);
+          openAttachmentPreview(name, text);
+        } catch (e) {
+          logError("[note-secure] preview failed", e);
+        }
+        return;
+      }
+
+      if (action === "delete") {
+        wrapper.remove();
+      }
+    };
+
+    content?.addEventListener("click", onAttachmentAction, true);
+
+    const cleanup = () => {
+      content?.removeEventListener("click", onAttachmentAction, true);
       overlay.remove();
-      resolve(result);
+      resolve();
     };
 
     overlay.addEventListener("click", (event) => {
-      if (event.target === overlay) cleanup(null);
+      if (event.target === overlay) cleanup();
     });
-    overlay.querySelector("[data-secure-cancel]")?.addEventListener("click", () => cleanup(null));
-    overlay.querySelector("[data-secure-save]")?.addEventListener("click", () => cleanup(content?.innerHTML ?? ""));
+    overlay.querySelector("[data-secure-close]")?.addEventListener("click", cleanup);
     window.addEventListener(
       "keydown",
       (event) => {
-        if (event.key === "Escape") cleanup(null);
+        if (event.key === "Escape") cleanup();
       },
       { once: true }
     );
 
     document.body.appendChild(overlay);
   });
+};
+
+const restoreSecureResources = async (raw: string, noteId: number) => {
+  const normalized = toStorageContent(raw);
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = normalized;
+  wrapper.querySelectorAll("[data-jodit-selection_marker]").forEach((el) => el.remove());
+
+  const images = Array.from(wrapper.querySelectorAll("img"));
+  for (const img of images) {
+    const src = img.getAttribute("src") || "";
+    if (!src) continue;
+    if (src.startsWith("data:")) {
+      const { mime, bytes } = dataUrlToBytes(src);
+      try {
+        const stored = await storeNoteFileBytes(`image.${extensionFromMime(mime)}`, mime, bytes);
+        const assetUrl = await toAssetUrl(stored.rel_path);
+        img.setAttribute("src", assetUrl);
+        img.setAttribute("data-en-hash", stored.hash);
+      } catch (e) {
+        logError("[note-secure] restore image failed", e);
+      }
+      continue;
+    }
+    if (src.startsWith("files/")) {
+      try {
+        const assetUrl = await toAssetUrl(src);
+        img.setAttribute("src", assetUrl);
+      } catch (e) {
+        logError("[note-secure] restore image failed", e);
+      }
+      continue;
+    }
+    try {
+      const dataUrl = await fetchImageDataUrl(src);
+      const { mime, bytes } = dataUrlToBytes(dataUrl);
+      const stored = await storeNoteFileBytes(`image.${extensionFromMime(mime)}`, mime, bytes);
+      const assetUrl = await toAssetUrl(stored.rel_path);
+      img.setAttribute("src", assetUrl);
+      img.setAttribute("data-en-hash", stored.hash);
+    } catch (e) {
+      logError("[note-secure] restore image failed", e);
+    }
+  }
+
+  const attachments = Array.from(wrapper.querySelectorAll<HTMLElement>(".note-attachment"));
+  for (const attachment of attachments) {
+    if (attachment.dataset.attachmentEmbedded !== "1") continue;
+    const name = attachment.getAttribute("data-attachment-name") || "attachment";
+    const mime = attachment.getAttribute("data-attachment-mime") || "application/octet-stream";
+    const data = attachment.getAttribute("data-attachment-data") || "";
+    if (!data) continue;
+    try {
+      const bytes = base64ToBytes(data);
+      const info = await importAttachmentBytes(noteId, name, mime, bytes);
+      const node = buildAttachmentElement(wrapper.ownerDocument || document, {
+        id: info.id,
+        filename: info.filename,
+        size: info.size,
+        mime: info.mime,
+      });
+      attachment.replaceWith(node);
+    } catch (e) {
+      logError("[note-secure] restore attachment failed", e);
+    }
+  }
+
+  return wrapper.innerHTML;
+};
+
+const removeSelectionMarkers = (root: ParentNode) => {
+  root.querySelectorAll("[data-jodit-selection_marker]").forEach((el) => el.remove());
 };
 
 const setupCodeToolbarHandlers = (editor: any) => {
@@ -608,6 +933,80 @@ const setupSecureHandlers = (editor: any) => {
   if ((editor as any).__noteSecureSetup) return;
   (editor as any).__noteSecureSetup = true;
 
+  const closeMenu = () => {
+    const existing = document.querySelector(".context-menu[data-secure-menu='1']");
+    if (existing) existing.remove();
+  };
+
+  const showSecureMenu = (event: MouseEvent, block: HTMLElement) => {
+    event.preventDefault();
+    event.stopPropagation();
+    closeMenu();
+    const menu = document.createElement("div");
+    menu.className = "context-menu";
+    menu.dataset.secureMenu = "1";
+    const item = document.createElement("div");
+    item.className = "context-menu-item";
+    item.textContent = "Remove encryption";
+    menu.appendChild(item);
+    document.body.appendChild(menu);
+    menu.style.position = "fixed";
+    menu.style.left = `${event.clientX}px`;
+    menu.style.top = `${event.clientY}px`;
+    menu.style.zIndex = "9999";
+
+    const cleanup = () => closeMenu();
+    const onOutside = (ev: Event) => {
+      if (!(ev.target as HTMLElement | null)?.closest(".context-menu")) {
+        cleanup();
+      }
+    };
+    document.addEventListener("click", onOutside, true);
+    document.addEventListener("contextmenu", onOutside, true);
+
+    item.addEventListener("click", async () => {
+      cleanup();
+      const cipher = block.getAttribute("data-cipher");
+      const salt = block.getAttribute("data-salt");
+      const iv = block.getAttribute("data-iv");
+      const iterRaw = block.getAttribute("data-iter");
+      if (!cipher || !salt || !iv || !iterRaw) return;
+      const noteId = editor?.__noteIdProvider?.() ?? null;
+      if (!noteId) return;
+      const password = await openPasswordDialog({
+        title: "Unlock content",
+        message: "Enter password",
+        confirmLabel: "Unlock",
+        cancelLabel: "Cancel",
+      });
+      if (!password) return;
+      try {
+        const html = await decryptHtml(
+          {
+            cipher,
+            salt,
+            iv,
+            iterations: Number(iterRaw),
+          },
+          password
+        );
+        const restored = await restoreSecureResources(html, Number(noteId));
+        const container = document.createElement("div");
+        container.innerHTML = restored;
+        const parent = block.parentNode;
+        if (!parent) return;
+        while (container.firstChild) {
+          parent.insertBefore(container.firstChild, block);
+        }
+        removeSelectionMarkers(parent);
+        block.remove();
+        editor.synchronizeValues();
+      } catch (e) {
+        logError("[note-secure] restore failed", e);
+      }
+    });
+  };
+
   editor.editor.addEventListener(
     "click",
     async (event: Event) => {
@@ -639,18 +1038,24 @@ const setupSecureHandlers = (editor: any) => {
           },
           password
         );
-        const updated = await openSecureEditor(html);
-        if (updated === null) return;
-        const payload = await encryptHtml(updated, password);
-        block.setAttribute("data-iter", String(payload.iterations));
-        block.setAttribute("data-salt", payload.salt);
-        block.setAttribute("data-iv", payload.iv);
-        block.setAttribute("data-cipher", payload.cipher);
-        editor.synchronizeValues();
+        const preparedHtml = await inlineSecureResources(html);
+        await openSecureEditor(preparedHtml);
       } catch (e) {
         logError("[note-secure] decrypt failed", e);
         alert("Invalid password or corrupted content.");
       }
+    },
+    true
+  );
+
+  editor.editor.addEventListener(
+    "contextmenu",
+    (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      const block = target.closest(".note-secure") as HTMLElement | null;
+      if (!block) return;
+      showSecureMenu(event, block);
     },
     true
   );
@@ -1416,7 +1821,8 @@ const createEditorConfig = (overrides: Record<string, unknown> = {}, getNoteId?:
           if (!password) return;
 
           try {
-            const payload = await encryptHtml(html, password);
+            const prepared = await inlineSecureResources(html);
+            const payload = await encryptHtml(prepared, password);
             const secureNode = buildSecureNode(editor, payload);
             const selection = editor.s?.sel;
             if (selection) {
@@ -1596,6 +2002,7 @@ export const mountEditor = (root: HTMLElement, options: EditorOptions): EditorIn
   root.appendChild(container);
 
   const editor = new Jodit(mountPoint, createEditorConfig({}, options.getNoteId));
+  (editor as any).__noteIdProvider = options.getNoteId;
   editor.value = options.content || "";
 
   let isUpdating = false;

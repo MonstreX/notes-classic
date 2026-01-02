@@ -32,3 +32,11 @@ export const saveAttachmentAs = (id: number, destPath: string) =>
 
 export const readAttachmentText = (id: number, maxBytes: number) =>
   invoke<string>("read_attachment_text", { id, maxBytes });
+
+export const readAttachmentBytes = async (id: number) => {
+  const bytes = await invoke<number[]>("read_attachment_bytes", { id });
+  return new Uint8Array(bytes);
+};
+
+export const saveBytesAs = (destPath: string, bytes: Uint8Array) =>
+  invoke("save_bytes_as", { destPath, bytes: Array.from(bytes) });
