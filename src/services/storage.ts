@@ -17,6 +17,7 @@ export type StorageInfo = {
   notebooksCount: number;
   lastNoteAt: number | null;
   lastNoteTitle: string | null;
+  valid: boolean;
 };
 
 export const getDefaultStoragePath = () =>

@@ -27,6 +27,10 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
 
   overlay.innerHTML = `
     <div class="settings-modal__panel">
+      <div class="settings-modal__loading" data-settings-loading>
+        <div class="settings-modal__spinner"></div>
+        <div class="settings-modal__loading-text">Applying...</div>
+      </div>
       <div class="settings-modal__header">
         <h3 class="settings-modal__title">Settings</h3>
         <button class="settings-modal__close" type="button" aria-label="Close">
@@ -88,6 +92,7 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
   const storageStatus = overlay.querySelector<HTMLElement>("[data-settings-storage-status]");
   const applyBtn = overlay.querySelector<HTMLButtonElement>("[data-settings-apply]");
   const closeFooterBtn = overlay.querySelector<HTMLButtonElement>("[data-settings-close]");
+  const loadingOverlay = overlay.querySelector<HTMLElement>("[data-settings-loading]");
 
   let draftDeleteToTrash = false;
   let draftStorageMode: "default" | "custom" = "default";
@@ -110,6 +115,11 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
     if (!storageStatus) return;
     storageStatus.textContent = message;
     storageStatus.className = `settings-row__status is-${tone}`;
+  };
+
+  const setLoading = (value: boolean) => {
+    if (!loadingOverlay) return;
+    loadingOverlay.style.display = value ? "flex" : "none";
   };
 
   const refreshStoragePath = async () => {
@@ -155,11 +165,13 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
     lastNoteAt: number | null;
     lastNoteTitle: string | null;
     path: string;
+    valid: boolean;
   }) =>
     new Promise<"cancel" | "use" | "replace">((resolve) => {
       const dialog = document.createElement("div");
       dialog.className = "dialog-overlay";
       dialog.dataset.dialogOverlay = "1";
+      const warning = info.valid ? "" : `<p class="storage-dialog__warning">This storage looks incompatible or corrupted. Use with caution.</p>`;
       dialog.innerHTML = `
         <div class="dialog storage-dialog">
           <div class="dialog__header">
@@ -167,6 +179,7 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
           </div>
           <div class="dialog__body">
             <p>This folder already contains notes data.</p>
+            ${warning}
             <div class="storage-dialog__meta">
               <div><strong>Path:</strong> ${info.path}</div>
               <div><strong>Notes:</strong> ${info.notesCount}</div>
@@ -174,6 +187,7 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
               <div><strong>Last note:</strong> ${formatTimestamp(info.lastNoteAt)}</div>
               <div><strong>Last note title:</strong> ${info.lastNoteTitle || "Unknown"}</div>
             </div>
+            <p class="storage-dialog__hint">Replace will overwrite notes.db, files, and ocr folders only.</p>
           </div>
           <div class="dialog__footer">
             <button class="dialog__button dialog__button--ghost" data-storage-cancel="1">Cancel</button>
@@ -236,7 +250,7 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
     try {
       const info = await getStorageInfo(selected);
       if (info.hasData) {
-        const choice = await openStorageConflictDialog({ ...info, path: selected });
+        const choice = await openStorageConflictDialog({ ...info, path: selected, valid: info.valid });
         if (choice === "cancel") return;
         draftStorageMode = "custom";
         draftStoragePath = selected;
@@ -276,7 +290,7 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
           applyDefault();
           return;
         }
-        const choice = await openStorageConflictDialog({ ...info, path: defaultStoragePath });
+        const choice = await openStorageConflictDialog({ ...info, path: defaultStoragePath, valid: info.valid });
         if (choice === "cancel") return;
         draftStorageMode = "default";
         draftStoragePath = "";
@@ -293,6 +307,7 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
 
   applyBtn?.addEventListener("click", async () => {
     setStorageStatus("", "muted");
+    setLoading(true);
     appStore.setState({ deleteToTrash: draftDeleteToTrash });
     const storageChanged =
       draftStorageMode !== initialStorageMode ||
@@ -313,25 +328,25 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
             await setStorageDefaultExisting();
           } else if (draftStorageAction === "replace") {
             await setStorageDefaultReplace();
-        } else {
-          if (draftStorageAction === "use") {
-            await setStorageDefaultExisting();
-          } else if (draftStorageAction === "replace") {
-            await setStorageDefaultReplace();
           } else {
             await setStorageDefault();
           }
-        }
         }
         initialStorageMode = draftStorageMode;
         initialStoragePath = draftStoragePath;
         initialStorageAction = draftStorageAction;
         setStorageStatus("Storage updated. Restart required.", "ok");
+        setLoading(false);
+        closeModal();
+        return;
       } catch (e) {
         logError("[settings] storage update failed", e);
         setStorageStatus("Failed to update storage location.", "error");
+        setLoading(false);
+        return;
       }
     }
+    setLoading(false);
     closeModal();
   });
 

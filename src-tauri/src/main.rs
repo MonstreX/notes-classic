@@ -46,6 +46,7 @@ struct StorageInfo {
     notebooks_count: i64,
     last_note_at: Option<i64>,
     last_note_title: Option<String>,
+    valid: bool,
 }
 
 #[derive(serde::Serialize)]
@@ -208,6 +209,7 @@ async fn get_storage_info(path: String) -> Result<StorageInfo, String> {
             notebooks_count: 0,
             last_note_at: None,
             last_note_title: None,
+            valid: true,
         });
     }
     let options = SqliteConnectOptions::new()
@@ -218,30 +220,37 @@ async fn get_storage_info(path: String) -> Result<StorageInfo, String> {
         .connect_with(options)
         .await
         .map_err(|e| e.to_string())?;
-    let notes_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM notes WHERE deleted_at IS NULL")
-        .fetch_one(&pool)
-        .await
-        .unwrap_or(0);
-    let notebooks_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM notebooks WHERE notebook_type = 'notebook'")
-        .fetch_one(&pool)
-        .await
-        .unwrap_or(0);
-    let last_note_at: Option<i64> =
+    let notes_count_result: Result<i64, _> =
+        sqlx::query_scalar("SELECT COUNT(*) FROM notes WHERE deleted_at IS NULL")
+            .fetch_one(&pool)
+            .await;
+    let notebooks_count_result: Result<i64, _> =
+        sqlx::query_scalar("SELECT COUNT(*) FROM notebooks WHERE notebook_type = 'notebook'")
+            .fetch_one(&pool)
+            .await;
+    let last_note_at_result: Result<Option<i64>, _> =
         sqlx::query_scalar("SELECT MAX(updated_at) FROM notes WHERE deleted_at IS NULL")
             .fetch_one(&pool)
-            .await
-            .unwrap_or(None);
-    let last_note_title: Option<String> =
+            .await;
+    let last_note_title_result: Result<Option<String>, _> =
         sqlx::query_scalar("SELECT title FROM notes WHERE deleted_at IS NULL ORDER BY updated_at DESC LIMIT 1")
             .fetch_optional(&pool)
-            .await
-            .unwrap_or(None);
+            .await;
+    let valid = notes_count_result.is_ok()
+        && notebooks_count_result.is_ok()
+        && last_note_at_result.is_ok()
+        && last_note_title_result.is_ok();
+    let notes_count = notes_count_result.unwrap_or(0);
+    let notebooks_count = notebooks_count_result.unwrap_or(0);
+    let last_note_at = last_note_at_result.unwrap_or(None);
+    let last_note_title = last_note_title_result.unwrap_or(None);
     Ok(StorageInfo {
         has_data,
         notes_count,
         notebooks_count,
         last_note_at,
         last_note_title,
+        valid,
     })
 }
 

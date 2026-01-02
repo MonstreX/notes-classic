@@ -17,6 +17,33 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
+}
+
+.settings-modal__loading {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.9);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 5;
+}
+
+.settings-modal__spinner {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 3px solid rgba(0, 0, 0, 0.1);
+  border-top-color: #111827;
+  animation: app-loading-spin 0.9s linear infinite;
+}
+
+.settings-modal__loading-text {
+  font-size: 12px;
+  color: #374151;
 }
 
 .settings-modal__header {
