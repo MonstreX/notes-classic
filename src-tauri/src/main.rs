@@ -566,6 +566,24 @@ async fn download_note_file(url: String, state: State<'_, AppState>) -> Result<S
     let filename = filename_from_url(&url).unwrap_or_else(|| "download".to_string());
     store_note_bytes(&state.data_dir, &filename, mime, &bytes)
 }
+
+#[tauri::command]
+async fn store_note_file_from_path(source_path: String, state: State<'_, AppState>) -> Result<StoredNoteFile, String> {
+    let path = PathBuf::from(&source_path);
+    if !path.exists() {
+        return Err("Source file not found".to_string());
+    }
+    let filename = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("file")
+        .to_string();
+    let mime = mime_guess::from_path(&path)
+        .first_or_octet_stream()
+        .to_string();
+    let bytes = fs::read(&path).map_err(|e| e.to_string())?;
+    store_note_bytes(&state.data_dir, &filename, &mime, &bytes)
+}
 #[tauri::command]
 async fn delete_attachment(id: i64, state: State<'_, AppState>) -> Result<(), String> {
     let repo = SqliteRepository { pool: state.pool.clone() };
@@ -810,6 +828,7 @@ fn main() {
             import_attachment_bytes,
             store_note_file_bytes,
             download_note_file,
+            store_note_file_from_path,
             delete_attachment,
             save_attachment_as,
             read_attachment_text,

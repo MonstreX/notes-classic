@@ -37,7 +37,7 @@ import { decryptHtml, encryptHtml } from "../services/crypto";
 import { openConfirmDialog, openPasswordDialog } from "./dialogs";
 import { createIcon } from "./icons";
 import { importAttachment, importAttachmentBytes, deleteAttachment, readAttachmentText, saveAttachmentAs } from "../services/attachments";
-import { downloadNoteFile, storeNoteFileBytes } from "../services/noteFiles";
+import { downloadNoteFile, storeNoteFileBytes, storeNoteFileFromPath } from "../services/noteFiles";
 import { toAssetUrl } from "../services/content";
 
 hljs.registerLanguage("javascript", javascript);
@@ -257,6 +257,14 @@ const isTextAttachment = (name: string, mime: string) => {
     ".py",
     ".php",
   ].some((ext) => lower.endsWith(ext));
+};
+
+const isImageFile = (name: string, mime: string) => {
+  if (mime.startsWith("image/")) return true;
+  const lower = name.toLowerCase();
+  return [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg", ".jfif"].some((ext) =>
+    lower.endsWith(ext)
+  );
 };
 
 const isRangeAtStart = (callout: HTMLElement, range: Range) => {
@@ -792,6 +800,26 @@ const setupAttachmentDrop = (editor: any, getNoteId?: () => number | null) => {
     }
   };
 
+  const insertImageNode = async (stored: { rel_path: string; hash: string }) => {
+    const assetUrl = await toAssetUrl(stored.rel_path);
+    const paragraph = editor.createInside.element("p");
+    const img = editor.createInside.element("img");
+    img.setAttribute("src", assetUrl);
+    img.setAttribute("data-en-hash", stored.hash);
+    paragraph.appendChild(img);
+    editor.s.insertNode(paragraph);
+    editor.s.setCursorAfter(paragraph);
+    if (typeof editor.synchronizeValues === "function") {
+      editor.synchronizeValues();
+    } else if (typeof editor.s?.synchronizeValues === "function") {
+      editor.s.synchronizeValues();
+    } else if (typeof editor?.s?.sync === "function") {
+      editor.s.sync();
+    } else {
+      editor.events?.fire?.("change");
+    }
+  };
+
   const handleFiles = async (files: FileList, clientX: number, clientY: number) => {
     const noteId = getNoteId?.();
     if (!noteId) return;
@@ -802,29 +830,39 @@ const setupAttachmentDrop = (editor: any, getNoteId?: () => number | null) => {
       const path = (file as any).path as string | undefined;
       try {
         if (path) {
-          const attachment = await importAttachment(noteId, path);
+          if (isImageFile(file.name, file.type || "")) {
+            const stored = await storeNoteFileFromPath(path);
+            await insertImageNode(stored);
+          } else {
+            const attachment = await importAttachment(noteId, path);
+            insertAttachmentNode({
+              id: attachment.id,
+              filename: attachment.filename,
+              size: attachment.size,
+              mime: attachment.mime,
+            });
+          }
+          continue;
+        }
+        const buffer = await file.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        if (isImageFile(file.name, file.type || "")) {
+          const stored = await storeNoteFileBytes(file.name, file.type || "", bytes);
+          await insertImageNode(stored);
+        } else {
+          const attachment = await importAttachmentBytes(
+            noteId,
+            file.name,
+            file.type || "",
+            bytes
+          );
           insertAttachmentNode({
             id: attachment.id,
             filename: attachment.filename,
             size: attachment.size,
             mime: attachment.mime,
           });
-          continue;
         }
-        const buffer = await file.arrayBuffer();
-        const bytes = new Uint8Array(buffer);
-        const attachment = await importAttachmentBytes(
-          noteId,
-          file.name,
-          file.type || "",
-          bytes
-        );
-        insertAttachmentNode({
-          id: attachment.id,
-          filename: attachment.filename,
-          size: attachment.size,
-          mime: attachment.mime,
-        });
       } catch (e) {
         logError("[attachment] import failed", e);
       }
@@ -839,13 +877,19 @@ const setupAttachmentDrop = (editor: any, getNoteId?: () => number | null) => {
     }
     for (const path of paths) {
       try {
-        const attachment = await importAttachment(noteId, path);
-        insertAttachmentNode({
-          id: attachment.id,
-          filename: attachment.filename,
-          size: attachment.size,
-          mime: attachment.mime,
-        });
+        const name = path.split(/[/\\]/).pop() || "";
+        if (isImageFile(name, "")) {
+          const stored = await storeNoteFileFromPath(path);
+          await insertImageNode(stored);
+        } else {
+          const attachment = await importAttachment(noteId, path);
+          insertAttachmentNode({
+            id: attachment.id,
+            filename: attachment.filename,
+            size: attachment.size,
+            mime: attachment.mime,
+          });
+        }
       } catch (e) {
         logError("[attachment] import failed", e);
       }

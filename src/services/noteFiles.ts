@@ -15,3 +15,6 @@ export const storeNoteFileBytes = (filename: string, mime: string, bytes: Uint8A
 
 export const downloadNoteFile = (url: string) =>
   invoke<StoredNoteFile>("download_note_file", { url });
+
+export const storeNoteFileFromPath = (sourcePath: string) =>
+  invoke<StoredNoteFile>("store_note_file_from_path", { sourcePath });
