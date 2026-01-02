@@ -13,3 +13,12 @@ both dev and packaged builds:
 If the app is launched from a different working directory or the `data` folder
 is moved, images will not resolve. The app expects a portable layout with
 `data/` adjacent to the executable (or to the project root in dev).
+
+Storage rules:
+
+- Each inserted image becomes its own file on disk, even if the bytes match
+  another image in a different note.
+- File names are generated per insert; the original filename is not used as a
+  stable reference in HTML.
+- Removing an image from a note removes the corresponding file if it is no
+  longer referenced by any note.

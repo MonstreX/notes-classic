@@ -809,6 +809,12 @@ Creation:
 - Attachment metadata is stored in the attachments table.
 - Editor inserts a div.note-attachment handle with filename and size.
 
+File lifecycle:
+
+- Attachment handles embed data-attachment-id for tracking.
+- When a handle is removed from note content, the attachment row and file are
+  deleted on the next note update.
+
 Interaction:
 
 - Download: save file to chosen location.
@@ -925,6 +931,14 @@ backfill_note_files_and_ocr scans existing note HTML:
 
 - Extracts notes-file and files/ image sources.
 - Creates entries in ocr_files and note_files.
+
+Note file lifecycle:
+
+- Images are stored under data/files/<unique_hash>.<ext>.
+- The hash used for file paths is unique per insert, not a global dedupe key.
+- On update_note, note_files are resynced from HTML and orphaned ocr_files
+  entries are removed.
+- Orphaned files on disk are deleted after a successful commit.
 - Keeps OCR queue accurate for existing content.
 
 ----------------------------------------------------------------
