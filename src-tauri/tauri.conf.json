@@ -43,6 +43,7 @@
         "fullscreen": false,
         "resizable": true,
         "title": "Notes Classic",
+        "backgroundColor": "#ffffff",
         "width": 1000,
         "height": 700,
         "minWidth": 800,

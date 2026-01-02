@@ -5,8 +5,37 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Notes Classic</title>
+    <style>
+      html, body, #root {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        background: #ffffff;
+      }
+      #boot-loader {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #ffffff;
+      }
+      #boot-loader__spinner {
+        width: 36px;
+        height: 36px;
+        border-radius: 999px;
+        border: 3px solid rgba(0, 0, 0, 0.15);
+        border-top-color: #1f2937;
+        animation: boot-spin 0.9s linear infinite;
+      }
+      @keyframes boot-spin {
+        to { transform: rotate(360deg); }
+      }
+    </style>
   </head>
   <body>
+    <div id="boot-loader"><div id="boot-loader__spinner"></div></div>
     <div id="root"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

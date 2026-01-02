@@ -29,12 +29,12 @@ type AppLayoutHandlers = {
 };
 
 export const createAppLayout = (root: HTMLElement, handlers: AppLayoutHandlers): AppLayout => {
-  const loading = document.createElement("div");
-  loading.className = "app-loading";
-  const loadingSpinner = document.createElement("div");
-  loadingSpinner.className = "app-loading__spinner";
-  loading.appendChild(loadingSpinner);
-  root.appendChild(loading);
+  const existingLoader = document.getElementById("boot-loader") as HTMLDivElement | null;
+  const loading = existingLoader ?? document.createElement("div");
+  if (!existingLoader) {
+    loading.className = "app-loading";
+    root.appendChild(loading);
+  }
 
   const app = document.createElement("div");
   app.className = "app-shell";
@@ -128,7 +128,7 @@ export const createAppLayout = (root: HTMLElement, handlers: AppLayoutHandlers):
   editorHost.appendChild(editorLoading);
 
   const setLoaded = (loaded: boolean) => {
-    loading.style.display = loaded ? "none" : "block";
+    loading.style.display = loaded ? "none" : "flex";
     app.style.display = loaded ? "flex" : "none";
   };
 
@@ -148,7 +148,7 @@ export const createAppLayout = (root: HTMLElement, handlers: AppLayoutHandlers):
 
   const destroy = () => {
     root.removeChild(app);
-    root.removeChild(loading);
+    loading.remove();
   };
 
   return {
