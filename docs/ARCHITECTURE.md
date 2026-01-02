@@ -784,21 +784,32 @@ Behavior:
 Creation:
 
 - User selects HTML and clicks Encrypt (ENC).
-- Selection is serialized to HTML and encrypted with AES-GCM.
+- Selection is serialized to HTML.
+- Images are inlined as data URLs before encryption.
+- Attachment handles are replaced with embedded base64 payloads before encryption.
+- The resulting HTML is encrypted with AES-GCM.
 - The encrypted payload is stored in a div.note-secure data attributes.
 - The visible handle shows a lock icon and dots.
 
 Interaction:
 
 - Clicking a secure block prompts for the password.
-- If the password is valid, a modal editor opens with decrypted HTML.
-- Saving re-encrypts the edited HTML and updates the block payload.
-- Cancelling leaves the encrypted block unchanged.
+- If the password is valid, a modal viewer opens with decrypted HTML.
+- The viewer is read-only. It is for preview only.
+- Embedded attachments in the viewer allow View and Download actions only.
 
 Storage:
 
 - The encrypted payload is stored inline as data attributes.
 - No plaintext is kept in the note content.
+
+Remove encryption:
+
+- Right-click a secure handle and choose "Remove encryption".
+- The user is prompted for the password.
+- Decrypted HTML is restored into the note and the secure block is removed.
+- Data URL images are re-stored into note files and src is rewritten to asset URLs.
+- Embedded attachments are stored as real attachments and handles are rebuilt.
 
 ### 8.9 Attachments
 
@@ -1146,7 +1157,7 @@ Known risks:
 - Callout and code block custom controls.
 - TODO list behavior.
 - HR insertion from ---.
-- Encrypted content blocks with password prompt and modal editor.
+- Encrypted content blocks with password prompt and modal viewer.
 - Attachment handles, DnD, and preview dialog.
 
 ### src/ui/searchModal.ts
