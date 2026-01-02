@@ -22,3 +22,9 @@ Storage rules:
   stable reference in HTML.
 - Removing an image from a note removes the corresponding file if it is no
   longer referenced by any note.
+
+Note files vs attachments:
+
+- Inline images are tracked via note_files/ocr_files for OCR and search.
+- Attachments are separate entities with metadata and actions and live under
+  data/files/attachments.

@@ -1392,6 +1392,22 @@ impl SqliteRepository {
         Ok(())
     }
 
+    pub async fn needs_note_files_backfill(&self) -> Result<bool, sqlx::Error> {
+        let (notes_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM notes")
+            .fetch_one(&self.pool)
+            .await?;
+        if notes_count == 0 {
+            return Ok(false);
+        }
+        let (note_files_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM note_files")
+            .fetch_one(&self.pool)
+            .await?;
+        let (ocr_files_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM ocr_files")
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(note_files_count == 0 && ocr_files_count == 0)
+    }
+
     pub async fn get_ocr_pending_files(&self, limit: i64) -> Result<Vec<OcrFileItem>, sqlx::Error> {
         sqlx::query_as::<_, OcrFileItem>(
             "SELECT f.id AS file_id, f.file_path

@@ -781,7 +781,13 @@ fn main() {
             let data_dir = app.state::<AppState>().data_dir.clone();
             tauri::async_runtime::spawn(async move {
                 let repo = SqliteRepository { pool };
-                let _ = repo.backfill_note_files_and_ocr(&data_dir).await;
+                match repo.needs_note_files_backfill().await {
+                    Ok(true) => {
+                        let _ = repo.backfill_note_files_and_ocr(&data_dir).await;
+                    }
+                    Ok(false) => {}
+                    Err(_) => {}
+                }
             });
             Ok(())
         })

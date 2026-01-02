@@ -809,6 +809,13 @@ Creation:
 - Attachment metadata is stored in the attachments table.
 - Editor inserts a div.note-attachment handle with filename and size.
 
+Why attachments are separate:
+
+- Inline images are part of note HTML and flow through note_files/ocr_files for
+  OCR indexing.
+- Attachments are explicit file entities with metadata and actions (download,
+  view, delete). They do not participate in OCR indexing.
+
 File lifecycle:
 
 - Attachment handles embed data-attachment-id for tracking.
@@ -884,6 +891,11 @@ Retries:
 - Each file has attempts_left (default 3).
 - Failures reduce attempts_left.
 - Files with attempts_left == 0 stop retrying.
+
+Supported image types:
+
+- OCR is queued only for raster formats (png, jpg/jpeg, gif, webp, bmp).
+- Vector images like svg are skipped and marked as unsupported.
 
 Status:
 

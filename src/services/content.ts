@@ -3,6 +3,7 @@ import { logError } from "./logger";
 
 const imageSrcMap = new Map<string, string>();
 const assetUrlCache = new Map<string, string>();
+const ASSET_CACHE_LIMIT = 2000;
 let dataDirPromise: Promise<string> | null = null;
 
 const getDataDir = async () => {
@@ -28,6 +29,18 @@ export const ensureNotesScheme = (raw: string) => {
     .replace(/src='files\//g, "src='notes-file://files/");
 };
 
+const pruneAssetCache = () => {
+  while (assetUrlCache.size > ASSET_CACHE_LIMIT) {
+    const oldestRel = assetUrlCache.keys().next().value;
+    if (!oldestRel) break;
+    const assetUrl = assetUrlCache.get(oldestRel);
+    assetUrlCache.delete(oldestRel);
+    if (assetUrl) {
+      imageSrcMap.delete(assetUrl);
+    }
+  }
+};
+
 const buildAssetUrl = async (relPath: string) => {
   const cached = assetUrlCache.get(relPath);
   if (cached) return cached;
@@ -38,6 +51,7 @@ const buildAssetUrl = async (relPath: string) => {
   const assetUrl = convertFileSrc(fullPath);
   assetUrlCache.set(relPath, assetUrl);
   imageSrcMap.set(assetUrl, `notes-file://files/${relPath}`);
+  pruneAssetCache();
   return assetUrl;
 };
 
