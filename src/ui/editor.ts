@@ -785,9 +785,16 @@ const setupAttachmentDrop = (editor: any, getNoteId?: () => number | null) => {
   if ((editor as any).__noteAttachmentDropSetup) return;
   (editor as any).__noteAttachmentDropSetup = true;
 
-  const insertAttachmentNode = (attachment: { id: number; filename: string; size: number; mime: string }) => {
+  const insertAttachmentNode = (
+    attachment: { id: number; filename: string; size: number; mime: string },
+    anchor?: HTMLElement | null
+  ) => {
     const node = buildAttachmentNode(editor, attachment);
-    editor.s.insertNode(node);
+    if (anchor && anchor.parentNode) {
+      anchor.parentNode.insertBefore(node, anchor.nextSibling);
+    } else {
+      editor.s.insertNode(node);
+    }
     editor.s.setCursorAfter(node);
     if (typeof editor.synchronizeValues === "function") {
       editor.synchronizeValues();
@@ -800,14 +807,18 @@ const setupAttachmentDrop = (editor: any, getNoteId?: () => number | null) => {
     }
   };
 
-  const insertImageNode = async (stored: { rel_path: string; hash: string }) => {
+  const insertImageNode = async (stored: { rel_path: string; hash: string }, anchor?: HTMLElement | null) => {
     const assetUrl = await toAssetUrl(stored.rel_path);
     const paragraph = editor.createInside.element("p");
     const img = editor.createInside.element("img");
     img.setAttribute("src", assetUrl);
     img.setAttribute("data-en-hash", stored.hash);
     paragraph.appendChild(img);
-    editor.s.insertNode(paragraph);
+    if (anchor && anchor.parentNode) {
+      anchor.parentNode.insertBefore(paragraph, anchor.nextSibling);
+    } else {
+      editor.s.insertNode(paragraph);
+    }
     editor.s.setCursorAfter(paragraph);
     if (typeof editor.synchronizeValues === "function") {
       editor.synchronizeValues();
@@ -820,10 +831,17 @@ const setupAttachmentDrop = (editor: any, getNoteId?: () => number | null) => {
     }
   };
 
+  const getDropAnchor = (clientX: number, clientY: number) => {
+    if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return null;
+    const el = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
+    return el?.closest(".note-attachment") ?? null;
+  };
+
   const handleFiles = async (files: FileList, clientX: number, clientY: number) => {
     const noteId = getNoteId?.();
     if (!noteId) return;
-    if (editor.s?.setCursorByXy) {
+    const dropAnchor = getDropAnchor(clientX, clientY);
+    if (!dropAnchor && editor.s?.setCursorByXy) {
       editor.s.setCursorByXy(clientX, clientY);
     }
     for (const file of Array.from(files)) {
@@ -832,7 +850,7 @@ const setupAttachmentDrop = (editor: any, getNoteId?: () => number | null) => {
         if (path) {
           if (isImageFile(file.name, file.type || "")) {
             const stored = await storeNoteFileFromPath(path);
-            await insertImageNode(stored);
+            await insertImageNode(stored, dropAnchor);
           } else {
             const attachment = await importAttachment(noteId, path);
             insertAttachmentNode({
@@ -840,7 +858,7 @@ const setupAttachmentDrop = (editor: any, getNoteId?: () => number | null) => {
               filename: attachment.filename,
               size: attachment.size,
               mime: attachment.mime,
-            });
+            }, dropAnchor);
           }
           continue;
         }
@@ -848,7 +866,7 @@ const setupAttachmentDrop = (editor: any, getNoteId?: () => number | null) => {
         const bytes = new Uint8Array(buffer);
         if (isImageFile(file.name, file.type || "")) {
           const stored = await storeNoteFileBytes(file.name, file.type || "", bytes);
-          await insertImageNode(stored);
+          await insertImageNode(stored, dropAnchor);
         } else {
           const attachment = await importAttachmentBytes(
             noteId,
@@ -861,7 +879,7 @@ const setupAttachmentDrop = (editor: any, getNoteId?: () => number | null) => {
             filename: attachment.filename,
             size: attachment.size,
             mime: attachment.mime,
-          });
+          }, dropAnchor);
         }
       } catch (e) {
         logError("[attachment] import failed", e);
@@ -872,7 +890,8 @@ const setupAttachmentDrop = (editor: any, getNoteId?: () => number | null) => {
   const handlePaths = async (paths: string[], clientX: number, clientY: number) => {
     const noteId = getNoteId?.();
     if (!noteId) return;
-    if (editor.s?.setCursorByXy) {
+    const dropAnchor = getDropAnchor(clientX, clientY);
+    if (!dropAnchor && editor.s?.setCursorByXy) {
       editor.s.setCursorByXy(clientX, clientY);
     }
     for (const path of paths) {
@@ -880,7 +899,7 @@ const setupAttachmentDrop = (editor: any, getNoteId?: () => number | null) => {
         const name = path.split(/[/\\]/).pop() || "";
         if (isImageFile(name, "")) {
           const stored = await storeNoteFileFromPath(path);
-          await insertImageNode(stored);
+          await insertImageNode(stored, dropAnchor);
         } else {
           const attachment = await importAttachment(noteId, path);
           insertAttachmentNode({
@@ -888,7 +907,7 @@ const setupAttachmentDrop = (editor: any, getNoteId?: () => number | null) => {
             filename: attachment.filename,
             size: attachment.size,
             mime: attachment.mime,
-          });
+          }, dropAnchor);
         }
       } catch (e) {
         logError("[attachment] import failed", e);
