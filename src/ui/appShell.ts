@@ -1,9 +1,11 @@
+import { listen } from "@tauri-apps/api/event";
 import { openNoteContextMenu, openNotebookContextMenu, openTagContextMenu, openTrashContextMenu, openTrashNoteContextMenu, openTrashNotesContextMenu, openNotesContextMenu } from "./contextMenu";
 import { mountEditor, type EditorInstance } from "./editor";
 import { mountMetaBar } from "./metaBar";
 import { mountNotesList, type NotesListHandlers, type NotesListInstance } from "./notesList";
 import { buildMenuNodes } from "./menuBuilder";
 import { mountSearchModal } from "./searchModal";
+import { mountSettingsModal } from "./settingsModal";
 import { mountSidebar, type SidebarHandlers, type SidebarInstance } from "./sidebar";
 import { mountTagsBar } from "./tagsBar";
 import { createEditorScheduler } from "./editorScheduler";
@@ -15,6 +17,7 @@ import { appStore } from "../state/store";
 
 export const mountApp = (root: HTMLElement) => {
   let openSearchModal = () => {};
+  let openSettingsModal = () => {};
   const layout = createAppLayout(root, {
     onSearch: () => openSearchModal(),
     onNewNote: () => actions.createNote(),
@@ -48,6 +51,12 @@ export const mountApp = (root: HTMLElement) => {
     },
   });
   openSearchModal = () => searchModal.open();
+
+  const settingsModal = mountSettingsModal(layout.editorPane);
+  openSettingsModal = () => settingsModal.open();
+
+  listen("menu-search", () => openSearchModal());
+  listen("menu-settings", () => openSettingsModal());
 
   const sidebarHandlers: SidebarHandlers = {
     onSelectNotebook: (id) => actions.selectNotebook(id),

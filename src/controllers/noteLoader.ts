@@ -1,7 +1,7 @@
 import type { NoteDetail, Tag } from "../state/types";
 import { appStore } from "../state/store";
 import { logError } from "../services/logger";
-import { ensureNotesScheme, normalizeEnmlContent, toDisplayContent } from "../services/content";
+import { normalizeFileLinks, normalizeEnmlContent, toDisplayContent } from "../services/content";
 import { getNote } from "../services/notes";
 import { getNoteTags } from "../services/tags";
 
@@ -25,7 +25,7 @@ export const loadSelectedNote = async () => {
     }
     const currentState = appStore.getState();
     if (currentState.selectedNoteId !== noteId) return;
-    const normalized = ensureNotesScheme(normalizeEnmlContent(note.content));
+    const normalized = normalizeFileLinks(normalizeEnmlContent(note.content));
     const displayContent = await toDisplayContent(normalized);
     const finalNote: NoteDetail = displayContent !== note.content ? { ...note, content: displayContent } : note;
     const tags: Tag[] = await getNoteTags(noteId);

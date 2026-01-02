@@ -1,4 +1,4 @@
-import { ensureNotesScheme, normalizeEnmlContent, toDisplayContent } from "../services/content";
+import { normalizeFileLinks, normalizeEnmlContent, toDisplayContent } from "../services/content";
 import { getNote, searchNotes } from "../services/notes";
 import { getOcrStats } from "../services/ocr";
 import { appStore } from "../state/store";
@@ -267,7 +267,7 @@ export const mountSearchModal = (container: HTMLElement, handlers: SearchModalHa
     try {
       const note = await getNote(noteId);
       if (!note) return;
-      const normalized = ensureNotesScheme(normalizeEnmlContent(note.content));
+      const normalized = normalizeFileLinks(normalizeEnmlContent(note.content));
       const displayContent = await toDisplayContent(normalized);
       const previewHtml = buildPreviewHtml(displayContent || "", searchTokens);
       if (!searchPreviewEditor) {

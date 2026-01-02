@@ -14,7 +14,7 @@ Event Listeners: Искать потенциальные утечки памят
 State Updates: Проверять эффективность «shallow merges» в store.ts. Избегать лишних уведомлений подписчиков, если данные не изменились. Важно: Set/Map должны обновляться иммутабельно (новыми экземплярами). appStore.update уже клонирует Set/Map, а setState — нет, поэтому при setState нельзя мутировать текущие коллекции.
 
 3. Целостность контента (Content Pipeline)
-Protocol Mapping: Строго проверять корректность преобразования ссылок notes-file:// в Asset URLs при загрузке (toDisplayContent) и обратно при сохранении (toStorageContent).
+Protocol Mapping: Строго проверять корректность преобразования ссылок files/ в Asset URLs при загрузке (toDisplayContent) и обратно при сохранении (toStorageContent).
 
 Editor Blocks: Следить за сохранностью структуры кастомных блоков (div.note-callout, div.note-secure, div.note-code). Любая деструктивная модификация HTML-схемы должна блокироваться.
 

@@ -1,5 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
+import { openConfirmDialog } from "../ui/dialogs";
 import { appStore } from "../state/store";
 import { logError } from "../services/logger";
 import { toStorageContent } from "../services/content";
@@ -100,6 +101,44 @@ export const initApp = async () => {
     }
   });
 
+  const unlistenMenuNewNote = await listen("menu-new-note", () => {
+    actions.createNote();
+  });
+  const unlistenMenuDeleteNote = await listen("menu-delete-note", () => {
+    const state = appStore.getState();
+    const ids = state.selectedNoteIds.size
+      ? Array.from(state.selectedNoteIds)
+      : (state.selectedNoteId ? [state.selectedNoteId] : []);
+    if (!ids.length) return;
+    actions.deleteNotes(ids);
+  });
+  const unlistenMenuNewStack = await listen("menu-new-stack", () => {
+    actions.createNotebook(null);
+  });
+  const unlistenMenuNewNotebook = await listen("menu-new-notebook", async () => {
+    const state = appStore.getState();
+    const stacks = state.notebooks.filter((nb) => nb.notebookType === "stack");
+    if (!stacks.length) {
+      const ok = await openConfirmDialog({
+        title: "No stack selected",
+        message: "Create a notebook stack first.",
+        confirmLabel: "Create stack",
+        cancelLabel: "Cancel",
+      });
+      if (ok) {
+        actions.createNotebook(null);
+      }
+      return;
+    }
+    const selected = state.notebooks.find((nb) => nb.id === state.selectedNotebookId);
+    let parentId = selected?.notebookType === "stack" ? selected.id : selected?.parentId || null;
+    if (!parentId) {
+      parentId = stacks[0]?.id ?? null;
+    }
+    if (!parentId) return;
+    actions.createNotebook(parentId);
+  });
+
   const unsubscribe = appStore.subscribe(() => {
     const nextState = appStore.getState();
     if (!nextState.isLoaded) {
@@ -147,6 +186,10 @@ export const initApp = async () => {
   return () => {
     unlistenView();
     unlistenImport();
+    unlistenMenuNewNote();
+    unlistenMenuDeleteNote();
+    unlistenMenuNewStack();
+    unlistenMenuNewNotebook();
     unsubscribe();
     if (saveTimer !== null) window.clearTimeout(saveTimer);
     cleanupSettings();

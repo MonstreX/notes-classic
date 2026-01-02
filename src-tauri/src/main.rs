@@ -22,6 +22,12 @@ const NOTES_VIEW_DETAILED: &str = "view_notes_detailed";
 const NOTES_VIEW_COMPACT: &str = "view_notes_compact";
 const SETTINGS_FILE_NAME: &str = "app.json";
 const FILE_IMPORT_EVERNOTE: &str = "file_import_evernote";
+const MENU_NEW_NOTE: &str = "menu_new_note";
+const MENU_NEW_NOTEBOOK: &str = "menu_new_notebook";
+const MENU_NEW_STACK: &str = "menu_new_stack";
+const MENU_DELETE_NOTE: &str = "menu_delete_note";
+const MENU_SEARCH: &str = "menu_search";
+const MENU_SETTINGS: &str = "menu_settings";
 const MAX_NOTE_FILE_BYTES: usize = 25 * 1024 * 1024;
 static NOTE_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -116,6 +122,32 @@ fn ensure_dir_writable(dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn read_settings_file(settings_dir: &Path) -> Result<Value, String> {
+    let settings_path = settings_dir.join(SETTINGS_FILE_NAME);
+    if !settings_path.exists() {
+        return Ok(Value::Null);
+    }
+    let raw = fs::read_to_string(&settings_path).map_err(|e| e.to_string())?;
+    serde_json::from_str(&raw).map_err(|e| e.to_string())
+}
+
+fn read_storage_override(settings_dir: &Path) -> Result<Option<PathBuf>, String> {
+    let value = read_settings_file(settings_dir)?;
+    let Some(obj) = value.as_object() else {
+        return Ok(None);
+    };
+    let Some(dir_value) = obj.get("dataDir") else {
+        return Ok(None);
+    };
+    let Some(path_str) = dir_value.as_str() else {
+        return Ok(None);
+    };
+    if path_str.trim().is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(PathBuf::from(path_str)))
+}
+
 fn resolve_portable_paths(app_handle: &AppHandle) -> Result<(PathBuf, PathBuf), String> {
     let exe_dir = std::env::current_exe()
         .ok()
@@ -142,8 +174,11 @@ fn resolve_portable_paths(app_handle: &AppHandle) -> Result<(PathBuf, PathBuf), 
             }
         }
     }
-    ensure_dir_writable(&data_dir)?;
     ensure_dir_writable(&settings_dir)?;
+    if let Ok(Some(override_dir)) = read_storage_override(&settings_dir) {
+        data_dir = override_dir;
+    }
+    ensure_dir_writable(&data_dir)?;
 
     let legacy_dir = app_handle
         .path()
@@ -254,14 +289,13 @@ fn build_menu<R: Runtime>(app_handle: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .build()?;
 
     let file_menu = SubmenuBuilder::new(app_handle, "File")
-        .item(&MenuItem::with_id(app_handle, "file_new", "New", true, None::<&str>)?)
-        .item(&MenuItem::with_id(app_handle, "file_open", "Open...", true, None::<&str>)?)
-        .item(&MenuItem::with_id(app_handle, "file_save", "Save", true, None::<&str>)?)
-        .item(&MenuItem::with_id(app_handle, "file_save_as", "Save As...", true, None::<&str>)?)
+        .item(&MenuItem::with_id(app_handle, MENU_NEW_NOTE, "New Note", true, None::<&str>)?)
+        .item(&MenuItem::with_id(app_handle, MENU_NEW_NOTEBOOK, "New Notebook", true, None::<&str>)?)
+        .item(&MenuItem::with_id(app_handle, MENU_NEW_STACK, "New Stack", true, None::<&str>)?)
         .separator()
         .item(&import_submenu)
         .separator()
-        .item(&MenuItem::with_id(app_handle, "file_settings", "Settings", true, None::<&str>)?)
+        .item(&MenuItem::with_id(app_handle, MENU_SETTINGS, "Settings", true, None::<&str>)?)
         .separator()
         .item(&PredefinedMenuItem::close_window(app_handle, None)?)
         .item(&PredefinedMenuItem::quit(app_handle, None)?)
@@ -277,23 +311,15 @@ fn build_menu<R: Runtime>(app_handle: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .build()?;
 
     let view_menu = SubmenuBuilder::new(app_handle, "View")
-        .item(&MenuItem::with_id(app_handle, "view_toggle_sidebar", "Toggle Sidebar", false, None::<&str>)?)
-        .item(&MenuItem::with_id(app_handle, "view_toggle_list", "Toggle Notes List", false, None::<&str>)?)
-        .separator()
         .item(&notes_list_menu)
-        .separator()
-        .item(&MenuItem::with_id(app_handle, "view_actual_size", "Actual Size", false, None::<&str>)?)
         .build()?;
 
     let note_menu = SubmenuBuilder::new(app_handle, "Note")
-        .item(&MenuItem::with_id(app_handle, "note_new", "New Note", false, None::<&str>)?)
-        .item(&MenuItem::with_id(app_handle, "note_delete", "Delete Note", false, None::<&str>)?)
-        .item(&MenuItem::with_id(app_handle, "note_move", "Move To...", false, None::<&str>)?)
+        .item(&MenuItem::with_id(app_handle, MENU_DELETE_NOTE, "Delete Note", true, None::<&str>)?)
         .build()?;
 
     let tools_menu = SubmenuBuilder::new(app_handle, "Tools")
-        .item(&MenuItem::with_id(app_handle, "tools_import", "Import", false, None::<&str>)?)
-        .item(&MenuItem::with_id(app_handle, "tools_export", "Export", false, None::<&str>)?)
+        .item(&MenuItem::with_id(app_handle, MENU_SEARCH, "Search", true, None::<&str>)?)
         .build()?;
 
     MenuBuilder::new(app_handle)
@@ -732,7 +758,71 @@ fn get_settings(state: State<'_, AppState>) -> Result<Option<Value>, String> {
 #[tauri::command]
 fn set_settings(settings: Value, state: State<'_, AppState>) -> Result<(), String> {
     let settings_path = state.settings_dir.join(SETTINGS_FILE_NAME);
-    let data = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    let mut merged = read_settings_file(&state.settings_dir)?;
+    if !merged.is_object() {
+        merged = Value::Object(serde_json::Map::new());
+    }
+    if let (Some(base), Some(updates)) = (merged.as_object_mut(), settings.as_object()) {
+        for (key, value) in updates {
+            base.insert(key.clone(), value.clone());
+        }
+    }
+    let data = serde_json::to_string_pretty(&merged).map_err(|e| e.to_string())?;
+    fs::write(&settings_path, data).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
+    if !src.exists() {
+        return Ok(());
+    }
+    fs::create_dir_all(dst).map_err(|e| e.to_string())?;
+    for entry in fs::read_dir(src).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        let target = dst.join(entry.file_name());
+        if path.is_dir() {
+            copy_dir_recursive(&path, &target)?;
+        } else {
+            fs::copy(&path, &target).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn set_storage_path(path: String, state: State<'_, AppState>) -> Result<(), String> {
+    let new_dir = PathBuf::from(path.trim());
+    if new_dir.as_os_str().is_empty() {
+        return Err("Storage path is empty".to_string());
+    }
+    let current_dir = state.data_dir.clone();
+    if current_dir == new_dir {
+        return Ok(());
+    }
+    ensure_dir_writable(&new_dir)?;
+    if new_dir.join("notes.db").exists() || new_dir.join("files").exists() || new_dir.join("ocr").exists() {
+        return Err("Target folder already contains data".to_string());
+    }
+    let notes_db = current_dir.join("notes.db");
+    if notes_db.exists() {
+        fs::copy(&notes_db, new_dir.join("notes.db")).map_err(|e| e.to_string())?;
+    }
+    copy_dir_recursive(&current_dir.join("files"), &new_dir.join("files"))?;
+    copy_dir_recursive(&current_dir.join("ocr"), &new_dir.join("ocr"))?;
+
+    let mut merged = read_settings_file(&state.settings_dir)?;
+    if !merged.is_object() {
+        merged = Value::Object(serde_json::Map::new());
+    }
+    if let Some(base) = merged.as_object_mut() {
+        base.insert(
+            "dataDir".to_string(),
+            Value::String(new_dir.to_string_lossy().to_string()),
+        );
+    }
+    let settings_path = state.settings_dir.join(SETTINGS_FILE_NAME);
+    let data = serde_json::to_string_pretty(&merged).map_err(|e| e.to_string())?;
     fs::write(&settings_path, data).map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -801,6 +891,24 @@ fn main() {
                 FILE_IMPORT_EVERNOTE => {
                     let _ = app_handle.emit("import-evernote", ());
                 }
+                MENU_NEW_NOTE => {
+                    let _ = app_handle.emit("menu-new-note", ());
+                }
+                MENU_NEW_NOTEBOOK => {
+                    let _ = app_handle.emit("menu-new-notebook", ());
+                }
+                MENU_NEW_STACK => {
+                    let _ = app_handle.emit("menu-new-stack", ());
+                }
+                MENU_DELETE_NOTE => {
+                    let _ = app_handle.emit("menu-delete-note", ());
+                }
+                MENU_SEARCH => {
+                    let _ = app_handle.emit("menu-search", ());
+                }
+                MENU_SETTINGS => {
+                    let _ = app_handle.emit("menu-settings", ());
+                }
                 NOTES_VIEW_DETAILED => {
                     update_notes_list_menu(app_handle, "detailed");
                     let _ = app_handle.emit("notes-list-view", "detailed");
@@ -851,7 +959,8 @@ fn main() {
             update_tag_parent,
             set_notes_list_view,
             get_settings,
-            set_settings
+            set_settings,
+            set_storage_path
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

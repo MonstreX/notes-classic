@@ -57,6 +57,36 @@ fn extract_note_files(content: &str) -> Vec<String> {
     results
 }
 
+async fn migrate_note_file_scheme(pool: &SqlitePool) -> Result<bool, sqlx::Error> {
+    let rows: Vec<(i64, String)> = sqlx::query_as(
+        "SELECT id, content FROM notes WHERE content LIKE '%notes-file://files/%'",
+    )
+    .fetch_all(pool)
+    .await?;
+    if rows.is_empty() {
+        return Ok(false);
+    }
+    for (id, content) in rows {
+        let updated = content.replace("notes-file://files/", "files/");
+        sqlx::query("UPDATE notes SET content = ? WHERE id = ?")
+            .bind(&updated)
+            .bind(id)
+            .execute(pool)
+            .await?;
+        let plain = strip_html(&updated);
+        sqlx::query(
+            "INSERT INTO notes_text (note_id, title, plain_text)
+             SELECT id, title, ? FROM notes WHERE id = ?
+             ON CONFLICT(note_id) DO UPDATE SET plain_text = excluded.plain_text",
+        )
+        .bind(plain)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    }
+    Ok(true)
+}
+
 fn extract_attachment_ids(content: &str) -> HashSet<i64> {
     let mut results = HashSet::new();
     let re_double = Regex::new(r#"data-attachment-id="(\d+)""#).unwrap();
@@ -566,6 +596,7 @@ pub async fn init_db(data_dir: &Path) -> Result<SqlitePool, String> {
     create_schema_v3(&pool)
         .await
         .map_err(|e| e.to_string())?;
+    let _ = migrate_note_file_scheme(&pool).await.map_err(|e| e.to_string())?;
 
     let mut structure_changed = false;
     let rows: Vec<(i64, Option<i64>)> = sqlx::query_as("SELECT id, parent_id FROM notebooks")

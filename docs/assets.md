@@ -1,6 +1,6 @@
 # Assets and images
 
-Notes store images inside HTML using the `notes-file://files/...` scheme.
+Notes store images inside HTML using relative `files/...` paths.
 At render time we convert these paths to the Tauri asset protocol via
 `convertFileSrc`, so the editor loads images directly from disk.
 
@@ -22,6 +22,11 @@ Storage rules:
   stable reference in HTML.
 - Removing an image from a note removes the corresponding file if it is no
   longer referenced by any note.
+
+Legacy:
+
+- Older notes may still contain `notes-file://files/...`; these are normalized
+  to `files/...` on load and via migration.
 
 Note files vs attachments:
 

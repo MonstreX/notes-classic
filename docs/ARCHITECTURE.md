@@ -151,7 +151,7 @@ The backend:
 
 - Resolves portable paths.
 - Creates and migrates schema.
-- Serves notes-file protocol.
+- Serves legacy notes-file protocol for older content.
 - Exposes IPC commands.
 - Contains repository methods.
 
@@ -508,7 +508,7 @@ loadSelectedNote:
 
 - Uses noteLoadToken to prevent stale updates.
 - Fetches full note content.
-- Normalizes ENML and notes-file URLs.
+- Normalizes ENML and file URLs (notes-file -> files).
 - Converts to display content using asset protocol.
 - Loads tags for selected note.
 - Updates activeNote, title, content, and noteTags.
@@ -631,19 +631,19 @@ IPC wrappers:
 Purpose:
 
 - Normalize content on load.
-- Map notes-file URLs to asset protocol URLs.
-- Restore notes-file URLs on save.
+- Map files/ URLs to asset protocol URLs.
+- Restore files/ URLs on save.
 
 Key functions:
 
 - normalizeEnmlContent: en-note to div, br cleanup.
-- ensureNotesScheme: adds notes-file prefix to src=files/ paths.
-- toDisplayContent: resolves notes-file to asset URLs.
-- toStorageContent: restores notes-file URLs from asset URLs.
+- normalizeFileLinks: removes legacy notes-file prefixes.
+- toDisplayContent: resolves files/ to asset URLs.
+- toStorageContent: restores files/ URLs from asset URLs.
 
 Caching:
 
-- imageSrcMap maps asset URLs to notes-file URLs for round-trip.
+- imageSrcMap maps asset URLs to files/ URLs for round-trip.
 - assetUrlCache memoizes convertFileSrc results.
 
 ### 7.4 settings service (src/services/settings.ts)
@@ -941,7 +941,7 @@ notes_text is backfilled if its count is below notes count.
 
 backfill_note_files_and_ocr scans existing note HTML:
 
-- Extracts notes-file and files/ image sources.
+- Extracts files/ image sources (legacy notes-file is normalized).
 - Creates entries in ocr_files and note_files.
 
 Note file lifecycle:
@@ -1015,17 +1015,19 @@ Asset protocol:
 - Scope allows data/** and parent variants for dev.
 - convertFileSrc converts local path to asset URL.
 
-Custom notes-file scheme:
+File URL scheme:
 
-- notes-file://files/<path> is stored in HTML.
-- A custom protocol handler serves files from data_dir.
-- content.ts converts notes-file to asset URL on display.
+- Note HTML stores relative paths: files/<path>.
+- content.ts converts files/ to asset URLs on display.
+- Legacy notes-file URLs are normalized to files/ during migration.
 
 Portable path resolution:
 
 - Uses executable directory by default.
 - In dev, uses repository root (package.json + src-tauri).
 - Ensures directories are writable on startup.
+- If settings/app.json contains dataDir, storage is redirected there.
+- Changing storage path copies data and requires restart.
 
 ----------------------------------------------------------------
 
@@ -1044,6 +1046,8 @@ Stored fields:
 - notesListView
 - notesSortBy
 - notesSortDir
+- deleteToTrash
+- dataDir (optional override for storage location)
 
 File format:
 
@@ -1206,7 +1210,7 @@ Known risks:
 ### src-tauri/src/main.rs
 - Path resolution and startup checks.
 - IPC command registration.
-- notes-file protocol handler.
+- legacy notes-file protocol handler (compat).
 - Menu wiring and events.
 - Attachment import/read/delete commands.
 

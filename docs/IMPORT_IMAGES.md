@@ -11,8 +11,8 @@ Date: 2025-12-25
 - Imported content used Evernote ENML (`<en-note>`, `<en-media>`, invalid `<br></br>`), which Jodit cannot render.
 
 2) **Image URLs**
-- Raw `notes-file://` URLs are not loadable by the browser context.
-- The UI must translate them to the Tauri asset protocol via `convertFileSrc`.
+- Raw file URLs are not loadable by the browser context.
+- The UI must translate `files/...` paths to the Tauri asset protocol via `convertFileSrc`.
 
 ## Fixes Applied
 1) **Normalize ENML to HTML** during import
@@ -21,7 +21,7 @@ Date: 2025-12-25
 - Minimal cleanup so the editor receives standard HTML
 
 2) **Keep stable resource URLs**
-- Note content stores resources as `notes-file://files/<hash>.<ext>`
+- Note content stores resources as `files/<hash>.<ext>`
 - Display layer converts them to asset URLs using `convertFileSrc`
 
 3) **Editor compatibility**

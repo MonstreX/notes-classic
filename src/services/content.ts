@@ -21,12 +21,11 @@ export const normalizeEnmlContent = (raw: string) => {
   return out;
 };
 
-export const ensureNotesScheme = (raw: string) => {
+export const normalizeFileLinks = (raw: string) => {
   if (!raw) return raw;
-  if (raw.includes("notes-file://")) return raw;
   return raw
-    .replace(/src=\"files\//g, 'src="notes-file://files/')
-    .replace(/src='files\//g, "src='notes-file://files/");
+    .replace(/src=\"notes-file:\/\/files\//g, 'src="files/')
+    .replace(/src='notes-file:\/\/files\//g, "src='files/");
 };
 
 const pruneAssetCache = () => {
@@ -50,9 +49,34 @@ const buildAssetUrl = async (relPath: string) => {
   const fullPath = `${normalizedDir}/files/${normalizedRel}`;
   const assetUrl = convertFileSrc(fullPath);
   assetUrlCache.set(relPath, assetUrl);
-  imageSrcMap.set(assetUrl, `notes-file://files/${relPath}`);
+  imageSrcMap.set(assetUrl, `files/${relPath}`);
   pruneAssetCache();
   return assetUrl;
+};
+
+const extractRelFromAssetUrl = (url: string) => {
+  try {
+    const decoded = decodeURIComponent(url);
+    const marker = "/files/";
+    const idx = decoded.toLowerCase().indexOf(marker);
+    if (idx >= 0) {
+      return decoded.slice(idx + marker.length);
+    }
+  } catch (e) {
+    // ignore decode errors
+  }
+  const encoded = url.toLowerCase();
+  const marker = "%2ffiles%2f";
+  const idx = encoded.indexOf(marker);
+  if (idx >= 0) {
+    const relEncoded = url.slice(idx + marker.length);
+    try {
+      return decodeURIComponent(relEncoded);
+    } catch (e) {
+      return relEncoded;
+    }
+  }
+  return null;
 };
 
 export const toAssetUrl = async (relPath: string) => {
@@ -62,8 +86,8 @@ export const toAssetUrl = async (relPath: string) => {
 
 export const toDisplayContent = async (raw: string) => {
   if (!raw) return raw;
-  const normalized = ensureNotesScheme(raw);
-  const matches = Array.from(normalized.matchAll(/src=(\"|')notes-file:\/\/files\/(?:evernote\/)?([^\"']+)\1/g));
+  const normalized = normalizeFileLinks(raw);
+  const matches = Array.from(normalized.matchAll(/src=(\"|')files\/(?:evernote\/)?([^\"']+)\1/g));
   if (matches.length === 0) return normalized;
 
   const uniqueRel = Array.from(new Set(matches.map((m) => m[2])));
@@ -79,7 +103,7 @@ export const toDisplayContent = async (raw: string) => {
     })
   );
 
-  return normalized.replace(/src=(\"|')notes-file:\/\/files\/(?:evernote\/)?([^\"']+)\1/g, (match, quote, rel) => {
+  return normalized.replace(/src=(\"|')files\/(?:evernote\/)?([^\"']+)\1/g, (match, quote, rel) => {
     const assetUrl = resolved.get(rel);
     if (!assetUrl) return match;
     return `src=${quote}${assetUrl}${quote}`;
@@ -88,13 +112,15 @@ export const toDisplayContent = async (raw: string) => {
 
 export const toStorageContent = (raw: string) => {
   if (!raw) return raw;
-  const normalized = raw.replace(/src=(\"|')(asset|tauri):\/\/[^\"']*?\/files\/(?:evernote\/)?([^\"']+)\1/g, (match, quote, _scheme, rel) => {
-    return `src=${quote}notes-file://files/${rel}${quote}`;
-  });
-  const restored = normalized.replace(/src=(\"|')((?:https?:\/\/asset\.localhost\/|asset:\/\/)[^\"']+)\1/g, (match, quote, url) => {
+  const normalized = raw.replace(/src=(\"|')notes-file:\/\/files\//g, `src=$1files/`);
+  const restored = normalized.replace(/src=(\"|')((?:https?:\/\/asset\.localhost\/|asset:\/\/|tauri:\/\/)[^\"']+)\1/g, (match, quote, url) => {
     const original = imageSrcMap.get(url);
-    if (!original) return match;
-    return `src=${quote}${original}${quote}`;
+    if (original) {
+      return `src=${quote}${original}${quote}`;
+    }
+    const rel = extractRelFromAssetUrl(url);
+    if (!rel) return match;
+    return `src=${quote}files/${rel}${quote}`;
   });
   return restored.replace(/src=(\"|')(data:[^\"']+)\1/g, (match, quote, dataUrl) => {
     const original = imageSrcMap.get(dataUrl);
