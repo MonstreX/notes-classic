@@ -24,9 +24,9 @@ const sortNotes = (
   });
 };
 
-export const fetchNotesData = async () => {
+export const fetchNotesData = async (force = false) => {
   const state = appStore.getState();
-  if (!state.isLoaded) return;
+  if (!state.isLoaded && !force) return;
   const notesPromise = state.selectedTrash
     ? getTrashedNotes()
     : state.selectedTagId !== null

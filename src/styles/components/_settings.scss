@@ -25,11 +25,14 @@
   justify-content: space-between;
   padding: 16px 20px;
   border-bottom: 1px solid #e5e7eb;
+  background: var(--color-accent);
+  color: #ffffff;
 }
 
 .settings-modal__title {
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 20px;
+  font-weight: 300;
+  margin: 0;
 }
 
 .settings-modal__close {
@@ -37,7 +40,7 @@
   background: transparent;
   font-size: 20px;
   cursor: pointer;
-  color: #6b7280;
+  color: #ffffff;
 }
 
 .settings-modal__body {

@@ -17,10 +17,7 @@
         "enable": true,
         "scope": {
           "allow": [
-            "data/**",
-            "../data/**",
-            "../../data/**",
-            "../../../data/**"
+            "**"
           ]
         }
       },

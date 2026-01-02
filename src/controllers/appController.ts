@@ -20,9 +20,9 @@ import { createNotebookActions } from "./notebookController";
 const stripTags = (value: string) => value.replace(/<[^>]*>/g, "");
 const buildExcerpt = (value: string) => stripTags(value || "");
 
-const fetchData = async () => {
+const fetchData = async (force = false) => {
   try {
-    const result = await fetchNotesData();
+    const result = await fetchNotesData(force);
     if (!result) return;
     const { selectionChanged, nextSelectedNoteId } = result;
     const state = appStore.getState();
@@ -75,14 +75,16 @@ export const actions = {
 
 let prevState = appStore.getState();
 export const initApp = async () => {
+  appStore.setState({ isLoaded: false });
   await loadSettings();
-  appStore.setState({ isLoaded: true });
-  await fetchData();
   try {
+    await fetchData(true);
     const tags = await getTags();
     appStore.setState({ tags });
   } catch (e) {
-    logError("[tag] list failed", e);
+    logError("[init] load failed", e);
+  } finally {
+    appStore.setState({ isLoaded: true });
   }
 
   const unlistenView = await listen<string>("notes-list-view", (event) => {

@@ -31,6 +31,9 @@ type AppLayoutHandlers = {
 export const createAppLayout = (root: HTMLElement, handlers: AppLayoutHandlers): AppLayout => {
   const loading = document.createElement("div");
   loading.className = "app-loading";
+  const loadingSpinner = document.createElement("div");
+  loadingSpinner.className = "app-loading__spinner";
+  loading.appendChild(loadingSpinner);
   root.appendChild(loading);
 
   const app = document.createElement("div");
