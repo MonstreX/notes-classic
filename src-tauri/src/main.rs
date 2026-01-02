@@ -12,6 +12,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 use http::{Request, Response, StatusCode, Uri};
 use reqwest;
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use tauri::menu::{
     CheckMenuItem, Menu, MenuBuilder, MenuItem, MenuItemKind, PredefinedMenuItem, SubmenuBuilder,
 };
@@ -35,6 +36,16 @@ struct AppState {
     pool: sqlx::sqlite::SqlitePool,
     settings_dir: PathBuf,
     data_dir: PathBuf,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StorageInfo {
+    has_data: bool,
+    notes_count: i64,
+    notebooks_count: i64,
+    last_note_at: Option<i64>,
+    last_note_title: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -146,6 +157,234 @@ fn read_storage_override(settings_dir: &Path) -> Result<Option<PathBuf>, String>
         return Ok(None);
     }
     Ok(Some(PathBuf::from(path_str)))
+}
+
+#[tauri::command]
+fn get_storage_override(state: State<'_, AppState>) -> Result<Option<String>, String> {
+    let override_dir = read_storage_override(&state.settings_dir)?;
+    Ok(override_dir.map(|dir| dir.to_string_lossy().to_string()))
+}
+
+fn default_data_dir(settings_dir: &Path) -> PathBuf {
+    settings_dir
+        .parent()
+        .map(|dir| dir.join("data"))
+        .unwrap_or_else(|| settings_dir.join("data"))
+}
+
+#[tauri::command]
+fn get_default_storage_path(state: State<'_, AppState>) -> Result<String, String> {
+    Ok(default_data_dir(&state.settings_dir).to_string_lossy().to_string())
+}
+
+fn remove_storage_data(target: &Path) -> Result<(), String> {
+    let db = target.join("notes.db");
+    if db.exists() {
+        fs::remove_file(&db).map_err(|e| e.to_string())?;
+    }
+    let files_dir = target.join("files");
+    if files_dir.exists() {
+        fs::remove_dir_all(&files_dir).map_err(|e| e.to_string())?;
+    }
+    let ocr_dir = target.join("ocr");
+    if ocr_dir.exists() {
+        fs::remove_dir_all(&ocr_dir).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_storage_info(path: String) -> Result<StorageInfo, String> {
+    let target = PathBuf::from(path.trim());
+    if target.as_os_str().is_empty() {
+        return Err("Storage path is empty".to_string());
+    }
+    let db_path = target.join("notes.db");
+    let has_data = db_path.exists() || target.join("files").exists() || target.join("ocr").exists();
+    if !db_path.exists() {
+        return Ok(StorageInfo {
+            has_data,
+            notes_count: 0,
+            notebooks_count: 0,
+            last_note_at: None,
+            last_note_title: None,
+        });
+    }
+    let options = SqliteConnectOptions::new()
+        .filename(&db_path)
+        .create_if_missing(false);
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await
+        .map_err(|e| e.to_string())?;
+    let notes_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM notes WHERE deleted_at IS NULL")
+        .fetch_one(&pool)
+        .await
+        .unwrap_or(0);
+    let notebooks_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM notebooks WHERE notebook_type = 'notebook'")
+        .fetch_one(&pool)
+        .await
+        .unwrap_or(0);
+    let last_note_at: Option<i64> =
+        sqlx::query_scalar("SELECT MAX(updated_at) FROM notes WHERE deleted_at IS NULL")
+            .fetch_one(&pool)
+            .await
+            .unwrap_or(None);
+    let last_note_title: Option<String> =
+        sqlx::query_scalar("SELECT title FROM notes WHERE deleted_at IS NULL ORDER BY updated_at DESC LIMIT 1")
+            .fetch_optional(&pool)
+            .await
+            .unwrap_or(None);
+    Ok(StorageInfo {
+        has_data,
+        notes_count,
+        notebooks_count,
+        last_note_at,
+        last_note_title,
+    })
+}
+
+#[tauri::command]
+fn set_storage_default(state: State<'_, AppState>) -> Result<(), String> {
+    let new_dir = default_data_dir(&state.settings_dir);
+    let current_dir = state.data_dir.clone();
+    if current_dir == new_dir {
+        return Ok(());
+    }
+    ensure_dir_writable(&new_dir)?;
+    if new_dir.join("notes.db").exists() || new_dir.join("files").exists() || new_dir.join("ocr").exists() {
+        return Err("Target folder already contains data".to_string());
+    }
+    let notes_db = current_dir.join("notes.db");
+    if notes_db.exists() {
+        fs::copy(&notes_db, new_dir.join("notes.db")).map_err(|e| e.to_string())?;
+    }
+    copy_dir_recursive(&current_dir.join("files"), &new_dir.join("files"))?;
+    copy_dir_recursive(&current_dir.join("ocr"), &new_dir.join("ocr"))?;
+
+    let mut merged = read_settings_file(&state.settings_dir)?;
+    if !merged.is_object() {
+        merged = Value::Object(serde_json::Map::new());
+    }
+    if let Some(base) = merged.as_object_mut() {
+        base.remove("dataDir");
+    }
+    let settings_path = state.settings_dir.join(SETTINGS_FILE_NAME);
+    let data = serde_json::to_string_pretty(&merged).map_err(|e| e.to_string())?;
+    fs::write(&settings_path, data).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn set_storage_default_existing(state: State<'_, AppState>) -> Result<(), String> {
+    let new_dir = default_data_dir(&state.settings_dir);
+    let current_dir = state.data_dir.clone();
+    if current_dir == new_dir {
+        return Ok(());
+    }
+    ensure_dir_writable(&new_dir)?;
+    let mut merged = read_settings_file(&state.settings_dir)?;
+    if !merged.is_object() {
+        merged = Value::Object(serde_json::Map::new());
+    }
+    if let Some(base) = merged.as_object_mut() {
+        base.remove("dataDir");
+    }
+    let settings_path = state.settings_dir.join(SETTINGS_FILE_NAME);
+    let data = serde_json::to_string_pretty(&merged).map_err(|e| e.to_string())?;
+    fs::write(&settings_path, data).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn set_storage_default_replace(state: State<'_, AppState>) -> Result<(), String> {
+    let new_dir = default_data_dir(&state.settings_dir);
+    let current_dir = state.data_dir.clone();
+    if current_dir == new_dir {
+        return Ok(());
+    }
+    ensure_dir_writable(&new_dir)?;
+    remove_storage_data(&new_dir)?;
+    let notes_db = current_dir.join("notes.db");
+    if notes_db.exists() {
+        fs::copy(&notes_db, new_dir.join("notes.db")).map_err(|e| e.to_string())?;
+    }
+    copy_dir_recursive(&current_dir.join("files"), &new_dir.join("files"))?;
+    copy_dir_recursive(&current_dir.join("ocr"), &new_dir.join("ocr"))?;
+
+    let mut merged = read_settings_file(&state.settings_dir)?;
+    if !merged.is_object() {
+        merged = Value::Object(serde_json::Map::new());
+    }
+    if let Some(base) = merged.as_object_mut() {
+        base.remove("dataDir");
+    }
+    let settings_path = state.settings_dir.join(SETTINGS_FILE_NAME);
+    let data = serde_json::to_string_pretty(&merged).map_err(|e| e.to_string())?;
+    fs::write(&settings_path, data).map_err(|e| e.to_string())?;
+    Ok(())
+}
+#[tauri::command]
+fn set_storage_path_existing(path: String, state: State<'_, AppState>) -> Result<(), String> {
+    let new_dir = PathBuf::from(path.trim());
+    if new_dir.as_os_str().is_empty() {
+        return Err("Storage path is empty".to_string());
+    }
+    let db_path = new_dir.join("notes.db");
+    if !db_path.exists() {
+        return Err("Storage database not found".to_string());
+    }
+    ensure_dir_writable(&new_dir)?;
+    let mut merged = read_settings_file(&state.settings_dir)?;
+    if !merged.is_object() {
+        merged = Value::Object(serde_json::Map::new());
+    }
+    if let Some(base) = merged.as_object_mut() {
+        base.insert(
+            "dataDir".to_string(),
+            Value::String(new_dir.to_string_lossy().to_string()),
+        );
+    }
+    let settings_path = state.settings_dir.join(SETTINGS_FILE_NAME);
+    let data = serde_json::to_string_pretty(&merged).map_err(|e| e.to_string())?;
+    fs::write(&settings_path, data).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn set_storage_path_replace(path: String, state: State<'_, AppState>) -> Result<(), String> {
+    let new_dir = PathBuf::from(path.trim());
+    if new_dir.as_os_str().is_empty() {
+        return Err("Storage path is empty".to_string());
+    }
+    let current_dir = state.data_dir.clone();
+    if current_dir == new_dir {
+        return Ok(());
+    }
+    ensure_dir_writable(&new_dir)?;
+    remove_storage_data(&new_dir)?;
+    let notes_db = current_dir.join("notes.db");
+    if notes_db.exists() {
+        fs::copy(&notes_db, new_dir.join("notes.db")).map_err(|e| e.to_string())?;
+    }
+    copy_dir_recursive(&current_dir.join("files"), &new_dir.join("files"))?;
+    copy_dir_recursive(&current_dir.join("ocr"), &new_dir.join("ocr"))?;
+
+    let mut merged = read_settings_file(&state.settings_dir)?;
+    if !merged.is_object() {
+        merged = Value::Object(serde_json::Map::new());
+    }
+    if let Some(base) = merged.as_object_mut() {
+        base.insert(
+            "dataDir".to_string(),
+            Value::String(new_dir.to_string_lossy().to_string()),
+        );
+    }
+    let settings_path = state.settings_dir.join(SETTINGS_FILE_NAME);
+    let data = serde_json::to_string_pretty(&merged).map_err(|e| e.to_string())?;
+    fs::write(&settings_path, data).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 fn resolve_portable_paths(app_handle: &AppHandle) -> Result<(PathBuf, PathBuf), String> {
@@ -985,7 +1224,15 @@ fn main() {
             set_notes_list_view,
             get_settings,
             set_settings,
-            set_storage_path
+            get_default_storage_path,
+            get_storage_override,
+            get_storage_info,
+            set_storage_path,
+            set_storage_default,
+            set_storage_default_existing,
+            set_storage_default_replace,
+            set_storage_path_existing,
+            set_storage_path_replace
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

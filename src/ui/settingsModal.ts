@@ -1,6 +1,17 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { appStore } from "../state/store";
-import { getDataDir, setStoragePath } from "../services/storage";
+import {
+  getDefaultStoragePath,
+  getDataDir,
+  getStorageInfo,
+  getStorageOverride,
+  setStorageDefault,
+  setStorageDefaultExisting,
+  setStorageDefaultReplace,
+  setStoragePath,
+  setStoragePathExisting,
+  setStoragePathReplace,
+} from "../services/storage";
 import { logError } from "../services/logger";
 
 type SettingsModal = {
@@ -19,7 +30,9 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
       <div class="settings-modal__header">
         <h3 class="settings-modal__title">Settings</h3>
         <button class="settings-modal__close" type="button" aria-label="Close">
-          ×
+          <svg class="settings-modal__close-icon" width="16" height="16" aria-hidden="true">
+            <use href="#icon-close"></use>
+          </svg>
         </button>
       </div>
       <div class="settings-modal__body">
@@ -39,14 +52,25 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
           </section>
           <section class="settings-modal__section" data-settings-section="storage">
             <div class="settings-row">
+              <div class="settings-row__label">Active storage</div>
+              <div class="settings-row__path" data-settings-active-path>Loading...</div>
+            </div>
+            <div class="settings-row">
               <div class="settings-row__label">Storage location</div>
               <div class="settings-row__path" data-settings-storage-path>Loading...</div>
-              <button class="settings-row__button" data-settings-storage-change type="button">Change…</button>
+              <div class="settings-row__actions">
+                <button class="settings-row__button" data-settings-storage-change type="button">Change...</button>
+                <button class="settings-row__button settings-row__button--ghost" data-settings-storage-default type="button">Default</button>
+              </div>
               <div class="settings-row__status" data-settings-storage-status></div>
             </div>
             <p class="settings-row__hint">Changing location copies data. Restart required.</p>
           </section>
         </div>
+      </div>
+      <div class="settings-modal__footer">
+        <button class="settings-modal__action" data-settings-apply type="button">Apply</button>
+        <button class="settings-modal__action settings-modal__action--ghost" data-settings-close type="button">Close</button>
       </div>
     </div>
   `;
@@ -57,14 +81,28 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
   const navItems = Array.from(overlay.querySelectorAll<HTMLButtonElement>("[data-settings-tab]"));
   const sections = Array.from(overlay.querySelectorAll<HTMLElement>("[data-settings-section]"));
   const deleteTrashInput = overlay.querySelector<HTMLInputElement>("[data-setting-delete-trash]");
+  const activePath = overlay.querySelector<HTMLElement>("[data-settings-active-path]");
   const storagePath = overlay.querySelector<HTMLElement>("[data-settings-storage-path]");
   const storageChange = overlay.querySelector<HTMLButtonElement>("[data-settings-storage-change]");
+  const storageDefault = overlay.querySelector<HTMLButtonElement>("[data-settings-storage-default]");
   const storageStatus = overlay.querySelector<HTMLElement>("[data-settings-storage-status]");
+  const applyBtn = overlay.querySelector<HTMLButtonElement>("[data-settings-apply]");
+  const closeFooterBtn = overlay.querySelector<HTMLButtonElement>("[data-settings-close]");
+
+  let draftDeleteToTrash = false;
+  let draftStorageMode: "default" | "custom" = "default";
+  let draftStoragePath = "";
+  let draftStorageAction: "copy" | "use" | "replace" = "copy";
+  let initialStorageMode: "default" | "custom" = "default";
+  let initialStoragePath = "";
+  let initialStorageAction: "copy" | "use" | "replace" = "copy";
+  let defaultStoragePath = "";
 
   const syncState = () => {
     const state = appStore.getState();
     if (deleteTrashInput) {
-      deleteTrashInput.checked = state.deleteToTrash;
+      draftDeleteToTrash = state.deleteToTrash;
+      deleteTrashInput.checked = draftDeleteToTrash;
     }
   };
 
@@ -77,13 +115,94 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
   const refreshStoragePath = async () => {
     if (!storagePath) return;
     try {
-      const path = await getDataDir();
-      storagePath.textContent = path;
+      if (activePath) {
+        const current = await getDataDir();
+        activePath.textContent = current;
+      }
+      defaultStoragePath = await getDefaultStoragePath();
+      const override = await getStorageOverride();
+      if (override) {
+        draftStorageMode = "custom";
+        draftStoragePath = override;
+        draftStorageAction = "use";
+      } else {
+        draftStorageMode = "default";
+        draftStoragePath = "";
+        draftStorageAction = "copy";
+      }
+      initialStorageMode = draftStorageMode;
+      initialStoragePath = draftStoragePath;
+      initialStorageAction = draftStorageAction;
+      storagePath.textContent = draftStorageMode === "default" ? "Default path" : draftStoragePath;
     } catch (e) {
       storagePath.textContent = "Unable to read";
       logError("[settings] storage path failed", e);
     }
   };
+
+  const formatTimestamp = (value: number | null) => {
+    if (!value) return "Unknown";
+    try {
+      return new Date(value * 1000).toLocaleString("en-US");
+    } catch {
+      return "Unknown";
+    }
+  };
+
+  const openStorageConflictDialog = (info: {
+    notesCount: number;
+    notebooksCount: number;
+    lastNoteAt: number | null;
+    lastNoteTitle: string | null;
+    path: string;
+  }) =>
+    new Promise<"cancel" | "use" | "replace">((resolve) => {
+      const dialog = document.createElement("div");
+      dialog.className = "dialog-overlay";
+      dialog.dataset.dialogOverlay = "1";
+      dialog.innerHTML = `
+        <div class="dialog storage-dialog">
+          <div class="dialog__header">
+            <h3 class="dialog__title">Existing storage found</h3>
+          </div>
+          <div class="dialog__body">
+            <p>This folder already contains notes data.</p>
+            <div class="storage-dialog__meta">
+              <div><strong>Path:</strong> ${info.path}</div>
+              <div><strong>Notes:</strong> ${info.notesCount}</div>
+              <div><strong>Notebooks:</strong> ${info.notebooksCount}</div>
+              <div><strong>Last note:</strong> ${formatTimestamp(info.lastNoteAt)}</div>
+              <div><strong>Last note title:</strong> ${info.lastNoteTitle || "Unknown"}</div>
+            </div>
+          </div>
+          <div class="dialog__footer">
+            <button class="dialog__button dialog__button--ghost" data-storage-cancel="1">Cancel</button>
+            <button class="dialog__button" data-storage-use="1">Use existing</button>
+            <button class="dialog__button dialog__button--danger" data-storage-replace="1">Replace</button>
+          </div>
+        </div>
+      `;
+      const cleanup = () => dialog.remove();
+      dialog.addEventListener("click", (event) => {
+        if (event.target === dialog) {
+          cleanup();
+          resolve("cancel");
+        }
+      });
+      dialog.querySelector("[data-storage-cancel]")?.addEventListener("click", () => {
+        cleanup();
+        resolve("cancel");
+      });
+      dialog.querySelector("[data-storage-use]")?.addEventListener("click", () => {
+        cleanup();
+        resolve("use");
+      });
+      dialog.querySelector("[data-storage-replace]")?.addEventListener("click", () => {
+        cleanup();
+        resolve("replace");
+      });
+      document.body.appendChild(dialog);
+    });
 
   const setActiveTab = (id: string) => {
     navItems.forEach((btn) => {
@@ -103,7 +222,7 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
   });
 
   deleteTrashInput?.addEventListener("change", () => {
-    appStore.setState({ deleteToTrash: Boolean(deleteTrashInput.checked) });
+    draftDeleteToTrash = Boolean(deleteTrashInput.checked);
   });
 
   storageChange?.addEventListener("click", async () => {
@@ -115,13 +234,105 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
     });
     if (!selected || typeof selected !== "string") return;
     try {
-      await setStoragePath(selected);
-      storagePath && (storagePath.textContent = selected);
-      setStorageStatus("Storage updated. Restart required.", "ok");
+      const info = await getStorageInfo(selected);
+      if (info.hasData) {
+        const choice = await openStorageConflictDialog({ ...info, path: selected });
+        if (choice === "cancel") return;
+        draftStorageMode = "custom";
+        draftStoragePath = selected;
+        draftStorageAction = choice;
+        if (storagePath) {
+          storagePath.textContent = selected;
+        }
+        return;
+      }
+      draftStorageMode = "custom";
+      draftStoragePath = selected;
+      draftStorageAction = "copy";
+      if (storagePath) {
+        storagePath.textContent = selected;
+      }
     } catch (e) {
-      logError("[settings] storage update failed", e);
-      setStorageStatus("Failed to update storage location.", "error");
+      logError("[settings] storage info failed", e);
     }
+  });
+
+  storageDefault?.addEventListener("click", () => {
+    const applyDefault = () => {
+      draftStorageMode = "default";
+      draftStoragePath = "";
+      draftStorageAction = "copy";
+      if (storagePath) {
+        storagePath.textContent = "Default path";
+      }
+    };
+    if (!defaultStoragePath) {
+      applyDefault();
+      return;
+    }
+    getStorageInfo(defaultStoragePath)
+      .then(async (info) => {
+        if (!info.hasData) {
+          applyDefault();
+          return;
+        }
+        const choice = await openStorageConflictDialog({ ...info, path: defaultStoragePath });
+        if (choice === "cancel") return;
+        draftStorageMode = "default";
+        draftStoragePath = "";
+        draftStorageAction = choice;
+        if (storagePath) {
+          storagePath.textContent = "Default path";
+        }
+      })
+      .catch((e) => {
+        logError("[settings] storage info failed", e);
+        applyDefault();
+      });
+  });
+
+  applyBtn?.addEventListener("click", async () => {
+    setStorageStatus("", "muted");
+    appStore.setState({ deleteToTrash: draftDeleteToTrash });
+    const storageChanged =
+      draftStorageMode !== initialStorageMode ||
+      (draftStorageMode === "custom" && draftStoragePath !== initialStoragePath) ||
+      (draftStorageAction !== initialStorageAction);
+    if (storageChanged) {
+      try {
+        if (draftStorageMode === "custom") {
+          if (draftStorageAction === "use") {
+            await setStoragePathExisting(draftStoragePath);
+          } else if (draftStorageAction === "replace") {
+            await setStoragePathReplace(draftStoragePath);
+          } else {
+            await setStoragePath(draftStoragePath);
+          }
+        } else {
+          if (draftStorageAction === "use") {
+            await setStorageDefaultExisting();
+          } else if (draftStorageAction === "replace") {
+            await setStorageDefaultReplace();
+        } else {
+          if (draftStorageAction === "use") {
+            await setStorageDefaultExisting();
+          } else if (draftStorageAction === "replace") {
+            await setStorageDefaultReplace();
+          } else {
+            await setStorageDefault();
+          }
+        }
+        }
+        initialStorageMode = draftStorageMode;
+        initialStoragePath = draftStoragePath;
+        initialStorageAction = draftStorageAction;
+        setStorageStatus("Storage updated. Restart required.", "ok");
+      } catch (e) {
+        logError("[settings] storage update failed", e);
+        setStorageStatus("Failed to update storage location.", "error");
+      }
+    }
+    closeModal();
   });
 
   const openModal = () => {
@@ -140,6 +351,7 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
   };
 
   closeBtn?.addEventListener("click", closeModal);
+  closeFooterBtn?.addEventListener("click", closeModal);
   overlay.addEventListener("click", (event) => {
     if (event.target === overlay) closeModal();
   });
