@@ -9,9 +9,11 @@ import {
   setStorageDefault,
   setStorageDefaultExisting,
   setStorageDefaultReplace,
+  setStorageDefaultEmpty,
   setStoragePath,
   setStoragePathExisting,
   setStoragePathReplace,
+  setStoragePathEmpty,
 } from "../services/storage";
 import { logError } from "../services/logger";
 
@@ -93,10 +95,10 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
   let draftDeleteToTrash = false;
   let draftStorageMode: "default" | "custom" = "default";
   let draftStoragePath = "";
-  let draftStorageAction: "copy" | "use" | "replace" = "copy";
+  let draftStorageAction: "copy" | "use" | "replace" | "empty" = "copy";
   let initialStorageMode: "default" | "custom" = "default";
   let initialStoragePath = "";
-  let initialStorageAction: "copy" | "use" | "replace" = "copy";
+  let initialStorageAction: "copy" | "use" | "replace" | "empty" = "copy";
   let defaultStoragePath = "";
   let currentStoragePath = "";
 
@@ -242,6 +244,58 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
       document.body.appendChild(dialog);
     });
 
+  const openStorageEmptyDialog = (path: string) =>
+    new Promise<"copy" | "empty" | "cancel">((resolve) => {
+      const dialog = document.createElement("div");
+      dialog.className = "dialog-overlay";
+      dialog.dataset.dialogOverlay = "1";
+      dialog.innerHTML = `
+        <div class="dialog storage-dialog">
+          <div class="dialog__header">
+            <h3 class="dialog__title">Empty folder detected</h3>
+            <button class="dialog__close" type="button" data-storage-empty-cancel="1" aria-label="Close">
+              <svg class="dialog__close-icon" aria-hidden="true">
+                <use href="#icon-close"></use>
+              </svg>
+            </button>
+          </div>
+          <div class="dialog__body">
+            <p>The selected folder has no Notes Classic data.</p>
+            <div class="storage-dialog__meta">
+              <div><strong>Path:</strong> ${path}</div>
+            </div>
+          </div>
+          <div class="dialog__footer">
+            <button class="dialog__button dialog__button--ghost" data-storage-empty-cancel="1">Choose another</button>
+            <button class="dialog__button" data-storage-empty-copy="1">Copy existing storage</button>
+            <button class="dialog__button dialog__button--primary" data-storage-empty-create="1">Create new storage</button>
+          </div>
+        </div>
+      `;
+      const cleanup = () => dialog.remove();
+      dialog.addEventListener("click", (event) => {
+        if (event.target === dialog) {
+          cleanup();
+          resolve("cancel");
+        }
+      });
+      dialog.querySelectorAll("[data-storage-empty-cancel]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          cleanup();
+          resolve("cancel");
+        });
+      });
+      dialog.querySelector("[data-storage-empty-copy]")?.addEventListener("click", () => {
+        cleanup();
+        resolve("copy");
+      });
+      dialog.querySelector("[data-storage-empty-create]")?.addEventListener("click", () => {
+        cleanup();
+        resolve("empty");
+      });
+      document.body.appendChild(dialog);
+    });
+
   const openRestartDialog = () => {
     const dialog = document.createElement("div");
     dialog.className = "dialog-overlay";
@@ -311,9 +365,14 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
         updateDefaultButtonState();
         return;
       }
+      const emptyChoice = await openStorageEmptyDialog(selected);
+      if (emptyChoice === "cancel") {
+        setStorageStatus("Select a different folder.", "muted");
+        return;
+      }
       draftStorageMode = "custom";
       draftStoragePath = selected;
-      draftStorageAction = "copy";
+      draftStorageAction = emptyChoice;
       setStoragePathDisplay(draftStorageMode, draftStoragePath);
       updateDefaultButtonState();
     } catch (e) {
@@ -337,7 +396,16 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
     getStorageInfo(defaultStoragePath)
       .then(async (info) => {
         if (!info.hasData) {
-          applyDefault();
+          const emptyChoice = await openStorageEmptyDialog(defaultStoragePath);
+          if (emptyChoice === "cancel") {
+            setStorageStatus("Default storage unchanged.", "muted");
+            return;
+          }
+          draftStorageMode = "default";
+          draftStoragePath = "";
+          draftStorageAction = emptyChoice;
+          setStoragePathDisplay(draftStorageMode, draftStoragePath);
+          updateDefaultButtonState();
           return;
         }
         const choice = await openStorageConflictDialog({ ...info, path: defaultStoragePath, valid: info.valid });
@@ -369,6 +437,8 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
             await setStoragePathExisting(draftStoragePath);
           } else if (draftStorageAction === "replace") {
             await setStoragePathReplace(draftStoragePath);
+          } else if (draftStorageAction === "empty") {
+            await setStoragePathEmpty(draftStoragePath);
           } else {
             await setStoragePath(draftStoragePath);
           }
@@ -377,6 +447,8 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
             await setStorageDefaultExisting();
           } else if (draftStorageAction === "replace") {
             await setStorageDefaultReplace();
+          } else if (draftStorageAction === "empty") {
+            await setStorageDefaultEmpty();
           } else {
             await setStorageDefault();
           }

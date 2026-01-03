@@ -155,7 +155,8 @@ export const mountEvernoteImportModal = (root: HTMLElement): EvernoteImportModal
       if (runBtn) runBtn.disabled = false;
     } catch (err) {
       logError("[import] scan failed", err);
-      setStatus("Unable to scan Evernote data.", "error");
+      const message = err instanceof Error ? err.message : String(err);
+      setStatus(message ? `Scan failed: ${message}` : "Unable to scan Evernote data.", "error");
       if (runBtn) runBtn.disabled = true;
     }
   });

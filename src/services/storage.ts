@@ -32,8 +32,14 @@ export const setStoragePathExisting = (path: string) =>
 export const setStoragePathReplace = (path: string) =>
   invoke<void>("set_storage_path_replace", { path });
 
+export const setStoragePathEmpty = (path: string) =>
+  invoke<void>("set_storage_path_empty", { path });
+
 export const setStorageDefaultExisting = () =>
   invoke<void>("set_storage_default_existing");
 
 export const setStorageDefaultReplace = () =>
   invoke<void>("set_storage_default_replace");
+
+export const setStorageDefaultEmpty = () =>
+  invoke<void>("set_storage_default_empty");

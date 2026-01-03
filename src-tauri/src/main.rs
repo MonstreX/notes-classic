@@ -453,6 +453,62 @@ fn set_storage_path_replace(path: String, state: State<'_, AppState>) -> Result<
     Ok(())
 }
 
+#[tauri::command]
+async fn set_storage_path_empty(path: String, state: State<'_, AppState>) -> Result<(), String> {
+    let new_dir = PathBuf::from(path.trim());
+    if new_dir.as_os_str().is_empty() {
+        return Err("Storage path is empty".to_string());
+    }
+    let current_dir = state.data_dir.clone();
+    if current_dir == new_dir {
+        return Ok(());
+    }
+    ensure_dir_writable(&new_dir)?;
+    if new_dir.join("notes.db").exists() || new_dir.join("files").exists() || new_dir.join("ocr").exists() {
+        return Err("Target folder already contains data".to_string());
+    }
+    let _ = db::init_db(&new_dir).await.map_err(|e| e.to_string())?;
+    let mut merged = read_settings_file(&state.settings_dir)?;
+    if !merged.is_object() {
+        merged = Value::Object(serde_json::Map::new());
+    }
+    if let Some(base) = merged.as_object_mut() {
+        base.insert(
+            "dataDir".to_string(),
+            Value::String(new_dir.to_string_lossy().to_string()),
+        );
+    }
+    let settings_path = state.settings_dir.join(SETTINGS_FILE_NAME);
+    let data = serde_json::to_string_pretty(&merged).map_err(|e| e.to_string())?;
+    fs::write(&settings_path, data).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn set_storage_default_empty(state: State<'_, AppState>) -> Result<(), String> {
+    let new_dir = default_data_dir(&state.settings_dir);
+    let current_dir = state.data_dir.clone();
+    if current_dir == new_dir {
+        return Ok(());
+    }
+    ensure_dir_writable(&new_dir)?;
+    if new_dir.join("notes.db").exists() || new_dir.join("files").exists() || new_dir.join("ocr").exists() {
+        return Err("Target folder already contains data".to_string());
+    }
+    let _ = db::init_db(&new_dir).await.map_err(|e| e.to_string())?;
+    let mut merged = read_settings_file(&state.settings_dir)?;
+    if !merged.is_object() {
+        merged = Value::Object(serde_json::Map::new());
+    }
+    if let Some(base) = merged.as_object_mut() {
+        base.remove("dataDir");
+    }
+    let settings_path = state.settings_dir.join(SETTINGS_FILE_NAME);
+    let data = serde_json::to_string_pretty(&merged).map_err(|e| e.to_string())?;
+    fs::write(&settings_path, data).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 fn resolve_portable_paths(app_handle: &AppHandle) -> Result<(PathBuf, PathBuf), String> {
     let exe_dir = std::env::current_exe()
         .ok()
@@ -1115,9 +1171,10 @@ fn updated_at_ts(path: &Path) -> i64 {
         .unwrap_or(0)
 }
 
+#[allow(non_snake_case)]
 #[tauri::command]
-fn find_evernote_paths(base_path: String) -> Result<EvernotePaths, String> {
-    let base = PathBuf::from(base_path);
+fn find_evernote_paths(basePath: String) -> Result<EvernotePaths, String> {
+    let base = PathBuf::from(basePath);
     if !base.exists() {
         return Err("Base path not found".to_string());
     }
@@ -1861,8 +1918,10 @@ fn main() {
             set_storage_default,
             set_storage_default_existing,
             set_storage_default_replace,
+            set_storage_default_empty,
             set_storage_path_existing,
-            set_storage_path_replace
+            set_storage_path_replace,
+            set_storage_path_empty
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

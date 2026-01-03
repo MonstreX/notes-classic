@@ -45,9 +45,14 @@ type EvernoteImportReport = {
 
 const readFileBytes = (path: string) => invoke<number[]>("read_file_bytes", { path });
 const pathExists = (path: string) => invoke<boolean>("path_exists", { path });
+const pathIsDir = (path: string) => invoke<boolean>("path_is_dir", { path });
 const getDirSize = (path: string) => invoke<number>("get_dir_size", { path });
 const resolveResourceRoots = (path: string) =>
   invoke<string[]>("resolve_resource_roots", { path });
+const findEvernotePaths = (basePath: string) =>
+  invoke<{ dbPath?: string | null; rteRoot?: string | null; resourcesRoot?: string | null }>("find_evernote_paths", {
+    basePath,
+  });
 const copyFile = (source: string, dest: string) =>
   invoke<void>("copy_file", { source, dest });
 const ensureDir = (path: string) => invoke<void>("ensure_dir", { path });
@@ -240,11 +245,23 @@ const findResourcePath = async (resourceRoots: string[], noteId: string, hash: s
   return resourceRoots.length ? `${resourceRoots[0]}/${noteId}/${hash}` : null;
 };
 
+const normalizeEvernoteRoot = (value: string) => {
+  let root = value.trim();
+  root = root.replace(/[\\\/]*\*+$/, "");
+  root = root.replace(/[\\\/]+$/, "");
+  return root;
+};
+
 export const scanEvernoteSource = async (sourceRoot: string): Promise<EvernoteScanSummary> => {
-  const dbPath = `${sourceRoot}/RemoteGraph.sql`;
-  const rteRoot = `${sourceRoot}/internal_rteDoc`;
-  const resourcesRoot = `${sourceRoot}/resource-cache`;
+  const cleanRoot = normalizeEvernoteRoot(sourceRoot);
   const errors: string[] = [];
+  if (!(await pathIsDir(cleanRoot))) {
+    errors.push("Selected path is not a folder.");
+  }
+  const resolved = await findEvernotePaths(cleanRoot);
+  const dbPath = resolved.dbPath || `${cleanRoot}/RemoteGraph.sql`;
+  const rteRoot = resolved.rteRoot || `${cleanRoot}/internal_rteDoc`;
+  const resourcesRoot = resolved.resourcesRoot || `${cleanRoot}/resource-cache`;
 
   const hasDb = await pathExists(dbPath);
   const hasRte = await pathExists(rteRoot);
@@ -302,7 +319,7 @@ export const scanEvernoteSource = async (sourceRoot: string): Promise<EvernoteSc
   }
 
   return {
-    sourceRoot,
+    sourceRoot: cleanRoot,
     dbPath,
     rteRoot,
     resourcesRoot: (await pathExists(resourcesRoot)) ? resourcesRoot : null,
