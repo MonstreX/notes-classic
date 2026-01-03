@@ -116,7 +116,9 @@ export const mountEvernoteImportModal = (root: HTMLElement): EvernoteImportModal
     { id: "resources", title: "Copy resources" },
     { id: "decode", title: "Decode notes" },
     { id: "database", title: "Write database" },
-  ];
+  ] as const;
+
+  const stageTitles = new Map(stageOrder.map((stage) => [stage.id, stage.title]));
 
   type StageElements = {
     root: HTMLElement;
@@ -126,20 +128,21 @@ export const mountEvernoteImportModal = (root: HTMLElement): EvernoteImportModal
 
   const stageElements: Record<string, StageElements> = {};
 
-  const initStages = () => {
+  const initStages = (totals?: Partial<Record<(typeof stageOrder)[number]["id"], number>>) => {
     if (!stagesEl) return;
     Object.keys(stageElements).forEach((key) => {
       delete stageElements[key];
     });
     stagesEl.innerHTML = "";
     stageOrder.forEach((stage) => {
+      const total = totals?.[stage.id] ?? 0;
       const row = document.createElement("div");
       row.className = "import-stage";
       row.dataset.stageId = stage.id;
       row.innerHTML = `
         <div class="import-stage__header">
           <div class="import-stage__title">${stage.title}</div>
-          <div class="import-stage__count">0/0</div>
+          <div class="import-stage__count">0/${total}</div>
         </div>
         <div class="import-stage__bar"><span class="import-stage__bar-fill"></span></div>
       `;
@@ -153,12 +156,18 @@ export const mountEvernoteImportModal = (root: HTMLElement): EvernoteImportModal
     stagesEl.classList.remove("is-hidden");
   };
 
-  const setStageProgress = (id: string, current = 0, total = 0, state: "running" | "done" | "error" = "running") => {
+  const setStageProgress = (
+    id: string,
+    current = 0,
+    total = 0,
+    state: "running" | "done" | "error" = "running"
+  ) => {
     const stage = stageElements[id];
     if (!stage) return;
     const safeTotal = Number.isFinite(total) && total >= 0 ? total : 0;
     const safeCurrent = Number.isFinite(current) && current >= 0 ? current : 0;
-    const percent = safeTotal > 0 ? Math.min(100, Math.round((safeCurrent / safeTotal) * 100)) : state === "done" ? 100 : 0;
+    const percent =
+      safeTotal > 0 ? Math.min(100, Math.round((safeCurrent / safeTotal) * 100)) : state === "done" ? 100 : 0;
     stage.count.textContent = `${safeCurrent}/${safeTotal}`;
     stage.fill.style.width = `${percent}%`;
     stage.root.classList.toggle("is-running", state === "running");
@@ -268,12 +277,18 @@ export const mountEvernoteImportModal = (root: HTMLElement): EvernoteImportModal
     selectBtn?.setAttribute("disabled", "disabled");
     summaryEl?.classList.add("is-hidden");
     reportEl?.classList.add("is-hidden");
-    initStages();
+    initStages({
+      tables: 1,
+      resources: summary.attachmentCount,
+      decode: summary.noteCount,
+      database: 1,
+    });
     setStatus("Preparing import...", "muted", true);
     try {
       const report = await runEvernoteImport(summary, (event) => {
-        if (event.message) {
-          setStatus(event.message, "muted", true);
+        if (event.stage && event.state === "running") {
+          const title = stageTitles.get(event.stage) ?? "Importing";
+          setStatus(`${title}...`, "muted", true);
         }
         if (event.stage) {
           setStageProgress(event.stage, event.current ?? 0, event.total ?? 0, event.state ?? "running");

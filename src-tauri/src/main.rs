@@ -41,7 +41,14 @@ struct AppState {
 #[tauri::command]
 fn restart_app(app_handle: AppHandle) -> Result<(), String> {
     std::thread::sleep(std::time::Duration::from_secs(2));
+    if let Ok(exe) = std::env::current_exe() {
+        if std::process::Command::new(exe).spawn().is_ok() {
+            app_handle.exit(0);
+            return Ok(());
+        }
+    }
     app_handle.restart();
+    Ok(())
 }
 
 #[tauri::command]
