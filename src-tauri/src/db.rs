@@ -219,6 +219,7 @@ pub struct Attachment {
 pub struct OcrFileItem {
     pub file_id: i64,
     pub file_path: String,
+    pub mime: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
@@ -1491,7 +1492,7 @@ impl SqliteRepository {
             let _ = self.backfill_note_files().await?;
         }
         let query = format!(
-            "SELECT f.id AS file_id, f.file_path
+            "SELECT f.id AS file_id, f.file_path, a.mime
              FROM ocr_files f
              LEFT JOIN ocr_text t ON t.file_id = f.id
              LEFT JOIN attachments a ON a.local_path = ('files/' || f.file_path)

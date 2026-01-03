@@ -4,6 +4,7 @@ import { createWorker } from "tesseract.js";
 type OcrPendingFile = {
   fileId: number;
   filePath: string;
+  mime?: string | null;
 };
 
 export type OcrStats = {
@@ -162,7 +163,8 @@ export const startOcrQueue = () => {
       for (const file of files) {
         if (cancelled) return;
         const ext = getExtension(file.filePath);
-        if (!OCR_EXTENSIONS.has(ext)) {
+        const isImageMime = (file.mime || "").toLowerCase().startsWith("image/");
+        if (!OCR_EXTENSIONS.has(ext) && !isImageMime) {
           await markOcrFailed(file.fileId, "unsupported");
           continue;
         }
