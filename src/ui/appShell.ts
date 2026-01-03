@@ -6,6 +6,7 @@ import { mountNotesList, type NotesListHandlers, type NotesListInstance } from "
 import { buildMenuNodes } from "./menuBuilder";
 import { mountSearchModal } from "./searchModal";
 import { mountSettingsModal } from "./settingsModal";
+import { mountEvernoteImportModal } from "./evernoteImportModal";
 import { mountSidebar, type SidebarHandlers, type SidebarInstance } from "./sidebar";
 import { mountTagsBar } from "./tagsBar";
 import { createEditorScheduler } from "./editorScheduler";
@@ -57,6 +58,8 @@ export const mountApp = (root: HTMLElement) => {
 
   listen("menu-search", () => openSearchModal());
   listen("menu-settings", () => openSettingsModal());
+  const importModal = mountEvernoteImportModal(layout.editorPane);
+  listen("import-evernote", () => importModal.open());
 
   const sidebarHandlers: SidebarHandlers = {
     onSelectNotebook: (id) => actions.selectNotebook(id),
@@ -242,6 +245,7 @@ export const mountApp = (root: HTMLElement) => {
     editorInstance.destroy();
     editorScheduler.reset();
     searchModal.destroy();
+    importModal.destroy();
     metaBar.destroy();
     tagsBar.destroy();
     window.removeEventListener("mousemove", handleMouseMove);

@@ -17,6 +17,8 @@
     "@tauri-apps/plugin-shell": "^2.3.3",
     "highlight.js": "^11.11.1",
     "jodit": "^4.7.9",
+    "sql.js": "^1.13.0",
+    "yjs": "^13.6.27",
     "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
@@ -24,7 +26,6 @@
     "autoprefixer": "^10.4.16",
     "postcss": "^8.4.32",
     "sass-embedded": "^1.97.1",
-    "sql.js": "^1.13.0",
     "typescript": "^5.2.2",
     "vite": "^7.3.0"
   }

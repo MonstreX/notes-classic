@@ -1,5 +1,4 @@
 import { listen } from "@tauri-apps/api/event";
-import { open } from "@tauri-apps/plugin-dialog";
 import { openConfirmDialog } from "../ui/dialogs";
 import { appStore } from "../state/store";
 import { logError } from "../services/logger";
@@ -93,16 +92,6 @@ export const initApp = async () => {
     }
   });
 
-  const unlistenImport = await listen("import-evernote", async () => {
-    const selected = await open({
-      title: "Import from Evernote",
-      filters: [{ name: "Evernote Export", extensions: ["enex"] }],
-    });
-    if (selected) {
-      console.log("Evernote import file selected:", selected);
-    }
-  });
-
   const unlistenMenuNewNote = await listen("menu-new-note", () => {
     actions.createNote();
   });
@@ -187,7 +176,6 @@ export const initApp = async () => {
 
   return () => {
     unlistenView();
-    unlistenImport();
     unlistenMenuNewNote();
     unlistenMenuDeleteNote();
     unlistenMenuNewStack();
