@@ -24,6 +24,8 @@ const WORKER_START_TIMEOUT_MS = 120000;
 let dataDirPromise: Promise<string> | null = null;
 let resourceDirPromise: Promise<string> | null = null;
 
+const logOcr = async (_message: string) => {};
+
 const getDataDir = async () => {
   if (!dataDirPromise) {
     dataDirPromise = invoke<string>("get_data_dir");
