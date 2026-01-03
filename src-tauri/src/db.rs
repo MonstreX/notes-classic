@@ -96,7 +96,8 @@ const OCR_IMAGE_FILTER: &str = "(
     lower(f.file_path) LIKE '%.bmp' OR
     lower(f.file_path) LIKE '%.jfif' OR
     lower(f.file_path) LIKE '%.tif' OR
-    lower(f.file_path) LIKE '%.tiff'
+    lower(f.file_path) LIKE '%.tiff' OR
+    lower(a.mime) LIKE 'image/%'
 )";
 
 async fn migrate_note_file_scheme(pool: &SqlitePool) -> Result<bool, sqlx::Error> {
@@ -1493,6 +1494,7 @@ impl SqliteRepository {
             "SELECT f.id AS file_id, f.file_path
              FROM ocr_files f
              LEFT JOIN ocr_text t ON t.file_id = f.id
+             LEFT JOIN attachments a ON a.local_path = ('files/' || f.file_path)
              WHERE t.file_id IS NULL
                AND f.attempts_left > 0
                AND {filter}
@@ -1548,7 +1550,9 @@ impl SqliteRepository {
             let _ = self.backfill_note_files().await?;
         }
         let total_query = format!(
-            "SELECT COUNT(*) FROM ocr_files f WHERE {filter}",
+            "SELECT COUNT(*) FROM ocr_files f
+             LEFT JOIN attachments a ON a.local_path = ('files/' || f.file_path)
+             WHERE {filter}",
             filter = OCR_IMAGE_FILTER
         );
         let (total,): (i64,) = sqlx::query_as(&total_query)
@@ -1557,6 +1561,7 @@ impl SqliteRepository {
         let done_query = format!(
             "SELECT COUNT(*) FROM ocr_text t
              JOIN ocr_files f ON f.id = t.file_id
+             LEFT JOIN attachments a ON a.local_path = ('files/' || f.file_path)
              WHERE {filter}",
             filter = OCR_IMAGE_FILTER
         );
@@ -1566,6 +1571,7 @@ impl SqliteRepository {
         let pending_query = format!(
             "SELECT COUNT(*) FROM ocr_files f
              LEFT JOIN ocr_text t ON t.file_id = f.id
+             LEFT JOIN attachments a ON a.local_path = ('files/' || f.file_path)
              WHERE t.file_id IS NULL AND f.attempts_left > 0 AND {filter}",
             filter = OCR_IMAGE_FILTER
         );
