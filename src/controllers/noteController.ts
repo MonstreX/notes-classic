@@ -79,15 +79,15 @@ export const createNoteActions = (fetchData: () => Promise<void>, selectNote: (i
     setContent: (value: string) => appStore.setState({ content: value }),
     createNote: async () => {
       const state = appStore.getState();
-      if (state.selectedTrash) {
-        appStore.setState({ selectedTrash: false, selectedNotebookId: null, selectedTagId: null });
+      if (state.selectedTrash || state.selectedTagId !== null) {
+        appStore.setState({ selectedTrash: false, selectedTagId: null });
       }
       const id = await createNote("New Note", "", state.selectedNotebookId);
       await fetchData();
       await selectNote(id);
     },
     createNoteInNotebook: async (notebookId: number) => {
-      appStore.setState({ selectedNotebookId: notebookId, selectedTrash: false });
+      appStore.setState({ selectedNotebookId: notebookId, selectedTrash: false, selectedTagId: null });
       const id = await createNote("New Note", "", notebookId);
       await fetchData();
       await selectNote(id);
