@@ -18,16 +18,17 @@ Frontend and backend are decoupled. The UI calls Rust commands through Tauri IPC
 
 ## Storage Layout (Portable Mode)
 
-All user data is stored next to the executable (portable layout).
+By default, all user data is stored next to the executable (portable layout). The storage root can be changed in Settings; the app can copy the current storage or switch to an existing one.
 
 ```text
 ./data/notes.db          # SQLite database
-./data/files/            # Note resources and images
-./data/ocr/tessdata/     # OCR language data (eng, rus)
-./settings/app.json      # UI + app settings
+./data/files/            # Note resources and attachments
+./data/backups/          # Automatic backups (import/storage changes)
+./settings/app.json      # UI + app settings (including storage override + language)
+./resources/ocr/tessdata # OCR language data (eng, rus) shipped with the app
 ```
 
-If the app cannot write to the executable folder, it shows an error and aborts startup.
+If the app cannot write to the chosen storage folder, it shows an error and aborts startup.
 
 ---
 
@@ -35,20 +36,21 @@ If the app cannot write to the executable folder, it shows an error and aborts s
 
 ```text
 notes-classic/
-├─ docs/                      # Project documentation
-├─ src/                       # Frontend source (vanilla TS)
-│  ├─ assets/                 # Static assets (icons sprite, etc.)
-│  ├─ controllers/            # App orchestration
-│  ├─ services/               # Domain + IPC helpers
-│  ├─ state/                  # In-memory store + types
-│  ├─ styles/                 # SCSS styles
-│  └─ ui/                     # UI modules (DOM + events)
-├─ src-tauri/                 # Rust backend
-│  ├─ icons/                  # App icon
-│  ├─ src/                    # Rust sources
-│  └─ Cargo.toml              # Rust dependencies
-├─ settings/                  # User settings
-└─ data/                      # User data
+  docs/                      # Project documentation
+  src/                       # Frontend source (vanilla TS)
+    assets/                  # Static assets (icons sprite, etc.)
+    controllers/             # App orchestration
+    services/                # Domain + IPC helpers
+    state/                   # In-memory store + types
+    styles/                  # SCSS styles
+    ui/                      # UI modules (DOM + events)
+  src-tauri/                 # Rust backend
+    icons/                   # App icon
+    resources/               # Bundled resources (i18n, OCR tessdata)
+    src/                     # Rust sources
+    Cargo.toml               # Rust dependencies
+  settings/                  # User settings (portable)
+  data/                      # User data (portable)
 ```
 
 ---
@@ -87,6 +89,17 @@ notes-classic/
 - Images are processed in background batches with retry/backoff.
 - Results are stored in `ocr_text` for search.
 
+### 7. Settings + Localization
+- Settings dialog for storage location and delete-to-trash behavior.
+- UI language selection (EN/RU) with restart required.
+- Default language is picked from the OS on first run.
+
+### 8. Evernote Import (In-App)
+- Import from Evernote v10 data folder (RemoteGraph.sql + internal_rteDoc + resource-cache).
+- Scan summary before import, staged progress during import.
+- Backup created before overwriting storage.
+- Restart required after import.
+
 ---
 
 ## Development and Build
@@ -108,5 +121,4 @@ npm run tauri build
 ---
 
 ## Future Roadmap (Planned)
-- Evernote import (EXB/ENEX).
 - Optional sync with remote server.

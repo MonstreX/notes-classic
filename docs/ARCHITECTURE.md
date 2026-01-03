@@ -31,7 +31,7 @@ All text is in English and matches the current code base.
 
 - Local-first, portable desktop app.
 - No external services required.
-- All data lives next to the executable.
+- All data lives next to the executable by default, but storage can be relocated via Settings.
 - UI must be fast and deterministic.
 - Editor must preserve complex HTML.
 - Search must include OCR results.
@@ -66,7 +66,8 @@ Repository root:
 - docs/              Documentation.
 - src/               Frontend code (vanilla TS + SCSS).
 - src-tauri/         Rust backend.
-- data/              User data (notes.db, files, ocr).
+- data/              User data (notes.db, files, backups).
+- src-tauri/resources/ocr/tessdata  OCR language data bundled with the app.
 - settings/          User settings (app.json).
 - scripts/           Import scripts and utilities.
 
@@ -663,7 +664,7 @@ Migrating legacy storage:
 Pipeline:
 
 - Uses tesseract.js createWorker.
-- Loads languages from data/ocr/tessdata.
+- Loads languages from resources/ocr/tessdata (resolved via get_resource_dir).
 - Uses convertFileSrc for image paths.
 - Processes files in batches with retries.
 
@@ -1009,6 +1010,12 @@ Menu items emit events for:
 
 UI listens with tauri event API and updates store.
 
+Menu localization:
+
+- Menu labels are loaded from resources/i18n/*.json on startup.
+- Language is read from settings/app.json.
+- When language changes, the app restarts so native menu labels are rebuilt.
+
 ----------------------------------------------------------------
 
 ## 12) Storage and asset protocol
@@ -1017,7 +1024,8 @@ Storage layout:
 
 - data/notes.db
 - data/files/*
-- data/ocr/tessdata/*
+- data/backups/*
+- resources/ocr/tessdata/*
 - settings/app.json
 
 Asset protocol:
@@ -1038,7 +1046,9 @@ Portable path resolution:
 - In dev, uses repository root (package.json + src-tauri).
 - Ensures directories are writable on startup.
 - If settings/app.json contains dataDir, storage is redirected there.
-- Changing storage path copies data and requires restart.
+- Changing storage path can copy existing data or switch to an existing storage.
+- A restart is required after storage changes.
+- Storage changes create a backup under data/backups.
 
 ----------------------------------------------------------------
 
@@ -1058,11 +1068,13 @@ Stored fields:
 - notesSortBy
 - notesSortDir
 - deleteToTrash
+- language (ui language, en/ru)
 - dataDir (optional override for storage location)
 
 File format:
 
 - JSON, pretty-printed, stored in settings/app.json.
+- Language changes are applied after restart so the native menu can reload.
 
 Legacy migration:
 

@@ -347,6 +347,33 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
     document.body.appendChild(dialog);
   };
 
+  const openLanguageRestartDialog = () => {
+    const dialog = document.createElement("div");
+    dialog.className = "dialog-overlay";
+    dialog.dataset.dialogOverlay = "1";
+    dialog.innerHTML = `
+      <div class="dialog storage-dialog">
+        <div class="dialog__header">
+          <h3 class="dialog__title">${t("language.restart_title")}</h3>
+        </div>
+        <div class="dialog__body">
+          <p>${t("language.restart_message")}</p>
+        </div>
+        <div class="dialog__footer">
+          <button class="dialog__button" data-restart-now="1">${t("storage.restart_now")}</button>
+          <button class="dialog__button dialog__button--danger" data-exit-now="1">${t("storage.exit_now")}</button>
+        </div>
+      </div>
+    `;
+    dialog.querySelector("[data-restart-now]")?.addEventListener("click", () => {
+      invoke("restart_app");
+    });
+    dialog.querySelector("[data-exit-now]")?.addEventListener("click", () => {
+      invoke("exit_app");
+    });
+    document.body.appendChild(dialog);
+  };
+
   const setActiveTab = (id: string) => {
     navItems.forEach((btn) => {
       btn.classList.toggle("is-active", btn.dataset.settingsTab === id);
@@ -483,6 +510,13 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
             await setStorageDefault();
           }
         }
+        if (languageChanged) {
+          try {
+            await invoke("set_settings", { settings: { language: draftLanguage } });
+          } catch (e) {
+            logError("[settings] language update failed", e);
+          }
+        }
         initialStorageMode = draftStorageMode;
         initialStoragePath = draftStoragePath;
         initialStorageAction = draftStorageAction;
@@ -506,7 +540,7 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
       } catch (e) {
         logError("[settings] language update failed", e);
       }
-      window.location.reload();
+      openLanguageRestartDialog();
     }
   });
 
