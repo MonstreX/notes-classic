@@ -103,14 +103,6 @@ const markOcrFailed = async (fileId: number, message: string) =>
     message,
   });
 
-const logOcr = async (message: string) => {
-  try {
-    await invoke("log_ocr_event", { message });
-  } catch {
-    // ignore logging failures
-  }
-};
-
 
 const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, label: string) => {
   let timer: number | null = null;
@@ -167,7 +159,6 @@ export const startOcrQueue = () => {
     if (cancelled) return;
     try {
       const files = await invoke<OcrPendingFile[]>("get_ocr_pending_files", { limit: BATCH_SIZE });
-      await logOcr(`[queue] fetched ${files.length} pending files`);
       if (!files.length) {
         schedule(IDLE_DELAY_MS);
         return;
@@ -178,16 +169,13 @@ export const startOcrQueue = () => {
         const ext = getExtension(file.filePath);
         const isImageMime = (file.mime || "").toLowerCase().startsWith("image/");
         if (!OCR_EXTENSIONS.has(ext) && !isImageMime) {
-          await logOcr(`[skip] ${file.filePath} mime=${file.mime || ""} ext=${ext}`);
           await markOcrFailed(file.fileId, "unsupported");
           continue;
         }
         const url = await getFileUrl(file.filePath);
-        await logOcr(`[start] ${file.filePath} -> ${url}`);
         const response = await fetch(url);
         if (!response.ok) {
           console.warn("[ocr] fetch failed", file.filePath, response.status);
-          await logOcr(`[fetch-fail] ${file.filePath} status=${response.status}`);
           await markOcrFailed(file.fileId, `fetch-${response.status}`);
           continue;
         }
@@ -201,18 +189,15 @@ export const startOcrQueue = () => {
           cleaned = text;
         } catch (err) {
           console.error("[ocr] recognize failed", file.filePath, err);
-          await logOcr(`[recognize-fail] ${file.filePath}`);
           await markOcrFailed(file.fileId, "recognize");
           await resetWorker();
           continue;
         }
         await markOcrDone(file.fileId, hash, cleaned);
-        await logOcr(`[done] ${file.filePath} bytes=${buffer.byteLength} chars=${cleaned.length}`);
       }
       schedule(0);
     } catch (e) {
       console.error("[ocr] failed", e);
-      await logOcr(`[error] ${String(e)}`);
       await resetWorker();
       schedule(RETRY_DELAY_MS);
     }

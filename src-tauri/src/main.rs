@@ -1667,26 +1667,6 @@ async fn get_ocr_stats(state: State<'_, AppState>) -> Result<OcrStats, String> {
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-fn log_ocr_event(message: String, state: State<'_, AppState>) -> Result<(), String> {
-    let exe_dir = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-        .unwrap_or_else(|| state.data_dir.clone());
-    let log_dir = exe_dir.join("logs");
-    fs::create_dir_all(&log_dir).map_err(|e| e.to_string())?;
-    let log_path = log_dir.join("ocr.log");
-    let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
-    let line = format!("[{}] {}\n", timestamp, message);
-    use std::io::Write;
-    let mut file = fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_path)
-        .map_err(|e| e.to_string())?;
-    file.write_all(line.as_bytes()).map_err(|e| e.to_string())?;
-    Ok(())
-}
 
 #[tauri::command]
 async fn get_tags(state: State<'_, AppState>) -> Result<Vec<Tag>, String> {
@@ -1959,7 +1939,6 @@ fn main() {
             upsert_ocr_text,
             mark_ocr_failed,
             get_ocr_stats,
-            log_ocr_event,
             get_tags,
             get_note_tags,
             create_tag,
