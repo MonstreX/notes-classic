@@ -73,8 +73,9 @@ export const mountSearchModal = (container: HTMLElement, handlers: SearchModalHa
   const searchEverywhereText = document.createElement("span");
   searchEverywhereText.textContent = "Search everywhere";
   searchEverywhere.appendChild(searchEverywhereText);
-  const searchScope = document.createElement("div");
-  searchScope.className = "search-modal__scope";
+  const searchScope = document.createElement("button");
+  searchScope.type = "button";
+  searchScope.className = "search-modal__toggle search-modal__scope";
   const searchOptionsSpacer = document.createElement("div");
   searchOptionsSpacer.className = "search-modal__options-spacer";
   const searchOcrStatus = document.createElement("div");
@@ -340,24 +341,21 @@ export const mountSearchModal = (container: HTMLElement, handlers: SearchModalHa
   };
 
   const updateSearchScopeState = () => {
-    searchScope.classList.toggle("is-disabled", searchEverywhereActive);
+    searchEverywhere.classList.toggle("is-active", searchEverywhereActive);
     searchScope.classList.toggle("is-active", !searchEverywhereActive);
   };
 
   const updateOcrStatus = async () => {
     try {
       const stats = await getOcrStats();
-      if (stats.total === 0) {
-        searchOcrText.textContent = "No images indexed";
-        searchOcrStatus.classList.remove("is-active");
-      } else if (stats.pending === 0) {
-        searchOcrText.textContent = `${stats.done} images indexed`;
-        searchOcrStatus.classList.remove("is-active");
-      } else {
-        searchOcrText.textContent = `${stats.done} images indexed`;
-        searchOcrStatus.classList.add("is-active");
-      }
-    } catch (e) {
+        if (stats.total === 0) {
+          searchOcrText.textContent = "No images indexed";
+          searchOcrStatus.classList.remove("is-active");
+        } else {
+          searchOcrText.textContent = `${stats.done} of ${stats.total} images indexed`;
+          searchOcrStatus.classList.toggle("is-active", stats.pending > 0);
+        }
+      } catch (e) {
       console.error("[ocr] stats failed", e);
       searchOcrText.textContent = "Indexing unavailable";
       searchOcrStatus.classList.remove("is-active");
@@ -485,8 +483,11 @@ export const mountSearchModal = (container: HTMLElement, handlers: SearchModalHa
     openSearchResult(id);
   };
   const handleEverywhereClick = () => {
-    searchEverywhereActive = !searchEverywhereActive;
-    searchEverywhere.classList.toggle("is-active", searchEverywhereActive);
+    searchEverywhereActive = true;
+    updateSearchScopeState();
+  };
+  const handleScopeClick = () => {
+    searchEverywhereActive = false;
     updateSearchScopeState();
   };
 
@@ -497,6 +498,7 @@ export const mountSearchModal = (container: HTMLElement, handlers: SearchModalHa
   searchResults.addEventListener("click", handleResultsClick);
   searchResults.addEventListener("dblclick", handleResultsDblClick);
   searchEverywhere.addEventListener("click", handleEverywhereClick);
+  searchScope.addEventListener("click", handleScopeClick);
   window.addEventListener("keydown", handleSearchKeydown);
 
   return {
@@ -515,7 +517,8 @@ export const mountSearchModal = (container: HTMLElement, handlers: SearchModalHa
       searchInput.removeEventListener("keydown", handleInputKeydown);
       searchResults.removeEventListener("click", handleResultsClick);
       searchResults.removeEventListener("dblclick", handleResultsDblClick);
-      searchEverywhere.removeEventListener("click", handleEverywhereClick);
+        searchEverywhere.removeEventListener("click", handleEverywhereClick);
+        searchScope.removeEventListener("click", handleScopeClick);
       window.removeEventListener("keydown", handleSearchKeydown);
       searchPreviewEditor?.destroy();
       searchOverlay.remove();

@@ -64,7 +64,7 @@ fn extract_note_files(content: &str) -> Vec<String> {
             results.push(path.as_str().to_string());
         }
     }
-    let re_asset_encoded_double = Regex::new(r#"src="[^"]*asset\.localhost[^"]*files%2F([^"]+)""#).unwrap();
+    let re_asset_encoded_double = Regex::new(r#"src="[^"]*asset\.localhost[^"]*(?i:files%2F)([^"]+)""#).unwrap();
     for caps in re_asset_encoded_double.captures_iter(content) {
         if let Some(path) = caps.get(1) {
             let candidate = format!("files/{}", path.as_str());
@@ -73,7 +73,7 @@ fn extract_note_files(content: &str) -> Vec<String> {
             }
         }
     }
-    let re_asset_encoded_single = Regex::new(r#"src='[^']*asset\.localhost[^']*files%2F([^']+)'"#).unwrap();
+    let re_asset_encoded_single = Regex::new(r#"src='[^']*asset\.localhost[^']*(?i:files%2F)([^']+)'"#).unwrap();
     for caps in re_asset_encoded_single.captures_iter(content) {
         if let Some(path) = caps.get(1) {
             let candidate = format!("files/{}", path.as_str());
@@ -1437,8 +1437,7 @@ impl SqliteRepository {
         .await
     }
 
-    pub async fn backfill_note_files_and_ocr(&self, data_dir: &Path) -> Result<(), sqlx::Error> {
-        let _ = data_dir;
+    async fn backfill_note_files(&self) -> Result<(), sqlx::Error> {
         let notes: Vec<(i64, String)> = sqlx::query_as("SELECT id, content FROM notes")
             .fetch_all(&self.pool)
             .await?;
@@ -1446,6 +1445,10 @@ impl SqliteRepository {
             let _ = self.sync_note_files(note_id, &content).await?;
         }
         Ok(())
+    }
+
+    pub async fn backfill_note_files_and_ocr(&self, _data_dir: &Path) -> Result<(), sqlx::Error> {
+        self.backfill_note_files().await
     }
 
     pub async fn needs_note_files_backfill(&self) -> Result<bool, sqlx::Error> {
@@ -1461,10 +1464,19 @@ impl SqliteRepository {
         let (ocr_files_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM ocr_files")
             .fetch_one(&self.pool)
             .await?;
-        Ok(note_files_count == 0 && ocr_files_count == 0)
+        Ok(note_files_count == 0 || ocr_files_count == 0)
     }
 
     pub async fn get_ocr_pending_files(&self, limit: i64) -> Result<Vec<OcrFileItem>, sqlx::Error> {
+        let (notes_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM notes")
+            .fetch_one(&self.pool)
+            .await?;
+        let (ocr_files_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM ocr_files")
+            .fetch_one(&self.pool)
+            .await?;
+        if notes_count > 0 && ocr_files_count == 0 {
+            let _ = self.backfill_note_files().await?;
+        }
         sqlx::query_as::<_, OcrFileItem>(
             "SELECT f.id AS file_id, f.file_path
              FROM ocr_files f
@@ -1511,6 +1523,15 @@ impl SqliteRepository {
     }
 
     pub async fn get_ocr_stats(&self) -> Result<OcrStats, sqlx::Error> {
+        let (notes_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM notes")
+            .fetch_one(&self.pool)
+            .await?;
+        let (ocr_files_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM ocr_files")
+            .fetch_one(&self.pool)
+            .await?;
+        if notes_count > 0 && ocr_files_count == 0 {
+            let _ = self.backfill_note_files().await?;
+        }
         let (total,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM ocr_files")
             .fetch_one(&self.pool)
             .await?;

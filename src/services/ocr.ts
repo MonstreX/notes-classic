@@ -17,7 +17,7 @@ const OCR_LANG = OCR_LANGS.join("+");
 const BATCH_SIZE = 2;
 const IDLE_DELAY_MS = 30000;
 const RETRY_DELAY_MS = 5000;
-const OCR_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp"]);
+const OCR_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "jfif", "tif", "tiff"]);
 
 let dataDirPromise: Promise<string> | null = null;
 let resourceDirPromise: Promise<string> | null = null;

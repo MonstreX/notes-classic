@@ -1597,6 +1597,8 @@ async fn import_evernote_from_json(json_path: String, assets_dir: String, state:
             copy_dir_recursive(&assets_path, &files_dir)?;
         }
     }
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    let _ = repo.backfill_note_files_and_ocr(&state.data_dir).await;
     Ok(EvernoteImportResult {
         notes: note_id_map.len() as i64,
         notebooks: notebook_id_map.len() as i64,
