@@ -557,18 +557,30 @@ fn resolve_portable_paths() -> Result<(PathBuf, PathBuf), String> {
 
 #[tauri::command]
 fn get_resource_dir(app_handle: AppHandle) -> Result<String, String> {
-    let mut path = app_handle.path().resource_dir().map_err(|e| e.to_string())?;
-    let test_file = path.join("ocr").join("tessdata").join("eng.traineddata.gz");
-    if !test_file.exists() {
-        if let Ok(cwd) = std::env::current_dir() {
-            let candidate = cwd.join("src-tauri").join("resources");
-            let candidate_test = candidate.join("ocr").join("tessdata").join("eng.traineddata.gz");
-            if candidate_test.exists() {
-                path = candidate;
+    let resource_dir = app_handle.path().resource_dir().map_err(|e| e.to_string())?;
+    let test_name = "eng.traineddata.gz";
+    let has_tessdata = |dir: &PathBuf| dir.join("ocr").join("tessdata").join(test_name).exists();
+    if has_tessdata(&resource_dir) {
+        return Ok(resource_dir.to_string_lossy().to_string());
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(exe_dir) = exe.parent().map(|p| p.to_path_buf()) {
+            let candidate = exe_dir.join("resources");
+            if has_tessdata(&candidate) {
+                return Ok(candidate.to_string_lossy().to_string());
+            }
+            let mut current = Some(exe_dir);
+            for _ in 0..6 {
+                let Some(dir) = current.take() else { break };
+                let candidate = dir.join("src-tauri").join("resources");
+                if has_tessdata(&candidate) {
+                    return Ok(candidate.to_string_lossy().to_string());
+                }
+                current = dir.parent().map(|p| p.to_path_buf());
             }
         }
     }
-    Ok(path.to_string_lossy().to_string())
+    Ok(resource_dir.to_string_lossy().to_string())
 }
 
 fn notes_file_response(data_dir: &Path, request: Request<Vec<u8>>) -> Response<Vec<u8>> {
@@ -1656,6 +1668,27 @@ async fn get_ocr_stats(state: State<'_, AppState>) -> Result<OcrStats, String> {
 }
 
 #[tauri::command]
+fn log_ocr_event(message: String, state: State<'_, AppState>) -> Result<(), String> {
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .unwrap_or_else(|| state.data_dir.clone());
+    let log_dir = exe_dir.join("logs");
+    fs::create_dir_all(&log_dir).map_err(|e| e.to_string())?;
+    let log_path = log_dir.join("ocr.log");
+    let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+    let line = format!("[{}] {}\n", timestamp, message);
+    use std::io::Write;
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .map_err(|e| e.to_string())?;
+    file.write_all(line.as_bytes()).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 async fn get_tags(state: State<'_, AppState>) -> Result<Vec<Tag>, String> {
     let repo = SqliteRepository { pool: state.pool.clone() };
     repo.get_tags().await.map_err(|e| e.to_string())
@@ -1926,6 +1959,7 @@ fn main() {
             upsert_ocr_text,
             mark_ocr_failed,
             get_ocr_stats,
+            log_ocr_event,
             get_tags,
             get_note_tags,
             create_tag,
