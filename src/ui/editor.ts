@@ -56,6 +56,7 @@ hljs.registerLanguage("css", css);
 hljs.registerLanguage("php", php);
 
 const DEBUG_CODE = false;
+const JoditCtor = Jodit as unknown as new (...args: any[]) => any;
 
 const registerToolbarIcons = () => {
   const set = (name: string, svg: string) => {
@@ -1252,8 +1253,9 @@ const setupAttachmentDrop = (editor: any, getNoteId?: () => number | null) => {
 
   const getDropAnchor = (clientX: number, clientY: number) => {
     if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return null;
-    const el = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
-    return el?.closest(".note-attachment") ?? null;
+    const el = document.elementFromPoint(clientX, clientY);
+    const anchor = el?.closest(".note-attachment") ?? null;
+    return anchor instanceof HTMLElement ? anchor : null;
   };
 
   const handleFiles = async (files: FileList, clientX: number, clientY: number) => {
@@ -1347,10 +1349,11 @@ const setupAttachmentDrop = (editor: any, getNoteId?: () => number | null) => {
 
   const windowHandle = getCurrentWindow();
   windowHandle.onDragDropEvent((event) => {
-    if (event.type !== "drop") return;
-    const paths = event.paths || [];
+    const dragEvent = event as any;
+    if (dragEvent.type !== "drop") return;
+    const paths = dragEvent.paths || [];
     if (!paths.length) return;
-    const position = event.position;
+    const position = dragEvent.position;
     if (position) {
       const el = document.elementFromPoint(position.x, position.y);
       const targetWithin = !!el && (editor.container?.contains(el) || editor.editor?.contains(el));
@@ -1469,7 +1472,7 @@ const setupPasteImageHandlers = (editor: any) => {
 
   const convertImagesInEditor = async () => {
     if (!editor.editor) return;
-    const images = Array.from(editor.editor.querySelectorAll("img"));
+    const images = Array.from((editor.editor as HTMLElement).querySelectorAll("img")) as HTMLImageElement[];
     for (const img of images) {
       await convertImageElement(img);
     }
@@ -1688,17 +1691,19 @@ const createEditorConfig = (overrides: Record<string, unknown> = {}, getNoteId?:
           }
           if (!list) return;
 
-          if (list.tagName.toLowerCase() === "ol") {
+          const listEl = list;
+          if (listEl.tagName.toLowerCase() === "ol") {
             const ul = editor.createInside.element("ul");
-            while (list.firstChild) {
-              ul.appendChild(list.firstChild);
+            while (listEl.firstChild) {
+              ul.appendChild(listEl.firstChild);
             }
-            list.parentNode?.replaceChild(ul, list);
+            listEl.parentNode?.replaceChild(ul, listEl);
             list = ul;
           }
 
-          list.setAttribute("data-en-todo", "true");
-          list.querySelectorAll("li").forEach((li) => {
+          const finalList = list as HTMLElement;
+          finalList.setAttribute("data-en-todo", "true");
+          finalList.querySelectorAll("li").forEach((li) => {
             if (!li.hasAttribute("data-en-checked")) {
               li.setAttribute("data-en-checked", "false");
             }
@@ -2015,7 +2020,7 @@ export const mountEditor = (root: HTMLElement, options: EditorOptions): EditorIn
   container.appendChild(editorWrapper);
   root.appendChild(container);
 
-  const editor = new Jodit(mountPoint, createEditorConfig({}, options.getNoteId));
+  const editor = new JoditCtor(mountPoint, createEditorConfig({}, options.getNoteId));
   (editor as any).__noteIdProvider = options.getNoteId;
   editor.value = options.content || "";
 
@@ -2109,7 +2114,7 @@ export const mountPreviewEditor = (root: HTMLElement): EditorInstance => {
   container.appendChild(editorWrapper);
   root.appendChild(container);
 
-  const editor = new Jodit(
+  const editor = new JoditCtor(
     mountPoint,
     createEditorConfig(
       {

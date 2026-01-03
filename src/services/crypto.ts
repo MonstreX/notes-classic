@@ -27,10 +27,11 @@ const deriveKey = async (password: string, salt: Uint8Array, iterations: number)
     false,
     ["deriveKey"]
   );
+  const saltBuffer = Uint8Array.from(salt).buffer;
   return crypto.subtle.deriveKey(
     {
       name: "PBKDF2",
-      salt,
+      salt: saltBuffer,
       iterations,
       hash: "SHA-256",
     },

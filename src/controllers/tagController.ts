@@ -15,7 +15,7 @@ const isTagDescendant = (tags: Tag[], candidateParentId: number | null, tagId: n
   if (candidateParentId === null) return false;
   const parentMap = new Map<number, number | null>();
   tags.forEach((tag) => parentMap.set(tag.id, tag.parentId));
-  let current = candidateParentId;
+  let current: number | null = candidateParentId;
   while (current !== null) {
     if (current === tagId) return true;
     current = parentMap.get(current) ?? null;

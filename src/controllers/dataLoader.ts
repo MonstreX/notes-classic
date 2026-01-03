@@ -1,11 +1,12 @@
 import { appStore } from "../state/store";
+import type { NoteListItem } from "../state/types";
 import { getNoteCounts, getNotes, getNotesByTag, getNotebooks, getTrashedNotes } from "../services/notes";
 
 const stripTags = (value: string) => value.replace(/<[^>]*>/g, "");
 const buildExcerpt = (value: string) => stripTags(value || "");
 
 const sortNotes = (
-  notes: Array<{ id: number; title: string; updatedAt: number }>,
+  notes: NoteListItem[],
   sortBy: "updated" | "title",
   sortDir: "asc" | "desc"
 ) => {

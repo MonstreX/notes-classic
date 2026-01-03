@@ -38,6 +38,14 @@ struct AppState {
     data_dir: PathBuf,
 }
 
+#[cfg(debug_assertions)]
+#[tauri::command]
+fn restart_app(app_handle: AppHandle) -> Result<(), String> {
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    app_handle.restart();
+}
+
+#[cfg(not(debug_assertions))]
 #[tauri::command]
 fn restart_app(app_handle: AppHandle) -> Result<(), String> {
     std::thread::sleep(std::time::Duration::from_secs(2));
@@ -48,7 +56,6 @@ fn restart_app(app_handle: AppHandle) -> Result<(), String> {
         }
     }
     app_handle.restart();
-    Ok(())
 }
 
 #[tauri::command]

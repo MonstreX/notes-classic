@@ -14,7 +14,7 @@ const isDescendant = (notebooks: Notebook[], candidateParentId: number | null, n
   if (candidateParentId === null) return false;
   const parentMap = new Map<number, number | null>();
   notebooks.forEach((nb) => parentMap.set(nb.id, nb.parentId));
-  let current = candidateParentId;
+  let current: number | null = candidateParentId;
   while (current !== null) {
     if (current === notebookId) return true;
     current = parentMap.get(current) ?? null;
