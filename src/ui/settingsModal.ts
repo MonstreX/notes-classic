@@ -211,7 +211,7 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
               <div><strong>Last note:</strong> ${formatTimestamp(info.lastNoteAt)}</div>
               <div><strong>Last note title:</strong> ${info.lastNoteTitle || "Unknown"}</div>
             </div>
-            <p class="storage-dialog__hint">Replace will overwrite notes.db, files, and ocr folders only.</p>
+          <p class="storage-dialog__hint">Replace will overwrite notes.db and files only.</p>
           </div>
           <div class="dialog__footer">
             <button class="dialog__button dialog__button--ghost" data-storage-cancel="1">Cancel</button>

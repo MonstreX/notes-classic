@@ -20,12 +20,20 @@ const RETRY_DELAY_MS = 5000;
 const OCR_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp"]);
 
 let dataDirPromise: Promise<string> | null = null;
+let resourceDirPromise: Promise<string> | null = null;
 
 const getDataDir = async () => {
   if (!dataDirPromise) {
     dataDirPromise = invoke<string>("get_data_dir");
   }
   return dataDirPromise;
+};
+
+const getResourceDir = async () => {
+  if (!resourceDirPromise) {
+    resourceDirPromise = invoke<string>("get_resource_dir");
+  }
+  return resourceDirPromise;
 };
 
 const normalizePath = (value: string) => value.replace(/\\/g, "/").replace(/\/+$/, "");
@@ -38,7 +46,7 @@ const getExtension = (value: string) => {
 };
 
 const getLangPath = async () => {
-  const base = normalizePath(await getDataDir());
+  const base = normalizePath(await getResourceDir());
   return convertFileSrc(`${base}/ocr/tessdata`);
 };
 

@@ -1,7 +1,9 @@
 import initSqlJs from "sql.js";
 import * as Y from "yjs";
 import { invoke } from "@tauri-apps/api/core";
+import { join, tempDir } from "@tauri-apps/api/path";
 import { logError } from "./logger";
+import { getStorageInfo } from "./storage";
 
 type EvernoteScanSummary = {
   sourceRoot: string;
@@ -58,6 +60,7 @@ const copyFile = (source: string, dest: string) =>
 const ensureDir = (path: string) => invoke<void>("ensure_dir", { path });
 const getDataDir = () => invoke<string>("get_data_dir");
 const createBackup = () => invoke<string>("create_evernote_backup");
+const runNoteFilesBackfill = () => invoke<void>("run_note_files_backfill");
 const importFromJson = (jsonPath: string, assetsDir: string) =>
   invoke<{ notes: number; notebooks: number; tags: number; attachments: number }>("import_evernote_from_json", {
     jsonPath,
@@ -359,7 +362,21 @@ export const runEvernoteImport = async (
   const assetCopyErrors: Array<{ sourcePath: string; destPath: string; error: string }> = [];
 
   const dataDir = await getDataDir();
-  const backupDir = await createBackup();
+  const storageInfo = await getStorageInfo(dataDir).catch(() => null);
+  const shouldBackup = Boolean(
+    storageInfo?.hasData &&
+      ((storageInfo?.notesCount ?? 0) > 0 || (storageInfo?.notebooksCount ?? 0) > 0)
+  );
+  const backupDir = shouldBackup
+    ? await createBackup()
+    : await join(
+        await tempDir(),
+        "notes-classic",
+        `evernote-${new Date().toISOString().replace(/[:.]/g, "-")}`
+      );
+  if (!shouldBackup) {
+    await ensureDir(backupDir);
+  }
   const importDir = `${backupDir}/import`;
   const assetsDir = `${importDir}/assets`;
   await ensureDir(assetsDir);
@@ -559,6 +576,11 @@ export const runEvernoteImport = async (
 
     onProgress?.({ stage: "database", state: "running", current: 0, total: 1, message: "Writing notes database..." });
     const stats = await importFromJson(jsonPath, assetsDir);
+    try {
+      await runNoteFilesBackfill();
+    } catch (err) {
+      errors.push(`Backfill failed: ${String(err)}`);
+    }
     onProgress?.({ stage: "database", state: "done", current: 1, total: 1, message: "Writing notes database..." });
 
     const finishedAt = new Date().toISOString();

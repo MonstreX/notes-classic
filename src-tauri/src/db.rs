@@ -52,6 +52,36 @@ fn extract_note_files(content: &str) -> Vec<String> {
             results.push(path.as_str().to_string());
         }
     }
+    let re_asset_double = Regex::new(r#"src="[^"]*asset\.localhost[^"]*files/([^"]+)""#).unwrap();
+    for caps in re_asset_double.captures_iter(content) {
+        if let Some(path) = caps.get(1) {
+            results.push(path.as_str().to_string());
+        }
+    }
+    let re_asset_single = Regex::new(r#"src='[^']*asset\.localhost[^']*files/([^']+)'"#).unwrap();
+    for caps in re_asset_single.captures_iter(content) {
+        if let Some(path) = caps.get(1) {
+            results.push(path.as_str().to_string());
+        }
+    }
+    let re_asset_encoded_double = Regex::new(r#"src="[^"]*asset\.localhost[^"]*files%2F([^"]+)""#).unwrap();
+    for caps in re_asset_encoded_double.captures_iter(content) {
+        if let Some(path) = caps.get(1) {
+            let candidate = format!("files/{}", path.as_str());
+            if let Ok(decoded) = urlencoding::decode(&candidate) {
+                results.push(decoded.to_string().trim_start_matches("files/").to_string());
+            }
+        }
+    }
+    let re_asset_encoded_single = Regex::new(r#"src='[^']*asset\.localhost[^']*files%2F([^']+)'"#).unwrap();
+    for caps in re_asset_encoded_single.captures_iter(content) {
+        if let Some(path) = caps.get(1) {
+            let candidate = format!("files/{}", path.as_str());
+            if let Ok(decoded) = urlencoding::decode(&candidate) {
+                results.push(decoded.to_string().trim_start_matches("files/").to_string());
+            }
+        }
+    }
     results.sort();
     results.dedup();
     results
@@ -544,11 +574,6 @@ pub async fn init_db(data_dir: &Path) -> Result<SqlitePool, String> {
     if !data_dir.exists() {
         fs::create_dir_all(data_dir).map_err(|e| e.to_string())?;
     }
-    let ocr_dir = data_dir.join("ocr").join("tessdata");
-    if !ocr_dir.exists() {
-        fs::create_dir_all(&ocr_dir).map_err(|e| e.to_string())?;
-    }
-
     let db_path = data_dir.join("notes.db");
     if !db_path.exists() {
         fs::File::create(&db_path).map_err(|e| e.to_string())?;

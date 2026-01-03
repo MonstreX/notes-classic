@@ -272,7 +272,7 @@ async fn get_storage_info(path: String) -> Result<StorageInfo, String> {
         return Err("Storage path is empty".to_string());
     }
     let db_path = target.join("notes.db");
-    let has_data = db_path.exists() || target.join("files").exists() || target.join("ocr").exists();
+    let has_data = db_path.exists() || target.join("files").exists();
     if !db_path.exists() {
         return Ok(StorageInfo {
             has_data,
@@ -333,7 +333,7 @@ fn set_storage_default(state: State<'_, AppState>) -> Result<(), String> {
         return Ok(());
     }
     ensure_dir_writable(&new_dir)?;
-    if new_dir.join("notes.db").exists() || new_dir.join("files").exists() || new_dir.join("ocr").exists() {
+    if new_dir.join("notes.db").exists() || new_dir.join("files").exists() {
         return Err("Target folder already contains data".to_string());
     }
     let notes_db = current_dir.join("notes.db");
@@ -341,7 +341,6 @@ fn set_storage_default(state: State<'_, AppState>) -> Result<(), String> {
         fs::copy(&notes_db, new_dir.join("notes.db")).map_err(|e| e.to_string())?;
     }
     copy_dir_recursive(&current_dir.join("files"), &new_dir.join("files"))?;
-    copy_dir_recursive(&current_dir.join("ocr"), &new_dir.join("ocr"))?;
 
     let mut merged = read_settings_file(&state.settings_dir)?;
     if !merged.is_object() {
@@ -391,7 +390,6 @@ fn set_storage_default_replace(state: State<'_, AppState>) -> Result<(), String>
         fs::copy(&notes_db, new_dir.join("notes.db")).map_err(|e| e.to_string())?;
     }
     copy_dir_recursive(&current_dir.join("files"), &new_dir.join("files"))?;
-    copy_dir_recursive(&current_dir.join("ocr"), &new_dir.join("ocr"))?;
 
     let mut merged = read_settings_file(&state.settings_dir)?;
     if !merged.is_object() {
@@ -449,7 +447,6 @@ fn set_storage_path_replace(path: String, state: State<'_, AppState>) -> Result<
         fs::copy(&notes_db, new_dir.join("notes.db")).map_err(|e| e.to_string())?;
     }
     copy_dir_recursive(&current_dir.join("files"), &new_dir.join("files"))?;
-    copy_dir_recursive(&current_dir.join("ocr"), &new_dir.join("ocr"))?;
 
     let mut merged = read_settings_file(&state.settings_dir)?;
     if !merged.is_object() {
@@ -478,7 +475,7 @@ async fn set_storage_path_empty(path: String, state: State<'_, AppState>) -> Res
         return Ok(());
     }
     ensure_dir_writable(&new_dir)?;
-    if new_dir.join("notes.db").exists() || new_dir.join("files").exists() || new_dir.join("ocr").exists() {
+    if new_dir.join("notes.db").exists() || new_dir.join("files").exists() {
         return Err("Target folder already contains data".to_string());
     }
     let _ = db::init_db(&new_dir).await.map_err(|e| e.to_string())?;
@@ -506,7 +503,7 @@ async fn set_storage_default_empty(state: State<'_, AppState>) -> Result<(), Str
         return Ok(());
     }
     ensure_dir_writable(&new_dir)?;
-    if new_dir.join("notes.db").exists() || new_dir.join("files").exists() || new_dir.join("ocr").exists() {
+    if new_dir.join("notes.db").exists() || new_dir.join("files").exists() {
         return Err("Target folder already contains data".to_string());
     }
     let _ = db::init_db(&new_dir).await.map_err(|e| e.to_string())?;
@@ -523,7 +520,7 @@ async fn set_storage_default_empty(state: State<'_, AppState>) -> Result<(), Str
     Ok(())
 }
 
-fn resolve_portable_paths(app_handle: &AppHandle) -> Result<(PathBuf, PathBuf), String> {
+fn resolve_portable_paths() -> Result<(PathBuf, PathBuf), String> {
     let exe_dir = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|p| p.to_path_buf()))
@@ -558,40 +555,20 @@ fn resolve_portable_paths(app_handle: &AppHandle) -> Result<(PathBuf, PathBuf), 
     Ok((data_dir, settings_dir))
 }
 
-fn ensure_ocr_tessdata(app_handle: &AppHandle, data_dir: &Path) -> Result<(), String> {
-    let target_dir = data_dir.join("ocr").join("tessdata");
-    fs::create_dir_all(&target_dir).map_err(|e| e.to_string())?;
-    let files = ["eng.traineddata.gz", "rus.traineddata.gz"];
-    let resource_dir = app_handle.path().resource_dir().map_err(|e| e.to_string())?;
-    let mut fallback_dir = None;
-    if !resource_dir.exists() {
+#[tauri::command]
+fn get_resource_dir(app_handle: AppHandle) -> Result<String, String> {
+    let mut path = app_handle.path().resource_dir().map_err(|e| e.to_string())?;
+    let test_file = path.join("ocr").join("tessdata").join("eng.traineddata.gz");
+    if !test_file.exists() {
         if let Ok(cwd) = std::env::current_dir() {
             let candidate = cwd.join("src-tauri").join("resources");
-            if candidate.exists() {
-                fallback_dir = Some(candidate);
+            let candidate_test = candidate.join("ocr").join("tessdata").join("eng.traineddata.gz");
+            if candidate_test.exists() {
+                path = candidate;
             }
         }
     }
-    for filename in files {
-        let dest = target_dir.join(filename);
-        if dest.exists() {
-            continue;
-        }
-        let rel = PathBuf::from("ocr").join("tessdata").join(filename);
-        let mut source = resource_dir.join(&rel);
-        if !source.exists() {
-            if let Some(base) = fallback_dir.as_ref() {
-                let candidate = base.join(&rel);
-                if candidate.exists() {
-                    source = candidate;
-                }
-            }
-        }
-        if source.exists() {
-            let _ = fs::copy(&source, &dest);
-        }
-    }
-    Ok(())
+    Ok(path.to_string_lossy().to_string())
 }
 
 fn notes_file_response(data_dir: &Path, request: Request<Vec<u8>>) -> Response<Vec<u8>> {
@@ -1190,7 +1167,6 @@ fn create_evernote_backup(state: State<'_, AppState>) -> Result<String, String> 
         fs::copy(&notes_db, backup_dir.join("notes.db")).map_err(|e| e.to_string())?;
     }
     copy_dir_recursive(&state.data_dir.join("files"), &backup_dir.join("files"))?;
-    copy_dir_recursive(&state.data_dir.join("ocr"), &backup_dir.join("ocr"))?;
     Ok(backup_dir.to_string_lossy().to_string())
 }
 
@@ -1621,17 +1597,25 @@ async fn import_evernote_from_json(json_path: String, assets_dir: String, state:
             copy_dir_recursive(&assets_path, &files_dir)?;
         }
     }
-    let ocr_dir = state.data_dir.join("ocr");
-    if ocr_dir.exists() {
-        let _ = fs::remove_dir_all(&ocr_dir);
-    }
-
     Ok(EvernoteImportResult {
         notes: note_id_map.len() as i64,
         notebooks: notebook_id_map.len() as i64,
         tags: tag_id_map.len() as i64,
         attachments: attachments.len() as i64,
     })
+}
+
+#[tauri::command]
+async fn run_note_files_backfill(state: State<'_, AppState>) -> Result<(), String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    match repo.needs_note_files_backfill().await {
+        Ok(true) => repo
+            .backfill_note_files_and_ocr(&state.data_dir)
+            .await
+            .map_err(|e| e.to_string()),
+        Ok(false) => Ok(()),
+        Err(e) => Err(e.to_string()),
+    }
 }
 
 #[tauri::command]
@@ -1776,7 +1760,7 @@ fn set_storage_path(path: String, state: State<'_, AppState>) -> Result<(), Stri
         return Ok(());
     }
     ensure_dir_writable(&new_dir)?;
-    if new_dir.join("notes.db").exists() || new_dir.join("files").exists() || new_dir.join("ocr").exists() {
+    if new_dir.join("notes.db").exists() || new_dir.join("files").exists() {
         return Err("Target folder already contains data".to_string());
     }
     let notes_db = current_dir.join("notes.db");
@@ -1784,7 +1768,6 @@ fn set_storage_path(path: String, state: State<'_, AppState>) -> Result<(), Stri
         fs::copy(&notes_db, new_dir.join("notes.db")).map_err(|e| e.to_string())?;
     }
     copy_dir_recursive(&current_dir.join("files"), &new_dir.join("files"))?;
-    copy_dir_recursive(&current_dir.join("ocr"), &new_dir.join("ocr"))?;
 
     let mut merged = read_settings_file(&state.settings_dir)?;
     if !merged.is_object() {
@@ -1816,7 +1799,7 @@ fn main() {
         })
         .setup(|app| {
             let app_handle = app.handle();
-            let (data_dir, settings_dir) = match resolve_portable_paths(&app_handle) {
+            let (data_dir, settings_dir) = match resolve_portable_paths() {
                 Ok(paths) => paths,
                 Err(err) => {
                     app_handle
@@ -1841,7 +1824,6 @@ fn main() {
                     return Err(err.into());
                 }
             };
-            let _ = ensure_ocr_tessdata(&app_handle, &data_dir);
             app.manage(AppState { pool, settings_dir, data_dir });
             let pool = app.state::<AppState>().pool.clone();
             let data_dir = app.state::<AppState>().data_dir.clone();
@@ -1932,10 +1914,12 @@ fn main() {
             get_dir_size,
             resolve_resource_roots,
             count_missing_rte,
+            get_resource_dir,
             create_evernote_backup,
             find_evernote_paths,
             select_evernote_folder,
             import_evernote_from_json,
+            run_note_files_backfill,
             get_ocr_pending_files,
             upsert_ocr_text,
             mark_ocr_failed,
