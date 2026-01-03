@@ -87,6 +87,18 @@ fn extract_note_files(content: &str) -> Vec<String> {
     results
 }
 
+const OCR_IMAGE_FILTER: &str = "(
+    lower(f.file_path) LIKE '%.png' OR
+    lower(f.file_path) LIKE '%.jpg' OR
+    lower(f.file_path) LIKE '%.jpeg' OR
+    lower(f.file_path) LIKE '%.gif' OR
+    lower(f.file_path) LIKE '%.webp' OR
+    lower(f.file_path) LIKE '%.bmp' OR
+    lower(f.file_path) LIKE '%.jfif' OR
+    lower(f.file_path) LIKE '%.tif' OR
+    lower(f.file_path) LIKE '%.tiff'
+)";
+
 async fn migrate_note_file_scheme(pool: &SqlitePool) -> Result<bool, sqlx::Error> {
     let rows: Vec<(i64, String)> = sqlx::query_as(
         "SELECT id, content FROM notes WHERE content LIKE '%notes-file://files/%'",
@@ -1477,18 +1489,21 @@ impl SqliteRepository {
         if notes_count > 0 && ocr_files_count == 0 {
             let _ = self.backfill_note_files().await?;
         }
-        sqlx::query_as::<_, OcrFileItem>(
+        let query = format!(
             "SELECT f.id AS file_id, f.file_path
              FROM ocr_files f
              LEFT JOIN ocr_text t ON t.file_id = f.id
              WHERE t.file_id IS NULL
                AND f.attempts_left > 0
+               AND {filter}
              ORDER BY f.id ASC
              LIMIT ?",
-        )
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await
+            filter = OCR_IMAGE_FILTER
+        );
+        sqlx::query_as::<_, OcrFileItem>(&query)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await
     }
 
     pub async fn upsert_ocr_text(&self, file_id: i64, lang: &str, text: &str, hash: &str) -> Result<(), sqlx::Error> {
@@ -1532,19 +1547,31 @@ impl SqliteRepository {
         if notes_count > 0 && ocr_files_count == 0 {
             let _ = self.backfill_note_files().await?;
         }
-        let (total,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM ocr_files")
+        let total_query = format!(
+            "SELECT COUNT(*) FROM ocr_files f WHERE {filter}",
+            filter = OCR_IMAGE_FILTER
+        );
+        let (total,): (i64,) = sqlx::query_as(&total_query)
             .fetch_one(&self.pool)
             .await?;
-        let (done,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM ocr_text")
+        let done_query = format!(
+            "SELECT COUNT(*) FROM ocr_text t
+             JOIN ocr_files f ON f.id = t.file_id
+             WHERE {filter}",
+            filter = OCR_IMAGE_FILTER
+        );
+        let (done,): (i64,) = sqlx::query_as(&done_query)
             .fetch_one(&self.pool)
             .await?;
-        let (pending,): (i64,) = sqlx::query_as(
+        let pending_query = format!(
             "SELECT COUNT(*) FROM ocr_files f
              LEFT JOIN ocr_text t ON t.file_id = f.id
-             WHERE t.file_id IS NULL AND f.attempts_left > 0",
-        )
-        .fetch_one(&self.pool)
-        .await?;
+             WHERE t.file_id IS NULL AND f.attempts_left > 0 AND {filter}",
+            filter = OCR_IMAGE_FILTER
+        );
+        let (pending,): (i64,) = sqlx::query_as(&pending_query)
+            .fetch_one(&self.pool)
+            .await?;
         Ok(OcrStats { total, done, pending })
     }
 
