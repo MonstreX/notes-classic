@@ -915,6 +915,59 @@
   gap: 8px;
 }
 
+.import-modal__stages {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.import-stage {
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.import-stage__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.import-stage__title {
+  font-weight: 600;
+  color: #111827;
+}
+
+.import-stage__count {
+  color: #6b7280;
+}
+
+.import-stage__bar {
+  height: 4px;
+  background: #e5e7eb;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.import-stage__bar-fill {
+  height: 100%;
+  width: 0;
+  background: var(--color-accent);
+  transition: width 0.2s ease;
+}
+
+.import-stage.is-done .import-stage__title {
+  color: #059669;
+}
+
+.import-stage.is-error .import-stage__title {
+  color: #dc2626;
+}
+
 .import-summary__row {
   display: flex;
   justify-content: space-between;

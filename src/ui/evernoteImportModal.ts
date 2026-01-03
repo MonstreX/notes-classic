@@ -38,6 +38,7 @@ export const mountEvernoteImportModal = (root: HTMLElement): EvernoteImportModal
           <span class="import-modal__status-text" data-import-status-text></span>
         </div>
         <div class="import-modal__summary is-hidden" data-import-summary></div>
+        <div class="import-modal__stages is-hidden" data-import-stages></div>
         <div class="import-modal__report is-hidden" data-import-report></div>
       </div>
       <div class="import-modal__footer">
@@ -59,6 +60,7 @@ export const mountEvernoteImportModal = (root: HTMLElement): EvernoteImportModal
   const statusTextEl = overlay.querySelector<HTMLElement>("[data-import-status-text]");
   const spinnerEl = overlay.querySelector<HTMLElement>("[data-import-spinner]");
   const summaryEl = overlay.querySelector<HTMLElement>("[data-import-summary]");
+  const stagesEl = overlay.querySelector<HTMLElement>("[data-import-stages]");
   const reportEl = overlay.querySelector<HTMLElement>("[data-import-report]");
 
   const setStatus = (message: string, tone: "ok" | "error" | "muted" = "muted", loading = false) => {
@@ -109,10 +111,93 @@ export const mountEvernoteImportModal = (root: HTMLElement): EvernoteImportModal
     reportEl.classList.remove("is-hidden");
   };
 
+  const stageOrder = [
+    { id: "tables", title: "Read Evernote tables" },
+    { id: "resources", title: "Copy resources" },
+    { id: "decode", title: "Decode notes" },
+    { id: "database", title: "Write database" },
+  ];
+
+  type StageElements = {
+    root: HTMLElement;
+    fill: HTMLElement;
+    count: HTMLElement;
+  };
+
+  const stageElements: Record<string, StageElements> = {};
+
+  const initStages = () => {
+    if (!stagesEl) return;
+    Object.keys(stageElements).forEach((key) => {
+      delete stageElements[key];
+    });
+    stagesEl.innerHTML = "";
+    stageOrder.forEach((stage) => {
+      const row = document.createElement("div");
+      row.className = "import-stage";
+      row.dataset.stageId = stage.id;
+      row.innerHTML = `
+        <div class="import-stage__header">
+          <div class="import-stage__title">${stage.title}</div>
+          <div class="import-stage__count">0/0</div>
+        </div>
+        <div class="import-stage__bar"><span class="import-stage__bar-fill"></span></div>
+      `;
+      const fill = row.querySelector<HTMLElement>(".import-stage__bar-fill");
+      const count = row.querySelector<HTMLElement>(".import-stage__count");
+      if (fill && count) {
+        stageElements[stage.id] = { root: row, fill, count };
+      }
+      stagesEl.appendChild(row);
+    });
+    stagesEl.classList.remove("is-hidden");
+  };
+
+  const setStageProgress = (id: string, current = 0, total = 0, state: "running" | "done" | "error" = "running") => {
+    const stage = stageElements[id];
+    if (!stage) return;
+    const safeTotal = Number.isFinite(total) && total >= 0 ? total : 0;
+    const safeCurrent = Number.isFinite(current) && current >= 0 ? current : 0;
+    const percent = safeTotal > 0 ? Math.min(100, Math.round((safeCurrent / safeTotal) * 100)) : state === "done" ? 100 : 0;
+    stage.count.textContent = `${safeCurrent}/${safeTotal}`;
+    stage.fill.style.width = `${percent}%`;
+    stage.root.classList.toggle("is-running", state === "running");
+    stage.root.classList.toggle("is-done", state === "done");
+    stage.root.classList.toggle("is-error", state === "error");
+  };
+
+  const openRestartDialog = () => {
+    const dialog = document.createElement("div");
+    dialog.className = "dialog-overlay";
+    dialog.dataset.dialogOverlay = "1";
+    dialog.innerHTML = `
+      <div class="dialog storage-dialog">
+        <div class="dialog__header">
+          <h3 class="dialog__title">Restart required</h3>
+        </div>
+        <div class="dialog__body">
+          <p>Import finished. Restart the app to continue.</p>
+        </div>
+        <div class="dialog__footer">
+          <button class="dialog__button" data-restart-now="1">Restart now</button>
+          <button class="dialog__button dialog__button--danger" data-exit-now="1">Exit</button>
+        </div>
+      </div>
+    `;
+    dialog.querySelector("[data-restart-now]")?.addEventListener("click", () => {
+      invoke("restart_app");
+    });
+    dialog.querySelector("[data-exit-now]")?.addEventListener("click", () => {
+      invoke("exit_app");
+    });
+    document.body.appendChild(dialog);
+  };
+
   const reset = () => {
     if (pathEl) pathEl.textContent = "Not selected";
     setStatus("", "muted");
     summaryEl?.classList.add("is-hidden");
+    stagesEl?.classList.add("is-hidden");
     reportEl?.classList.add("is-hidden");
     if (runBtn) runBtn.disabled = true;
     summary = null;
@@ -181,14 +266,24 @@ export const mountEvernoteImportModal = (root: HTMLElement): EvernoteImportModal
     }
     runBtn.disabled = true;
     selectBtn?.setAttribute("disabled", "disabled");
+    summaryEl?.classList.add("is-hidden");
+    reportEl?.classList.add("is-hidden");
+    initStages();
     setStatus("Preparing import...", "muted", true);
     try {
-      const report = await runEvernoteImport(summary, (message) => setStatus(message, "muted", true));
+      const report = await runEvernoteImport(summary, (event) => {
+        if (event.message) {
+          setStatus(event.message, "muted", true);
+        }
+        if (event.stage) {
+          setStageProgress(event.stage, event.current ?? 0, event.total ?? 0, event.state ?? "running");
+        }
+      });
       reportPath = `${report.backupDir}/import_report.json`;
       const hasErrors = report.errors.length > 0;
       setStatus(hasErrors ? "Import finished with errors." : "Import finished.", hasErrors ? "error" : "ok");
       setReport(`Report saved to ${reportPath}`);
-      setSummary(report.summary);
+      openRestartDialog();
     } catch (err) {
       logError("[import] failed", err);
       setStatus("Import failed. See report for details.", "error");

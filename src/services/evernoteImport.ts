@@ -339,9 +339,17 @@ export const scanEvernoteSource = async (sourceRoot: string): Promise<EvernoteSc
   };
 };
 
+type EvernoteImportProgress = {
+  stage: "tables" | "resources" | "decode" | "database";
+  current?: number;
+  total?: number;
+  state?: "running" | "done" | "error";
+  message?: string;
+};
+
 export const runEvernoteImport = async (
   summary: EvernoteScanSummary,
-  onProgress?: (message: string) => void
+  onProgress?: (event: EvernoteImportProgress) => void
 ): Promise<EvernoteImportReport> => {
   const startedAt = new Date().toISOString();
   const errors: string[] = [];
@@ -367,22 +375,35 @@ export const runEvernoteImport = async (
     const db = new SQL.Database(new Uint8Array(dbBytes));
     const tables = listTables(db);
 
-    onProgress?.("Reading Evernote tables...");
+    onProgress?.({ stage: "tables", state: "running", current: 0, total: 1, message: "Reading Evernote tables..." });
     const notebooks = selectAll(db, "SELECT * FROM Nodes_Notebook");
     const notes = selectAll(db, "SELECT * FROM Nodes_Note");
     const tags = tables.includes("Nodes_Tag") ? selectAll(db, "SELECT * FROM Nodes_Tag") : [];
     const noteTags = tables.includes("NoteTag") ? selectAll(db, "SELECT * FROM NoteTag") : [];
     const attachments = tables.includes("Attachment") ? selectAll(db, "SELECT * FROM Attachment") : [];
+    onProgress?.({ stage: "tables", state: "done", current: 1, total: 1, message: "Reading Evernote tables..." });
 
     const assetMap = new Map<string, string>();
     const attachmentsOut: any[] = [];
 
-    onProgress?.("Copying Evernote resources...");
+    const attachmentTotal = attachments.length;
+    onProgress?.({ stage: "resources", state: "running", current: 0, total: attachmentTotal, message: "Copying Evernote resources..." });
+    let attachmentIndex = 0;
     for (const attachment of attachments) {
+      attachmentIndex += 1;
       const noteId = attachment.parent_Note_id || null;
       const hash = attachment.dataHash || null;
       if (!hash || !noteId) {
         attachmentsOut.push({ attachmentFields: attachment, noteId, dataHash: hash });
+        if (attachmentIndex === attachmentTotal || attachmentIndex % 10 === 0) {
+          onProgress?.({
+            stage: "resources",
+            state: "running",
+            current: attachmentIndex,
+            total: attachmentTotal,
+            message: "Copying Evernote resources...",
+          });
+        }
         continue;
       }
       const extFromName = sanitizeExt((attachment.filename || "").split(".").slice(-1)[0] || "");
@@ -392,6 +413,15 @@ export const runEvernoteImport = async (
       if (!sourcePath || !(await pathExists(sourcePath))) {
         missingResources.push({ noteId: String(noteId), hash, sourcePath: sourcePath || "" });
         attachmentsOut.push({ attachmentFields: attachment, noteId, dataHash: hash, localFile: null });
+        if (attachmentIndex === attachmentTotal || attachmentIndex % 10 === 0) {
+          onProgress?.({
+            stage: "resources",
+            state: "running",
+            current: attachmentIndex,
+            total: attachmentTotal,
+            message: "Copying Evernote resources...",
+          });
+        }
         continue;
       }
       try {
@@ -411,11 +441,30 @@ export const runEvernoteImport = async (
         assetCopyErrors.push({ sourcePath, destPath: absPath, error: String(err) });
         attachmentsOut.push({ attachmentFields: attachment, noteId, dataHash: hash, localFile: null });
       }
+      if (attachmentIndex === attachmentTotal || attachmentIndex % 10 === 0) {
+        onProgress?.({
+          stage: "resources",
+          state: "running",
+          current: attachmentIndex,
+          total: attachmentTotal,
+          message: "Copying Evernote resources...",
+        });
+      }
     }
+    onProgress?.({
+      stage: "resources",
+      state: "done",
+      current: attachmentTotal,
+      total: attachmentTotal,
+      message: "Copying Evernote resources...",
+    });
 
     const notesOut: any[] = [];
-    onProgress?.("Decoding note content...");
+    const notesTotal = notes.length;
+    onProgress?.({ stage: "decode", state: "running", current: 0, total: notesTotal, message: "Decoding note content..." });
+    let noteIndex = 0;
     for (const note of notes) {
+      noteIndex += 1;
       const noteId = String(note.id);
       const rte = await readRteDoc(summary.rteRoot, noteId);
       if (!rte.found) {
@@ -463,7 +512,23 @@ export const runEvernoteImport = async (
         createdAt,
         updatedAt,
       });
+      if (noteIndex === notesTotal || noteIndex % 10 === 0) {
+        onProgress?.({
+          stage: "decode",
+          state: "running",
+          current: noteIndex,
+          total: notesTotal,
+          message: "Decoding note content...",
+        });
+      }
     }
+    onProgress?.({
+      stage: "decode",
+      state: "done",
+      current: notesTotal,
+      total: notesTotal,
+      message: "Decoding note content...",
+    });
 
     const exportData = {
       meta: {
@@ -492,8 +557,9 @@ export const runEvernoteImport = async (
     await ensureDir(importDir);
     await saveBytesAs(jsonPath, Array.from(new TextEncoder().encode(JSON.stringify(exportData))));
 
-    onProgress?.("Writing notes database...");
+    onProgress?.({ stage: "database", state: "running", current: 0, total: 1, message: "Writing notes database..." });
     const stats = await importFromJson(jsonPath, assetsDir);
+    onProgress?.({ stage: "database", state: "done", current: 1, total: 1, message: "Writing notes database..." });
 
     const finishedAt = new Date().toISOString();
     const report: EvernoteImportReport = {
@@ -514,6 +580,7 @@ export const runEvernoteImport = async (
     await writeReport(report);
     return report;
   } catch (err) {
+    onProgress?.({ stage: "database", state: "error", message: "Import failed." });
     errors.push(String(err));
     const finishedAt = new Date().toISOString();
     const report: EvernoteImportReport = {
