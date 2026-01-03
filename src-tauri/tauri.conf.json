@@ -55,7 +55,11 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": ["icons/app.ico"]
+    "icon": ["icons/app.ico"],
+    "resources": [
+      "resources/ocr/tessdata/eng.traineddata.gz",
+      "resources/ocr/tessdata/rus.traineddata.gz"
+    ]
   },
   "plugins": {}
 }

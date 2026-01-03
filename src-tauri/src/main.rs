@@ -558,6 +558,42 @@ fn resolve_portable_paths(app_handle: &AppHandle) -> Result<(PathBuf, PathBuf), 
     Ok((data_dir, settings_dir))
 }
 
+fn ensure_ocr_tessdata(app_handle: &AppHandle, data_dir: &Path) -> Result<(), String> {
+    let target_dir = data_dir.join("ocr").join("tessdata");
+    fs::create_dir_all(&target_dir).map_err(|e| e.to_string())?;
+    let files = ["eng.traineddata.gz", "rus.traineddata.gz"];
+    let resource_dir = app_handle.path().resource_dir().map_err(|e| e.to_string())?;
+    let mut fallback_dir = None;
+    if !resource_dir.exists() {
+        if let Ok(cwd) = std::env::current_dir() {
+            let candidate = cwd.join("src-tauri").join("resources");
+            if candidate.exists() {
+                fallback_dir = Some(candidate);
+            }
+        }
+    }
+    for filename in files {
+        let dest = target_dir.join(filename);
+        if dest.exists() {
+            continue;
+        }
+        let rel = PathBuf::from("ocr").join("tessdata").join(filename);
+        let mut source = resource_dir.join(&rel);
+        if !source.exists() {
+            if let Some(base) = fallback_dir.as_ref() {
+                let candidate = base.join(&rel);
+                if candidate.exists() {
+                    source = candidate;
+                }
+            }
+        }
+        if source.exists() {
+            let _ = fs::copy(&source, &dest);
+        }
+    }
+    Ok(())
+}
+
 fn notes_file_response(data_dir: &Path, request: Request<Vec<u8>>) -> Response<Vec<u8>> {
     let uri: &Uri = request.uri();
     let host = uri.host().unwrap_or_default();
@@ -1805,6 +1841,7 @@ fn main() {
                     return Err(err.into());
                 }
             };
+            let _ = ensure_ocr_tessdata(&app_handle, &data_dir);
             app.manage(AppState { pool, settings_dir, data_dir });
             let pool = app.state::<AppState>().pool.clone();
             let data_dir = app.state::<AppState>().data_dir.clone();
