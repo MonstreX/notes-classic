@@ -3,24 +3,25 @@ import { logError } from "../services/logger";
 import { openConfirmDialog } from "../ui/dialogs";
 import { createNote, deleteNote, moveNote, restoreAllNotes, restoreNote, trashNote } from "../services/notes";
 import { loadSelectedNote } from "./noteLoader";
+import { t, tCount } from "../services/i18n";
 
 export const createNoteActions = (fetchData: () => Promise<void>, selectNote: (id: number) => Promise<void>) => {
   const deleteNotesInternal = async (ids: number[]) => {
     const unique = Array.from(new Set(ids)).filter((id) => Number.isFinite(id));
     if (unique.length === 0) return;
     const prevSelectedId = appStore.getState().selectedNoteId;
-    const countLabel = unique.length === 1 ? "note" : "notes";
+    const countLabel = tCount("notes.count", unique.length);
     const state = appStore.getState();
     const inTrash = state.selectedTrash;
     const bypassTrash = !state.deleteToTrash || inTrash;
-    const title = unique.length === 1 ? "Delete note" : "Delete notes";
+    const title = unique.length === 1 ? t("note.delete_title_single") : t("note.delete_title_multiple");
     const message = inTrash
-      ? `Delete ${unique.length} ${countLabel} permanently?`
-      : `Delete ${unique.length} ${countLabel}?`;
+      ? t("note.delete_message_trash", { label: countLabel })
+      : t("note.delete_message", { label: countLabel });
     const ok = await openConfirmDialog({
       title,
       message,
-      confirmLabel: "Delete",
+      confirmLabel: t("attachments.delete"),
       danger: true,
     });
     if (!ok) return;
@@ -82,13 +83,13 @@ export const createNoteActions = (fetchData: () => Promise<void>, selectNote: (i
       if (state.selectedTrash || state.selectedTagId !== null) {
         appStore.setState({ selectedTrash: false, selectedTagId: null });
       }
-      const id = await createNote("New Note", "", state.selectedNotebookId);
+      const id = await createNote(t("app.new_note"), "", state.selectedNotebookId);
       await fetchData();
       await selectNote(id);
     },
     createNoteInNotebook: async (notebookId: number) => {
       appStore.setState({ selectedNotebookId: notebookId, selectedTrash: false, selectedTagId: null });
-      const id = await createNote("New Note", "", notebookId);
+      const id = await createNote(t("app.new_note"), "", notebookId);
       await fetchData();
       await selectNote(id);
     },

@@ -3,6 +3,7 @@ import { appStore } from "../state/store";
 import { logError } from "../services/logger";
 import { addNoteTag, createTag as createTagService, deleteTag as deleteTagService, getNoteTags, getTags, removeNoteTag, updateTagParent } from "../services/tags";
 import { openConfirmDialog, openTagDialog } from "../ui/dialogs";
+import { t } from "../services/i18n";
 
 const normalizeTagName = (value: string) => value.trim();
 
@@ -68,9 +69,9 @@ export const createTagActions = (fetchData: () => Promise<void>) => ({
   },
   deleteTag: async (id: number) => {
     const ok = await openConfirmDialog({
-      title: "Delete tag",
-      message: "Are you sure you want to delete this tag and its children?",
-      confirmLabel: "Delete",
+      title: t("tag.delete_title"),
+      message: t("tag.delete_message"),
+      confirmLabel: t("attachments.delete"),
       danger: true,
     });
     if (!ok) return;

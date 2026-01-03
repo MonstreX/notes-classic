@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { join, tempDir } from "@tauri-apps/api/path";
 import { logError } from "./logger";
 import { getStorageInfo } from "./storage";
+import { t } from "./i18n";
 
 type EvernoteScanSummary = {
   sourceRoot: string;
@@ -581,7 +582,13 @@ export const runEvernoteImport = async (
     } catch (err) {
       errors.push(`Backfill failed: ${String(err)}`);
     }
-    onProgress?.({ stage: "database", state: "done", current: 1, total: 1, message: "Writing notes database..." });
+    onProgress?.({
+      stage: "database",
+      state: "done",
+      current: 1,
+      total: 1,
+      message: t("import.progress.database"),
+    });
 
     const finishedAt = new Date().toISOString();
     const report: EvernoteImportReport = {
@@ -602,7 +609,7 @@ export const runEvernoteImport = async (
     await writeReport(report);
     return report;
   } catch (err) {
-    onProgress?.({ stage: "database", state: "error", message: "Import failed." });
+    onProgress?.({ stage: "database", state: "error", message: t("import.failed") });
     errors.push(String(err));
     const finishedAt = new Date().toISOString();
     const report: EvernoteImportReport = {

@@ -1,5 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { openConfirmDialog } from "../ui/dialogs";
+import { t } from "../services/i18n";
 import { appStore } from "../state/store";
 import { logError } from "../services/logger";
 import { toStorageContent } from "../services/content";
@@ -111,10 +112,10 @@ export const initApp = async () => {
     const stacks = state.notebooks.filter((nb) => nb.notebookType === "stack");
     if (!stacks.length) {
       const ok = await openConfirmDialog({
-        title: "No stack selected",
-        message: "Create a notebook stack first.",
-        confirmLabel: "Create stack",
-        cancelLabel: "Cancel",
+        title: t("dialog.no_stack_title"),
+        message: t("dialog.no_stack_message"),
+        confirmLabel: t("dialog.create_stack"),
+        cancelLabel: t("dialog.cancel"),
       });
       if (ok) {
         actions.createNotebook(null);
@@ -148,7 +149,9 @@ export const initApp = async () => {
       nextState.notesSortDir !== prevState.notesSortDir ||
       nextState.expandedNotebooks !== prevState.expandedNotebooks ||
       nextState.expandedTags !== prevState.expandedTags ||
-      nextState.tagsSectionExpanded !== prevState.tagsSectionExpanded
+      nextState.tagsSectionExpanded !== prevState.tagsSectionExpanded ||
+      nextState.deleteToTrash !== prevState.deleteToTrash ||
+      nextState.language !== prevState.language
     ) {
       persistSettings(nextState);
     }

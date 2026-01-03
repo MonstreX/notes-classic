@@ -2,6 +2,7 @@ import type { Notebook } from "../state/types";
 import { appStore } from "../state/store";
 import { openConfirmDialog, openNotebookDialog } from "../ui/dialogs";
 import { createNotebook, deleteNotebook, moveNotebook } from "../services/notes";
+import { t } from "../services/i18n";
 
 const getOrderedChildren = (notebooks: Notebook[], parentId: number | null) => {
   const typeFilter = parentId === null ? "stack" : "notebook";
@@ -31,9 +32,9 @@ export const createNotebookActions = (fetchData: () => Promise<void>) => ({
   },
   deleteNotebook: async (id: number) => {
     const ok = await openConfirmDialog({
-      title: "Delete notebook",
-      message: "Delete this notebook and its sub-notebooks?",
-      confirmLabel: "Delete",
+      title: t("notebook.delete_title"),
+      message: t("notebook.delete_message"),
+      confirmLabel: t("attachments.delete"),
       danger: true,
     });
     if (!ok) return;

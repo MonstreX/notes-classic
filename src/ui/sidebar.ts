@@ -1,5 +1,6 @@
 import type { Tag } from "../state/types";
 import { DRAG_HOLD_MS, hasDragDistance } from "./dragConfig";
+import { t } from "../services/i18n";
 
 export type NotebookType = "stack" | "notebook";
 
@@ -137,12 +138,12 @@ const renderTagItem = (
           <span class="sidebar-item__label">${escapeHtml(tag.name)}</span>
         </div>
         <div class="sidebar-item__actions">
-          <button class="sidebar-action" data-action="add-tag" data-tag-id="${tag.id}" title="Add tag">
+          <button class="sidebar-action" data-action="add-tag" data-tag-id="${tag.id}" title="${t("sidebar.add_tag")}">
             ${renderPlus()}
           </button>
           ${
             hasChildren
-              ? `<button class="sidebar-action" data-action="toggle-tag" data-tag-id="${tag.id}" title="Expand/Collapse">
+              ? `<button class="sidebar-action" data-action="toggle-tag" data-tag-id="${tag.id}" title="${t("sidebar.toggle")}">
                   ${renderChevron(isExpanded)}
                 </button>`
               : ""
@@ -231,14 +232,14 @@ const renderNotebookItem = (
         </div>
         <div class="sidebar-item__actions">
           ${canHaveChildren ? `
-            <button class="sidebar-action" data-action="add-notebook" data-notebook-id="${nb.id}" title="Add notebook">
+            <button class="sidebar-action" data-action="add-notebook" data-notebook-id="${nb.id}" title="${t("sidebar.add_notebook")}">
               ${renderPlus()}
             </button>
-            <button class="sidebar-action" data-action="toggle-notebook" data-notebook-id="${nb.id}" title="Expand/Collapse">
+            <button class="sidebar-action" data-action="toggle-notebook" data-notebook-id="${nb.id}" title="${t("sidebar.toggle")}">
               ${renderChevron(isExpanded)}
             </button>
           ` : `
-            <button class="sidebar-action" data-action="add-note" data-notebook-id="${nb.id}" title="Add note">
+            <button class="sidebar-action" data-action="add-note" data-notebook-id="${nb.id}" title="${t("sidebar.add_note")}">
               ${renderPlus()}
             </button>
           `}
@@ -282,8 +283,8 @@ const renderSidebar = (state: SidebarState) => {
   return `
     <div class="sidebar-scroll custom-scrollbar" data-sidebar-scroll="1">
       <div class="sidebar-section">
-        <span>Notebooks</span>
-        <button class="sidebar-section__action" data-action="add-root" title="Create notebook">
+        <span>${t("sidebar.notebooks")}</span>
+        <button class="sidebar-section__action" data-action="add-root" title="${t("sidebar.create_notebook")}">
           ${renderPlus()}
         </button>
       </div>
@@ -294,7 +295,7 @@ const renderSidebar = (state: SidebarState) => {
         data-drop-all="1"
       >
         ${renderAllNotesIcon(allSelected)}
-        <span class="sidebar-item__label">All Notes</span>
+        <span class="sidebar-item__label">${t("sidebar.all_notes")}</span>
         <span class="sidebar-item__count">${state.totalNotes}</span>
       </div>
       <div class="sidebar-tree">
@@ -308,13 +309,13 @@ const renderSidebar = (state: SidebarState) => {
       >
         <div class="sidebar-item__content">
           ${renderTagIcon()}
-          <span class="sidebar-item__label">Tags</span>
+          <span class="sidebar-item__label">${t("sidebar.tags")}</span>
         </div>
         <div class="sidebar-item__actions">
-          <button class="sidebar-action" data-action="add-tag-root" title="Create tag">
+          <button class="sidebar-action" data-action="add-tag-root" title="${t("sidebar.create_tag")}">
             ${renderPlus()}
           </button>
-          <button class="sidebar-action" data-action="toggle-tags-section" title="Expand/Collapse tags">
+          <button class="sidebar-action" data-action="toggle-tags-section" title="${t("sidebar.toggle")}">
             ${renderChevron(state.tagsSectionExpanded)}
           </button>
         </div>
@@ -329,7 +330,7 @@ const renderSidebar = (state: SidebarState) => {
         data-trash-row="1"
       >
         ${renderTrashIcon(trashSelected)}
-        <span class="sidebar-item__label">Trash</span>
+        <span class="sidebar-item__label">${t("sidebar.trash")}</span>
         <span class="sidebar-item__count">${state.trashedCount}</span>
       </div>
     </div>

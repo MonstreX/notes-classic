@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { openConfirmDialog } from "./dialogs";
 import { runEvernoteImport, scanEvernoteSource } from "../services/evernoteImport";
 import { logError } from "../services/logger";
+import { t } from "../services/i18n";
 
 type EvernoteImportModal = {
   open: () => void;
@@ -21,8 +22,8 @@ export const mountEvernoteImportModal = (root: HTMLElement): EvernoteImportModal
   overlay.innerHTML = `
     <div class="import-modal__panel">
       <div class="import-modal__header">
-        <h3 class="import-modal__title">Import from Evernote</h3>
-        <button class="import-modal__close" type="button" aria-label="Close">
+        <h3 class="import-modal__title">${t("import.title")}</h3>
+        <button class="import-modal__close" type="button" aria-label="${t("settings.close")}">
           <svg class="import-modal__close-icon" width="16" height="16" aria-hidden="true">
             <use href="#icon-close"></use>
           </svg>
@@ -30,9 +31,9 @@ export const mountEvernoteImportModal = (root: HTMLElement): EvernoteImportModal
       </div>
       <div class="import-modal__body">
         <div class="import-modal__hint">
-          Select the folder that contains RemoteGraph.sql, internal_rteDoc, and resource-cache.
+          ${t("import.hint")}
         </div>
-        <div class="import-modal__path" data-import-path>Not selected</div>
+        <div class="import-modal__path" data-import-path>${t("import.path_empty")}</div>
         <div class="import-modal__status" data-import-status>
           <span class="import-modal__spinner" data-import-spinner></span>
           <span class="import-modal__status-text" data-import-status-text></span>
@@ -42,9 +43,9 @@ export const mountEvernoteImportModal = (root: HTMLElement): EvernoteImportModal
         <div class="import-modal__report is-hidden" data-import-report></div>
       </div>
       <div class="import-modal__footer">
-        <button class="import-modal__action" data-import-select type="button">Choose folder...</button>
-        <button class="import-modal__action import-modal__action--primary" data-import-run type="button" disabled>Import</button>
-        <button class="import-modal__action import-modal__action--ghost" data-import-cancel type="button">Close</button>
+        <button class="import-modal__action" data-import-select type="button">${t("import.select_folder")}</button>
+        <button class="import-modal__action import-modal__action--primary" data-import-run type="button" disabled>${t("import.import")}</button>
+        <button class="import-modal__action import-modal__action--ghost" data-import-cancel type="button">${t("settings.close")}</button>
       </div>
     </div>
   `;
@@ -92,16 +93,16 @@ export const mountEvernoteImportModal = (root: HTMLElement): EvernoteImportModal
       return `${size.toFixed(index === 0 ? 0 : 1)} ${sizes[index]}`;
     };
     summaryEl.innerHTML = `
-      <div class="import-summary__row"><span>Notes</span><span>${summary.noteCount}</span></div>
-      <div class="import-summary__row"><span>Notebooks</span><span>${summary.notebookCount}</span></div>
-      <div class="import-summary__row"><span>Stacks</span><span>${summary.stackCount}</span></div>
-      <div class="import-summary__row"><span>Tags</span><span>${summary.tagCount}</span></div>
-      <div class="import-summary__row"><span>Note tags</span><span>${summary.noteTagCount}</span></div>
-      <div class="import-summary__row"><span>Attachments</span><span>${summary.attachmentCount}</span></div>
-      <div class="import-summary__row"><span>Attachment size</span><span>${bytes(summary.attachmentBytes)}</span></div>
-      <div class="import-summary__row"><span>Images</span><span>${summary.imageCount}</span></div>
-      <div class="import-summary__row"><span>Resources size</span><span>${bytes(summary.resourceBytes)}</span></div>
-      <div class="import-summary__row"><span>Missing RTE files</span><span>${summary.missingRteCount}</span></div>
+      <div class="import-summary__row"><span>${t("import.summary.notes")}</span><span>${summary.noteCount}</span></div>
+      <div class="import-summary__row"><span>${t("import.summary.notebooks")}</span><span>${summary.notebookCount}</span></div>
+      <div class="import-summary__row"><span>${t("import.summary.stacks")}</span><span>${summary.stackCount}</span></div>
+      <div class="import-summary__row"><span>${t("import.summary.tags")}</span><span>${summary.tagCount}</span></div>
+      <div class="import-summary__row"><span>${t("import.summary.note_tags")}</span><span>${summary.noteTagCount}</span></div>
+      <div class="import-summary__row"><span>${t("import.summary.attachments")}</span><span>${summary.attachmentCount}</span></div>
+      <div class="import-summary__row"><span>${t("import.summary.attachment_bytes")}</span><span>${bytes(summary.attachmentBytes)}</span></div>
+      <div class="import-summary__row"><span>${t("import.summary.images")}</span><span>${summary.imageCount}</span></div>
+      <div class="import-summary__row"><span>${t("import.summary.resources")}</span><span>${bytes(summary.resourceBytes)}</span></div>
+      <div class="import-summary__row"><span>${t("import.summary.missing_rte")}</span><span>${summary.missingRteCount}</span></div>
     `;
   };
 
@@ -112,10 +113,10 @@ export const mountEvernoteImportModal = (root: HTMLElement): EvernoteImportModal
   };
 
   const stageOrder = [
-    { id: "tables", title: "Read Evernote tables" },
-    { id: "resources", title: "Copy resources" },
-    { id: "decode", title: "Decode notes" },
-    { id: "database", title: "Write database" },
+    { id: "tables", title: t("import.progress.tables") },
+    { id: "resources", title: t("import.progress.resources") },
+    { id: "decode", title: t("import.progress.decode") },
+    { id: "database", title: t("import.progress.database") },
   ] as const;
 
   const stageTitles = new Map(stageOrder.map((stage) => [stage.id, stage.title]));
@@ -182,14 +183,14 @@ export const mountEvernoteImportModal = (root: HTMLElement): EvernoteImportModal
     dialog.innerHTML = `
       <div class="dialog storage-dialog">
         <div class="dialog__header">
-          <h3 class="dialog__title">Restart required</h3>
+          <h3 class="dialog__title">${t("storage.restart_title")}</h3>
         </div>
         <div class="dialog__body">
-          <p>Import finished. Restart the app to continue.</p>
+          <p>${t("import.restart")}</p>
         </div>
         <div class="dialog__footer">
-          <button class="dialog__button" data-restart-now="1">Restart now</button>
-          <button class="dialog__button dialog__button--danger" data-exit-now="1">Exit</button>
+          <button class="dialog__button" data-restart-now="1">${t("storage.restart_now")}</button>
+          <button class="dialog__button dialog__button--danger" data-exit-now="1">${t("storage.exit_now")}</button>
         </div>
       </div>
     `;
@@ -203,7 +204,7 @@ export const mountEvernoteImportModal = (root: HTMLElement): EvernoteImportModal
   };
 
   const reset = () => {
-    if (pathEl) pathEl.textContent = "Not selected";
+    if (pathEl) pathEl.textContent = t("import.path_empty");
     setStatus("", "muted");
     summaryEl?.classList.add("is-hidden");
     stagesEl?.classList.add("is-hidden");
@@ -236,7 +237,7 @@ export const mountEvernoteImportModal = (root: HTMLElement): EvernoteImportModal
         resolved = normalized.slice(0, -"/remotegraph.sql".length);
       }
       if (pathEl) pathEl.textContent = resolved;
-      setStatus("Scanning Evernote data...", "muted", true);
+      setStatus(t("import.scanning"), "muted", true);
       summaryEl?.classList.add("is-hidden");
       const nextSummary = await scanEvernoteSource(resolved);
       setSummary(nextSummary);
@@ -245,12 +246,12 @@ export const mountEvernoteImportModal = (root: HTMLElement): EvernoteImportModal
         if (runBtn) runBtn.disabled = true;
         return;
       }
-      setStatus("Ready to import.", "ok");
+      setStatus(t("import.ready"), "ok");
       if (runBtn) runBtn.disabled = false;
     } catch (err) {
       logError("[import] scan failed", err);
       const message = err instanceof Error ? err.message : String(err);
-      setStatus(message ? `Scan failed: ${message}` : "Unable to scan Evernote data.", "error");
+      setStatus(message ? t("import.scan_failed", { message }) : t("import.scan_failed_generic"), "error");
       if (runBtn) runBtn.disabled = true;
     }
   });
@@ -262,10 +263,10 @@ export const mountEvernoteImportModal = (root: HTMLElement): EvernoteImportModal
       const info = await invoke<{ hasData: boolean }>("get_storage_info", { path: dataDir });
       if (info?.hasData) {
         const confirmed = await openConfirmDialog({
-          title: "Replace current data?",
-          message: "This will overwrite your current notes. A backup will be created before import.",
-          confirmLabel: "Replace current",
-          cancelLabel: "Cancel",
+          title: t("import.replace_title"),
+          message: t("import.replace_message"),
+          confirmLabel: t("import.replace_confirm"),
+          cancelLabel: t("dialog.cancel"),
           danger: true,
         });
         if (!confirmed) return;
@@ -283,11 +284,11 @@ export const mountEvernoteImportModal = (root: HTMLElement): EvernoteImportModal
       decode: summary.noteCount,
       database: 1,
     });
-    setStatus("Preparing import...", "muted", true);
+    setStatus(t("import.preparing"), "muted", true);
     try {
       const report = await runEvernoteImport(summary, (event) => {
         if (event.stage && event.state === "running") {
-          const title = stageTitles.get(event.stage) ?? "Importing";
+          const title = stageTitles.get(event.stage) ?? t("import.running");
           setStatus(`${title}...`, "muted", true);
         }
         if (event.stage) {
@@ -296,12 +297,12 @@ export const mountEvernoteImportModal = (root: HTMLElement): EvernoteImportModal
       });
       reportPath = `${report.backupDir}/import_report.json`;
       const hasErrors = report.errors.length > 0;
-      setStatus(hasErrors ? "Import finished with errors." : "Import finished.", hasErrors ? "error" : "ok");
-      setReport(`Report saved to ${reportPath}`);
+      setStatus(hasErrors ? t("import.finished_errors") : t("import.finished"), hasErrors ? "error" : "ok");
+      setReport(t("import.report_saved", { path: reportPath }));
       openRestartDialog();
     } catch (err) {
       logError("[import] failed", err);
-      setStatus("Import failed. See report for details.", "error");
+      setStatus(t("import.failed"), "error");
     } finally {
       selectBtn?.removeAttribute("disabled");
     }

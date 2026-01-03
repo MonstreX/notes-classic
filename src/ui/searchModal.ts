@@ -5,6 +5,7 @@ import { appStore } from "../state/store";
 import type { NoteListItem } from "../state/types";
 import { mountPreviewEditor, type EditorInstance } from "./editor";
 import { createIcon } from "./icons";
+import { t } from "../services/i18n";
 
 type SearchModalHandlers = {
   onOpenNote: (noteId: number, notebookId: number | null) => void;
@@ -28,11 +29,11 @@ export const mountSearchModal = (container: HTMLElement, handlers: SearchModalHa
   searchHeader.className = "search-modal__header";
   const searchTitle = document.createElement("div");
   searchTitle.className = "search-modal__title";
-  searchTitle.textContent = "Search";
+  searchTitle.textContent = t("search.title");
   const searchClose = document.createElement("button");
   searchClose.className = "search-modal__close";
   searchClose.type = "button";
-  searchClose.setAttribute("aria-label", "Close");
+  searchClose.setAttribute("aria-label", t("settings.close"));
   const searchCloseIcon = createIcon("icon-close", "search-modal__close-icon");
   searchClose.appendChild(searchCloseIcon);
   searchHeader.appendChild(searchTitle);
@@ -42,12 +43,12 @@ export const mountSearchModal = (container: HTMLElement, handlers: SearchModalHa
   const searchInput = document.createElement("input");
   searchInput.className = "search-modal__input";
   searchInput.type = "text";
-  searchInput.placeholder = "Search...";
+  searchInput.placeholder = t("search.placeholder");
   const searchFieldIcon = createIcon("icon-search", "search-modal__icon");
   const searchSubmit = document.createElement("button");
   searchSubmit.className = "search-modal__button";
   searchSubmit.type = "button";
-  searchSubmit.textContent = "Search";
+  searchSubmit.textContent = t("search.title");
   searchField.appendChild(searchFieldIcon);
   searchField.appendChild(searchInput);
   searchField.appendChild(searchSubmit);
@@ -59,7 +60,7 @@ export const mountSearchModal = (container: HTMLElement, handlers: SearchModalHa
   searchLoadingSpinner.className = "search-modal__spinner";
   const searchLoadingText = document.createElement("div");
   searchLoadingText.className = "search-modal__loading-text";
-  searchLoadingText.textContent = "Searching...";
+  searchLoadingText.textContent = t("search.searching");
   searchLoading.appendChild(searchLoadingSpinner);
   searchLoading.appendChild(searchLoadingText);
   searchPanel.appendChild(searchLoading);
@@ -71,7 +72,7 @@ export const mountSearchModal = (container: HTMLElement, handlers: SearchModalHa
   const searchEverywhereIcon = createIcon("icon-note", "search-modal__toggle-icon");
   searchEverywhere.appendChild(searchEverywhereIcon);
   const searchEverywhereText = document.createElement("span");
-  searchEverywhereText.textContent = "Search everywhere";
+  searchEverywhereText.textContent = t("search.everywhere");
   searchEverywhere.appendChild(searchEverywhereText);
   const searchScope = document.createElement("button");
   searchScope.type = "button";
@@ -84,7 +85,7 @@ export const mountSearchModal = (container: HTMLElement, handlers: SearchModalHa
   searchOcrSpinner.className = "search-modal__ocr-spinner";
   const searchOcrText = document.createElement("span");
   searchOcrText.className = "search-modal__ocr-text";
-  searchOcrText.textContent = "Indexing images...";
+  searchOcrText.textContent = t("search.index.none");
   searchOcrStatus.appendChild(searchOcrSpinner);
   searchOcrStatus.appendChild(searchOcrText);
   searchOptions.appendChild(searchEverywhere);
@@ -106,7 +107,7 @@ export const mountSearchModal = (container: HTMLElement, handlers: SearchModalHa
   const searchEmptyIcon = createIcon("icon-search", "search-modal__empty-icon");
   const searchEmptyText = document.createElement("div");
   searchEmptyText.className = "search-modal__empty-text";
-  searchEmptyText.textContent = "No results found";
+  searchEmptyText.textContent = t("search.no_results");
   searchEmpty.appendChild(searchEmptyIcon);
   searchEmpty.appendChild(searchEmptyText);
   searchPanel.appendChild(searchEmpty);
@@ -116,7 +117,7 @@ export const mountSearchModal = (container: HTMLElement, handlers: SearchModalHa
   let isSearchOpen = false;
   let searchEverywhereActive = false;
   let searchScopeNotebookId: number | null = null;
-  let searchScopeLabel = "All Notes";
+  let searchScopeLabel = t("sidebar.all_notes");
   let searchResultsData: NoteListItem[] = [];
   let searchSelectedNoteId: number | null = null;
   let searchTokens: string[] = [];
@@ -130,10 +131,10 @@ export const mountSearchModal = (container: HTMLElement, handlers: SearchModalHa
     if (state.selectedNotebookId !== null) {
       const notebook = state.notebooks.find((nb) => nb.id === state.selectedNotebookId);
       const stack = notebook?.parentId ? state.notebooks.find((nb) => nb.id === notebook.parentId) : null;
-      if (stack) return `${stack.name} - ${notebook?.name ?? "Notebook"}`;
-      return notebook?.name ?? "Notebook";
+      if (stack) return `${stack.name} - ${notebook?.name ?? t("notes.notebook_default")}`;
+      return notebook?.name ?? t("notes.notebook_default");
     }
-    return "All Notes";
+    return t("sidebar.all_notes");
   };
 
   const tokenizeQuery = (value: string) => {
@@ -233,7 +234,7 @@ export const mountSearchModal = (container: HTMLElement, handlers: SearchModalHa
         const notebook = note.notebookId ? map.get(note.notebookId) : null;
         const stack = notebook?.parentId ? map.get(notebook.parentId) : null;
         const scope = [stack?.name, notebook?.name].filter(Boolean).join(" - ");
-        const title = note.title || "Untitled";
+        const title = note.title || t("notes.untitled");
         const ocrIcon = note.ocrMatch
           ? `<svg class="search-modal__result-ocr-icon" aria-hidden="true"><use href="#icon-image"></use></svg>`
           : "";
@@ -248,7 +249,7 @@ export const mountSearchModal = (container: HTMLElement, handlers: SearchModalHa
               <svg class="search-modal__result-icon" aria-hidden="true">
                 <use href="#icon-note"></use>
               </svg>
-              Open
+              ${t("search.open")}
             </button>
           </div>
         `;
@@ -349,15 +350,15 @@ export const mountSearchModal = (container: HTMLElement, handlers: SearchModalHa
     try {
       const stats = await getOcrStats();
         if (stats.total === 0) {
-          searchOcrText.textContent = "No images indexed";
+          searchOcrText.textContent = t("search.index.none");
           searchOcrStatus.classList.remove("is-active");
         } else {
-          searchOcrText.textContent = `${stats.done} of ${stats.total} images indexed`;
+          searchOcrText.textContent = t("search.index.progress", { done: stats.done, total: stats.total });
           searchOcrStatus.classList.toggle("is-active", stats.pending > 0);
         }
       } catch (e) {
       console.error("[ocr] stats failed", e);
-      searchOcrText.textContent = "Indexing unavailable";
+      searchOcrText.textContent = t("search.index.unavailable");
       searchOcrStatus.classList.remove("is-active");
     }
   };

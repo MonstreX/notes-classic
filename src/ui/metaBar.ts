@@ -1,5 +1,6 @@
 import type { Notebook, NoteDetail } from "../state/types";
 import { createIcon } from "./icons";
+import { t } from "../services/i18n";
 
 export type MetaBarState = {
   hasNote: boolean;
@@ -54,7 +55,7 @@ export const mountMetaBar = (container: HTMLElement) => {
     metaNotebookText.textContent = notebook?.name ?? "";
     if (state.activeNote?.updatedAt) {
       const date = new Date(state.activeNote.updatedAt * 1000);
-      const formatted = date.toLocaleString("en-US", {
+      const formatted = date.toLocaleString(undefined, {
         year: "numeric",
         month: "short",
         day: "2-digit",
@@ -62,7 +63,7 @@ export const mountMetaBar = (container: HTMLElement) => {
         minute: "2-digit",
         hour12: false,
       });
-      metaUpdated.textContent = `Last edited on ${formatted}`;
+      metaUpdated.textContent = t("meta.last_edited", { date: formatted });
     } else {
       metaUpdated.textContent = "";
     }

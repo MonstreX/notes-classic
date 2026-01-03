@@ -1,3 +1,5 @@
+import { t, tCount } from "../services/i18n";
+
 export type ContextMenuNode = {
   id: number;
   name: string;
@@ -145,14 +147,14 @@ export const openNoteContextMenu = ({ x, y, noteId, nodes, onDelete, onMove }: N
   const menu = document.createElement("div");
   menu.className = "context-menu";
 
-  menu.appendChild(createItem("Delete Note", () => onDelete(noteId), "is-danger"));
+  menu.appendChild(createItem(t("menu.delete_note"), () => onDelete(noteId), "is-danger"));
   menu.appendChild(createSeparator());
 
   const moveItems = [
-    createItem("All Notes", () => onMove(noteId, null)),
+    createItem(t("menu.all_notes"), () => onMove(noteId, null)),
     ...buildMoveNodes(nodes, noteId, onMove),
   ];
-  menu.appendChild(createSubmenu("Move To", moveItems));
+  menu.appendChild(createSubmenu(t("menu.move_to"), moveItems));
 
   document.body.appendChild(menu);
   activeMenu = menu;
@@ -211,16 +213,16 @@ export const openNotesContextMenu = ({ x, y, noteIds, nodes, onDelete, onMove }:
   const menu = document.createElement("div");
   menu.className = "context-menu";
 
-  menu.appendChild(createItem(`${noteIds.length} Notes selected`, undefined, "is-disabled"));
+  menu.appendChild(createItem(tCount("menu.notes_selected", noteIds.length), undefined, "is-disabled"));
   menu.appendChild(createSeparator());
-  menu.appendChild(createItem("Delete Notes", () => onDelete(noteIds), "is-danger"));
+  menu.appendChild(createItem(t("menu.delete_notes"), () => onDelete(noteIds), "is-danger"));
   menu.appendChild(createSeparator());
 
   const moveItems = [
-    createItem("All Notes", () => onMove(noteIds, null)),
+    createItem(t("menu.all_notes"), () => onMove(noteIds, null)),
     ...buildMoveNodesForGroup(nodes, noteIds, onMove),
   ];
-  menu.appendChild(createSubmenu("Move To", moveItems));
+  menu.appendChild(createSubmenu(t("menu.move_to"), moveItems));
 
   document.body.appendChild(menu);
   activeMenu = menu;
@@ -278,9 +280,9 @@ export const openTrashNoteContextMenu = ({ x, y, noteId, onRestore, onDelete }: 
   const menu = document.createElement("div");
   menu.className = "context-menu";
 
-  menu.appendChild(createItem("Restore Note", () => onRestore(noteId)));
+  menu.appendChild(createItem(t("menu.restore_note"), () => onRestore(noteId)));
   menu.appendChild(createSeparator());
-  menu.appendChild(createItem("Delete Permanently", () => onDelete(noteId), "is-danger"));
+  menu.appendChild(createItem(t("menu.delete_permanently"), () => onDelete(noteId), "is-danger"));
 
   document.body.appendChild(menu);
   activeMenu = menu;
@@ -339,11 +341,11 @@ export const openTrashNotesContextMenu = ({ x, y, noteIds, onRestore, onDelete }
   const menu = document.createElement("div");
   menu.className = "context-menu";
 
-  menu.appendChild(createItem(`${noteIds.length} Notes selected`, undefined, "is-disabled"));
+  menu.appendChild(createItem(tCount("menu.notes_selected", noteIds.length), undefined, "is-disabled"));
   menu.appendChild(createSeparator());
-  menu.appendChild(createItem("Restore Notes", () => onRestore(noteIds)));
+  menu.appendChild(createItem(t("menu.restore_notes"), () => onRestore(noteIds)));
   menu.appendChild(createSeparator());
-  menu.appendChild(createItem("Delete Permanently", () => onDelete(noteIds), "is-danger"));
+  menu.appendChild(createItem(t("menu.delete_permanently"), () => onDelete(noteIds), "is-danger"));
 
   document.body.appendChild(menu);
   activeMenu = menu;
@@ -401,7 +403,7 @@ export const openNotebookContextMenu = ({ x, y, notebookId, onDelete }: Notebook
   const menu = document.createElement("div");
   menu.className = "context-menu";
 
-  menu.appendChild(createItem("Delete Notebook", () => onDelete(notebookId), "is-danger"));
+  menu.appendChild(createItem(t("menu.delete_notebook"), () => onDelete(notebookId), "is-danger"));
 
   document.body.appendChild(menu);
   activeMenu = menu;
@@ -460,7 +462,7 @@ export const openTagContextMenu = ({ x, y, tagId, onDelete }: TagMenuOptions) =>
   const menu = document.createElement("div");
   menu.className = "context-menu";
 
-  menu.appendChild(createItem("Delete Tag", () => onDelete(tagId), "is-danger"));
+  menu.appendChild(createItem(t("menu.delete_tag"), () => onDelete(tagId), "is-danger"));
 
   document.body.appendChild(menu);
   activeMenu = menu;
@@ -519,7 +521,7 @@ export const openTrashContextMenu = ({ x, y, onRestoreAll }: TrashMenuOptions) =
   const menu = document.createElement("div");
   menu.className = "context-menu";
 
-  menu.appendChild(createItem("Restore All", () => onRestoreAll()));
+  menu.appendChild(createItem(t("menu.restore_all"), () => onRestoreAll()));
 
   document.body.appendChild(menu);
   activeMenu = menu;

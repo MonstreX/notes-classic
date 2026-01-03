@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { AppState } from "../state/store";
 import { appStore } from "../state/store";
+import { detectSystemLanguage, isSupportedLanguage } from "./i18n";
 import { logError } from "./logger";
 
 const STORAGE_KEY = "notes_classic_v10_stable";
@@ -22,6 +23,7 @@ export const persistSettings = (state: AppState) => {
       notesSortBy: state.notesSortBy,
       notesSortDir: state.notesSortDir,
       deleteToTrash: state.deleteToTrash,
+      language: state.language,
     };
     invoke("set_settings", { settings: payload }).catch((e) => {
       logError("[settings] persist failed", e);
@@ -45,6 +47,7 @@ export const loadSettings = async () => {
   try {
     const stored = await invoke<any>("get_settings");
     if (stored) {
+      let hasLanguage = false;
       appStore.update((draft) => {
         if (stored.sidebarWidth) draft.sidebarWidth = stored.sidebarWidth;
         if (stored.listWidth) draft.listWidth = stored.listWidth;
@@ -87,7 +90,16 @@ export const loadSettings = async () => {
         if (stored.deleteToTrash !== undefined) {
           draft.deleteToTrash = Boolean(stored.deleteToTrash);
         }
+        if (stored.language && isSupportedLanguage(stored.language)) {
+          draft.language = stored.language;
+          hasLanguage = true;
+        }
       });
+      if (!hasLanguage) {
+        const systemLang = detectSystemLanguage();
+        appStore.setState({ language: systemLang });
+        await invoke("set_settings", { settings: { language: systemLang } });
+      }
       return;
     }
 
@@ -137,7 +149,12 @@ export const loadSettings = async () => {
         }
       });
       await invoke("set_settings", { settings: legacy });
+      return;
     }
+
+    const systemLang = detectSystemLanguage();
+    appStore.setState({ language: systemLang });
+    await invoke("set_settings", { settings: { language: systemLang } });
   } catch (e) {
     logError("[settings] load failed", e);
   }

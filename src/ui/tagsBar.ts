@@ -1,5 +1,6 @@
 import type { Tag } from "../state/types";
 import { createIcon } from "./icons";
+import { t } from "../services/i18n";
 
 export type TagsBarState = {
   hasNote: boolean;
@@ -25,7 +26,7 @@ export const mountTagsBar = (container: HTMLElement, handlers: TagsBarHandlers) 
   const tagsInput = document.createElement("input");
   tagsInput.className = "app-shell__tags-field";
   tagsInput.type = "text";
-  tagsInput.placeholder = "Add tag...";
+  tagsInput.placeholder = t("tags.placeholder");
   tagsInputWrap.appendChild(tagsSuggest);
   tagsInputWrap.appendChild(tagsInput);
   tagsBar.appendChild(tagsIcon);
@@ -181,7 +182,7 @@ export const mountTagsBar = (container: HTMLElement, handlers: TagsBarHandlers) 
         return `
           <span class="app-shell__tag">
             <span class="app-shell__tag-text">${label}</span>
-            <button type="button" class="app-shell__tag-remove" data-tag-id="${tag.id}" aria-label="Remove tag">&times;</button>
+            <button type="button" class="app-shell__tag-remove" data-tag-id="${tag.id}" aria-label="${t("tags.remove")}">&times;</button>
           </span>
         `;
       })

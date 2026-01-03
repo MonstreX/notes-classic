@@ -176,6 +176,15 @@
   word-break: break-all;
 }
 
+.settings-row__select {
+  padding: 8px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #111827;
+  background: #ffffff;
+}
+
 .settings-row__actions {
   display: flex;
   gap: 8px;

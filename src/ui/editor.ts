@@ -35,6 +35,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { logError } from "../services/logger";
 import { decryptHtml, encryptHtml } from "../services/crypto";
 import { openConfirmDialog, openPasswordDialog } from "./dialogs";
+import { t } from "../services/i18n";
 import { createIcon } from "./icons";
 import {
   importAttachment,
@@ -347,13 +348,13 @@ const buildEmbeddedAttachmentElement = (
   download.className = "note-attachment__action";
   download.setAttribute("data-attachment-action", "download");
   download.type = "button";
-  download.textContent = "Download";
+  download.textContent = t("attachments.download");
 
   const openBtn = doc.createElement("button");
   openBtn.className = "note-attachment__action";
   openBtn.setAttribute("data-attachment-action", "open");
   openBtn.type = "button";
-  openBtn.textContent = "View";
+  openBtn.textContent = t("attachments.view");
   if (!isTextAttachment(payload.name, payload.mime)) {
     openBtn.classList.add("is-hidden");
   }
@@ -573,13 +574,13 @@ const buildAttachmentNode = (
   download.className = "note-attachment__action";
   download.setAttribute("data-attachment-action", "download");
   download.type = "button";
-  download.textContent = "Download";
+  download.textContent = t("attachments.download");
 
   const openBtn = editor.createInside.element("button");
   openBtn.className = "note-attachment__action";
   openBtn.setAttribute("data-attachment-action", "open");
   openBtn.type = "button";
-  openBtn.textContent = "View";
+  openBtn.textContent = t("attachments.view");
   if (!isTextAttachment(attachment.filename, attachment.mime)) {
     openBtn.classList.add("is-hidden");
   }
@@ -588,7 +589,7 @@ const buildAttachmentNode = (
   remove.className = "note-attachment__action note-attachment__action--danger";
   remove.setAttribute("data-attachment-action", "delete");
   remove.type = "button";
-  remove.textContent = "Delete";
+  remove.textContent = t("attachments.delete");
 
   actions.appendChild(download);
   actions.appendChild(openBtn);
@@ -635,13 +636,13 @@ const buildAttachmentElement = (
   download.className = "note-attachment__action";
   download.setAttribute("data-attachment-action", "download");
   download.type = "button";
-  download.textContent = "Download";
+  download.textContent = t("attachments.download");
 
   const openBtn = doc.createElement("button");
   openBtn.className = "note-attachment__action";
   openBtn.setAttribute("data-attachment-action", "open");
   openBtn.type = "button";
-  openBtn.textContent = "View";
+  openBtn.textContent = t("attachments.view");
   if (!isTextAttachment(attachment.filename, attachment.mime)) {
     openBtn.classList.add("is-hidden");
   }
@@ -650,7 +651,7 @@ const buildAttachmentElement = (
   remove.className = "note-attachment__action note-attachment__action--danger";
   remove.setAttribute("data-attachment-action", "delete");
   remove.type = "button";
-  remove.textContent = "Delete";
+  remove.textContent = t("attachments.delete");
 
   actions.appendChild(download);
   actions.appendChild(openBtn);
@@ -670,7 +671,7 @@ const openAttachmentPreview = (title: string, content: string) => {
       <div class="dialog attachment-dialog">
         <div class="dialog__header">
           <h3 class="dialog__title"></h3>
-          <button class="dialog__close" type="button" data-attachment-close="1" aria-label="Close">
+          <button class="dialog__close" type="button" data-attachment-close="1" aria-label="${t("settings.close")}">
             <svg class="dialog__close-icon" aria-hidden="true">
               <use href="#icon-close"></use>
             </svg>
@@ -680,7 +681,7 @@ const openAttachmentPreview = (title: string, content: string) => {
           <pre class="attachment-dialog__content"></pre>
         </div>
         <div class="dialog__footer">
-        <button class="dialog__button dialog__button--primary" data-attachment-close="1">Close</button>
+        <button class="dialog__button dialog__button--primary" data-attachment-close="1">${t("settings.close")}</button>
       </div>
     </div>
   `;
@@ -721,8 +722,8 @@ const openSecureEditor = (html: string): Promise<void> => {
     overlay.innerHTML = `
         <div class="dialog secure-dialog">
           <div class="dialog__header">
-            <h3 class="dialog__title">Encrypted content</h3>
-            <button class="dialog__close" type="button" data-secure-close="1" aria-label="Close">
+            <h3 class="dialog__title">${t("secure.preview_title")}</h3>
+            <button class="dialog__close" type="button" data-secure-close="1" aria-label="${t("settings.close")}">
               <svg class="dialog__close-icon" aria-hidden="true">
                 <use href="#icon-close"></use>
               </svg>
@@ -736,7 +737,7 @@ const openSecureEditor = (html: string): Promise<void> => {
           </div>
         </div>
         <div class="dialog__footer">
-          <button class="dialog__button dialog__button--primary" data-secure-close="1">Close</button>
+          <button class="dialog__button dialog__button--primary" data-secure-close="1">${t("settings.close")}</button>
         </div>
       </div>
     `;
@@ -758,7 +759,7 @@ const openSecureEditor = (html: string): Promise<void> => {
       event.preventDefault();
       event.stopPropagation();
 
-      const name = wrapper.dataset.attachmentName || "attachment";
+      const name = wrapper.dataset.attachmentName || t("attachments.default_name");
       const mime = wrapper.dataset.attachmentMime || "application/octet-stream";
       const data = wrapper.dataset.attachmentData || "";
       const bytes = base64ToBytes(data);
@@ -962,7 +963,7 @@ const setupSecureHandlers = (editor: any) => {
     menu.dataset.secureMenu = "1";
     const item = document.createElement("div");
     item.className = "context-menu-item";
-    item.textContent = "Remove encryption";
+    item.textContent = t("secure.remove_encryption");
     menu.appendChild(item);
     document.body.appendChild(menu);
     menu.style.position = "fixed";
@@ -989,10 +990,10 @@ const setupSecureHandlers = (editor: any) => {
       const noteId = editor?.__noteIdProvider?.() ?? null;
       if (!noteId) return;
       const password = await openPasswordDialog({
-        title: "Unlock content",
-        message: "Enter password",
-        confirmLabel: "Unlock",
-        cancelLabel: "Cancel",
+        title: t("secure.unlock_title"),
+        message: t("secure.unlock_message"),
+        confirmLabel: t("secure.unlock_action"),
+        cancelLabel: t("dialog.cancel"),
       });
       if (!password) return;
       try {
@@ -1037,10 +1038,10 @@ const setupSecureHandlers = (editor: any) => {
       event.preventDefault();
       event.stopPropagation();
       const password = await openPasswordDialog({
-        title: "Unlock content",
-        message: "Enter password",
-        confirmLabel: "Unlock",
-        cancelLabel: "Cancel",
+        title: t("secure.unlock_title"),
+        message: t("secure.unlock_message"),
+        confirmLabel: t("secure.unlock_action"),
+        cancelLabel: t("dialog.cancel"),
       });
       if (!password) return;
       try {
@@ -1057,7 +1058,7 @@ const setupSecureHandlers = (editor: any) => {
         await openSecureEditor(preparedHtml);
       } catch (e) {
         logError("[note-secure] decrypt failed", e);
-        alert("Invalid password or corrupted content.");
+        alert(t("dialog.password_invalid"));
       }
     },
     true
@@ -1177,9 +1178,9 @@ const setupAttachmentHandlers = (editor: any) => {
 
       if (action === "delete") {
         const ok = await openConfirmDialog({
-          title: "Delete attachment",
-          message: "Remove this attachment from the note?",
-          confirmLabel: "Delete",
+          title: t("attachments.delete_title"),
+          message: t("attachments.delete_prompt"),
+          confirmLabel: t("attachments.delete"),
           danger: true,
         });
         if (!ok) return;
@@ -1757,7 +1758,7 @@ const createEditorConfig = (overrides: Record<string, unknown> = {}, getNoteId?:
           const button = editor.createInside.element("button");
           button.className = "note-code-copy";
           button.type = "button";
-          button.textContent = "Copy";
+          button.textContent = t("attachments.copy");
 
           toolbar.appendChild(select);
           toolbar.appendChild(button);
@@ -1805,7 +1806,7 @@ const createEditorConfig = (overrides: Record<string, unknown> = {}, getNoteId?:
         },
       },
       encrypt: {
-        tooltip: "Encrypt",
+        tooltip: t("secure.encrypt_action"),
         text: "",
         icon: "encrypt",
         exec: async (editor: any) => {
@@ -1832,10 +1833,10 @@ const createEditorConfig = (overrides: Record<string, unknown> = {}, getNoteId?:
           if (!html) return;
 
           const password = await openPasswordDialog({
-            title: "Encrypt selection",
-            message: "Enter password",
-            confirmLabel: "Encrypt",
-            cancelLabel: "Cancel",
+            title: t("secure.encrypt_title"),
+            message: t("secure.encrypt_message"),
+            confirmLabel: t("secure.encrypt_action"),
+            cancelLabel: t("dialog.cancel"),
           });
           if (!password) return;
 

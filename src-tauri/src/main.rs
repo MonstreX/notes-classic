@@ -671,45 +671,144 @@ fn update_notes_list_menu(app_handle: &AppHandle, view: &str) {
     }
 }
 
+fn load_i18n_messages(path: &Path) -> std::collections::HashMap<String, String> {
+    let raw = match fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(_) => return std::collections::HashMap::new(),
+    };
+    let value: Value = match serde_json::from_str(&raw) {
+        Ok(val) => val,
+        Err(_) => return std::collections::HashMap::new(),
+    };
+    value
+        .as_object()
+        .map(|obj| {
+            obj.iter()
+                .filter_map(|(key, val)| val.as_str().map(|v| (key.to_string(), v.to_string())))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn resolve_language(settings_dir: &Path) -> String {
+    let value = read_settings_file(settings_dir).unwrap_or(Value::Null);
+    let lang = value
+        .as_object()
+        .and_then(|obj| obj.get("language"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("en")
+        .to_string();
+    if lang == "ru" { "ru".to_string() } else { "en".to_string() }
+}
+
+fn load_i18n_bundle(
+    settings_dir: &Path,
+    resource_dir: &Path,
+) -> (std::collections::HashMap<String, String>, std::collections::HashMap<String, String>) {
+    let fallback_path = resource_dir.join("i18n").join("en.json");
+    let lang = resolve_language(settings_dir);
+    let lang_path = resource_dir.join("i18n").join(format!("{}.json", lang));
+    let fallback = load_i18n_messages(&fallback_path);
+    let current = if lang == "en" {
+        fallback.clone()
+    } else {
+        load_i18n_messages(&lang_path)
+    };
+    (current, fallback)
+}
+
+fn t(
+    map: &std::collections::HashMap<String, String>,
+    fallback: &std::collections::HashMap<String, String>,
+    key: &str,
+) -> String {
+    if let Some(value) = map.get(key) {
+        return value.to_string();
+    }
+    if let Some(value) = fallback.get(key) {
+        return value.to_string();
+    }
+    key.to_string()
+}
+
+fn resolve_i18n_dir<R: Runtime>(_app_handle: &AppHandle<R>) -> PathBuf {
+    let has_i18n = |dir: &PathBuf| dir.join("i18n").join("en.json").exists();
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(exe_dir) = exe.parent().map(|p| p.to_path_buf()) {
+            let candidate = exe_dir.join("resources");
+            if has_i18n(&candidate) {
+                return candidate;
+            }
+            let mut current = Some(exe_dir);
+            for _ in 0..6 {
+                let Some(dir) = current.take() else { break };
+                let candidate = dir.join("src-tauri").join("resources");
+                if has_i18n(&candidate) {
+                    return candidate;
+                }
+                current = dir.parent().map(|p| p.to_path_buf());
+            }
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        let mut current = Some(cwd);
+        for _ in 0..6 {
+            let Some(dir) = current.take() else { break };
+            let candidate = dir.join("src-tauri").join("resources");
+            if has_i18n(&candidate) {
+                return candidate;
+            }
+            current = dir.parent().map(|p| p.to_path_buf());
+        }
+    }
+    PathBuf::new()
+}
+
 fn build_menu<R: Runtime>(app_handle: &AppHandle<R>) -> tauri::Result<Menu<R>> {
+    let resource_dir = resolve_i18n_dir(app_handle);
+    let (messages, fallback) = match resolve_portable_paths() {
+        Ok((_, settings_dir)) => load_i18n_bundle(&settings_dir, &resource_dir),
+        Err(_) => (std::collections::HashMap::new(), std::collections::HashMap::new()),
+    };
+    let label = |key: &str| t(&messages, &fallback, key);
     let import_evernote =
-        MenuItem::with_id(app_handle, FILE_IMPORT_EVERNOTE, "Evernote...", true, None::<&str>)?;
-    let import_submenu = SubmenuBuilder::new(app_handle, "Import")
+        MenuItem::with_id(app_handle, FILE_IMPORT_EVERNOTE, label("menu.import_evernote"), true, None::<&str>)?;
+    let import_submenu = SubmenuBuilder::new(app_handle, label("menu.import"))
         .item(&import_evernote)
         .build()?;
 
-    let file_menu = SubmenuBuilder::new(app_handle, "File")
-        .item(&MenuItem::with_id(app_handle, MENU_NEW_NOTE, "New Note", true, None::<&str>)?)
-        .item(&MenuItem::with_id(app_handle, MENU_NEW_NOTEBOOK, "New Notebook", true, None::<&str>)?)
-        .item(&MenuItem::with_id(app_handle, MENU_NEW_STACK, "New Stack", true, None::<&str>)?)
+    let file_menu = SubmenuBuilder::new(app_handle, label("menu.file"))
+        .item(&MenuItem::with_id(app_handle, MENU_NEW_NOTE, label("menu.new_note"), true, None::<&str>)?)
+        .item(&MenuItem::with_id(app_handle, MENU_NEW_NOTEBOOK, label("menu.new_notebook"), true, None::<&str>)?)
+        .item(&MenuItem::with_id(app_handle, MENU_NEW_STACK, label("menu.new_stack"), true, None::<&str>)?)
         .separator()
         .item(&import_submenu)
         .separator()
-        .item(&MenuItem::with_id(app_handle, MENU_SETTINGS, "Settings", true, None::<&str>)?)
+        .item(&MenuItem::with_id(app_handle, MENU_SETTINGS, label("menu.settings"), true, None::<&str>)?)
         .separator()
         .item(&PredefinedMenuItem::close_window(app_handle, None)?)
         .item(&PredefinedMenuItem::quit(app_handle, None)?)
         .build()?;
 
     let detailed_item =
-        CheckMenuItem::with_id(app_handle, NOTES_VIEW_DETAILED, "Detailed", true, true, None::<&str>)?;
+        CheckMenuItem::with_id(app_handle, NOTES_VIEW_DETAILED, label("menu.detailed"), true, true, None::<&str>)?;
     let compact_item =
-        CheckMenuItem::with_id(app_handle, NOTES_VIEW_COMPACT, "Compact", true, false, None::<&str>)?;
-    let notes_list_menu = SubmenuBuilder::new(app_handle, "Notes List")
+        CheckMenuItem::with_id(app_handle, NOTES_VIEW_COMPACT, label("menu.compact"), true, false, None::<&str>)?;
+    let notes_list_menu = SubmenuBuilder::new(app_handle, label("menu.notes_list"))
         .item(&detailed_item)
         .item(&compact_item)
         .build()?;
 
-    let view_menu = SubmenuBuilder::new(app_handle, "View")
+    let view_menu = SubmenuBuilder::new(app_handle, label("menu.view"))
         .item(&notes_list_menu)
         .build()?;
 
-    let note_menu = SubmenuBuilder::new(app_handle, "Note")
-        .item(&MenuItem::with_id(app_handle, MENU_DELETE_NOTE, "Delete Note", true, None::<&str>)?)
+    let note_menu = SubmenuBuilder::new(app_handle, label("menu.note"))
+        .item(&MenuItem::with_id(app_handle, MENU_DELETE_NOTE, label("menu.delete_note"), true, None::<&str>)?)
         .build()?;
 
-    let tools_menu = SubmenuBuilder::new(app_handle, "Tools")
-        .item(&MenuItem::with_id(app_handle, MENU_SEARCH, "Search", true, None::<&str>)?)
+    let tools_menu = SubmenuBuilder::new(app_handle, label("menu.tools"))
+        .item(&MenuItem::with_id(app_handle, MENU_SEARCH, label("menu.search"), true, None::<&str>)?)
         .build()?;
 
     MenuBuilder::new(app_handle)

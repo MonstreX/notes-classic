@@ -16,6 +16,7 @@ import {
   setStoragePathEmpty,
 } from "../services/storage";
 import { logError } from "../services/logger";
+import { listLanguages, t } from "../services/i18n";
 
 type SettingsModal = {
   open: () => void;
@@ -32,11 +33,11 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
     <div class="settings-modal__panel">
       <div class="settings-modal__loading" data-settings-loading>
         <div class="settings-modal__spinner"></div>
-        <div class="settings-modal__loading-text">Applying...</div>
+        <div class="settings-modal__loading-text">${t("settings.applying")}</div>
       </div>
       <div class="settings-modal__header">
-        <h3 class="settings-modal__title">Settings</h3>
-        <button class="settings-modal__close" type="button" aria-label="Close">
+        <h3 class="settings-modal__title">${t("settings.title")}</h3>
+        <button class="settings-modal__close" type="button" aria-label="${t("settings.close")}">
           <svg class="settings-modal__close-icon" width="16" height="16" aria-hidden="true">
             <use href="#icon-close"></use>
           </svg>
@@ -44,36 +45,43 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
       </div>
       <div class="settings-modal__body">
         <div class="settings-modal__nav">
-          <button class="settings-modal__nav-item is-active" data-settings-tab="general">General</button>
-          <button class="settings-modal__nav-item" data-settings-tab="storage">Storage</button>
+          <button class="settings-modal__nav-item is-active" data-settings-tab="general">${t("settings.general")}</button>
+          <button class="settings-modal__nav-item" data-settings-tab="storage">${t("settings.storage")}</button>
         </div>
         <div class="settings-modal__content">
           <section class="settings-modal__section is-active" data-settings-section="general">
             <div class="settings-row">
               <label class="settings-row__label">
                 <input class="settings-row__checkbox" type="checkbox" data-setting-delete-trash />
-                Move deleted notes to Trash
+                ${t("settings.move_to_trash")}
               </label>
-              <p class="settings-row__hint">Disable to delete notes permanently.</p>
+              <p class="settings-row__hint">${t("settings.move_to_trash_hint")}</p>
+            </div>
+            <div class="settings-row">
+              <label class="settings-row__label" for="settings-language">
+                ${t("settings.language")}
+              </label>
+              <select class="settings-row__select" id="settings-language" data-setting-language></select>
+              <p class="settings-row__hint">${t("settings.language_hint")}</p>
             </div>
           </section>
           <section class="settings-modal__section" data-settings-section="storage">
             <div class="settings-row">
-              <div class="settings-row__label">Storage location</div>
-              <div class="settings-row__path" data-settings-storage-path>Loading...</div>
+              <div class="settings-row__label">${t("settings.storage_location")}</div>
+              <div class="settings-row__path" data-settings-storage-path>${t("settings.loading")}</div>
               <div class="settings-row__actions">
-                <button class="settings-row__button" data-settings-storage-change type="button">Change...</button>
-                <button class="settings-row__button settings-row__button--ghost" data-settings-storage-default type="button">Default</button>
+                <button class="settings-row__button" data-settings-storage-change type="button">${t("settings.storage_change")}</button>
+                <button class="settings-row__button settings-row__button--ghost" data-settings-storage-default type="button">${t("settings.storage_default")}</button>
               </div>
               <div class="settings-row__status" data-settings-storage-status></div>
             </div>
-            <p class="settings-row__hint">Changing location copies data. Restart required.</p>
+            <p class="settings-row__hint">${t("settings.storage_hint")}</p>
           </section>
         </div>
       </div>
       <div class="settings-modal__footer">
-        <button class="settings-modal__action" data-settings-apply type="button">Apply</button>
-        <button class="settings-modal__action settings-modal__action--ghost" data-settings-close type="button">Close</button>
+        <button class="settings-modal__action" data-settings-apply type="button">${t("settings.apply")}</button>
+        <button class="settings-modal__action settings-modal__action--ghost" data-settings-close type="button">${t("settings.close")}</button>
       </div>
     </div>
   `;
@@ -84,6 +92,7 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
   const navItems = Array.from(overlay.querySelectorAll<HTMLButtonElement>("[data-settings-tab]"));
   const sections = Array.from(overlay.querySelectorAll<HTMLElement>("[data-settings-section]"));
   const deleteTrashInput = overlay.querySelector<HTMLInputElement>("[data-setting-delete-trash]");
+  const languageSelect = overlay.querySelector<HTMLSelectElement>("[data-setting-language]");
   const storagePath = overlay.querySelector<HTMLElement>("[data-settings-storage-path]");
   const storageChange = overlay.querySelector<HTMLButtonElement>("[data-settings-storage-change]");
   const storageDefault = overlay.querySelector<HTMLButtonElement>("[data-settings-storage-default]");
@@ -93,12 +102,14 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
   const loadingOverlay = overlay.querySelector<HTMLElement>("[data-settings-loading]");
 
   let draftDeleteToTrash = false;
+  let draftLanguage = appStore.getState().language;
   let draftStorageMode: "default" | "custom" = "default";
   let draftStoragePath = "";
   let draftStorageAction: "copy" | "use" | "replace" | "empty" = "copy";
   let initialStorageMode: "default" | "custom" = "default";
   let initialStoragePath = "";
   let initialStorageAction: "copy" | "use" | "replace" | "empty" = "copy";
+  let initialLanguage = appStore.getState().language;
   let defaultStoragePath = "";
   let currentStoragePath = "";
 
@@ -129,6 +140,11 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
       draftDeleteToTrash = state.deleteToTrash;
       deleteTrashInput.checked = draftDeleteToTrash;
     }
+    if (languageSelect) {
+      draftLanguage = state.language;
+      initialLanguage = state.language;
+      languageSelect.value = draftLanguage;
+    }
     updateDefaultButtonState();
   };
 
@@ -141,6 +157,14 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
   const setLoading = (value: boolean) => {
     if (!loadingOverlay) return;
     loadingOverlay.style.display = value ? "flex" : "none";
+  };
+
+  const renderLanguageOptions = () => {
+    if (!languageSelect) return;
+    const options = listLanguages()
+      .map((lang) => `<option value="${lang.value}">${lang.label}</option>`)
+      .join("");
+    languageSelect.innerHTML = options;
   };
 
   const refreshStoragePath = async () => {
@@ -164,17 +188,17 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
       setStoragePathDisplay(draftStorageMode, draftStoragePath);
       updateDefaultButtonState();
     } catch (e) {
-      storagePath.textContent = "Unable to read";
+      storagePath.textContent = t("settings.storage_read_error");
       logError("[settings] storage path failed", e);
     }
   };
 
   const formatTimestamp = (value: number | null) => {
-    if (!value) return "Unknown";
+    if (!value) return t("settings.unknown");
     try {
-      return new Date(value * 1000).toLocaleString("en-US");
+      return new Date(value * 1000).toLocaleString();
     } catch {
-      return "Unknown";
+      return t("settings.unknown");
     }
   };
 
@@ -190,33 +214,33 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
       const dialog = document.createElement("div");
       dialog.className = "dialog-overlay";
       dialog.dataset.dialogOverlay = "1";
-      const warning = info.valid ? "" : `<p class="storage-dialog__warning">This storage looks incompatible or corrupted. Use with caution.</p>`;
+      const warning = info.valid ? "" : `<p class="storage-dialog__warning">${t("storage.existing_warning")}</p>`;
       dialog.innerHTML = `
         <div class="dialog storage-dialog">
           <div class="dialog__header">
-            <h3 class="dialog__title">Existing storage found</h3>
-            <button class="dialog__close" type="button" data-storage-cancel="1" aria-label="Close">
+            <h3 class="dialog__title">${t("storage.existing_title")}</h3>
+            <button class="dialog__close" type="button" data-storage-cancel="1" aria-label="${t("settings.close")}">
               <svg class="dialog__close-icon" aria-hidden="true">
                 <use href="#icon-close"></use>
               </svg>
             </button>
           </div>
           <div class="dialog__body">
-            <p>This folder already contains notes data.</p>
+            <p>${t("storage.existing_message")}</p>
             ${warning}
             <div class="storage-dialog__meta">
-              <div><strong>Path:</strong> ${info.path}</div>
-              <div><strong>Notes:</strong> ${info.notesCount}</div>
-              <div><strong>Notebooks:</strong> ${info.notebooksCount}</div>
-              <div><strong>Last note:</strong> ${formatTimestamp(info.lastNoteAt)}</div>
-              <div><strong>Last note title:</strong> ${info.lastNoteTitle || "Unknown"}</div>
+              <div><strong>${t("storage.meta.path")}:</strong> ${info.path}</div>
+              <div><strong>${t("storage.meta.notes")}:</strong> ${info.notesCount}</div>
+              <div><strong>${t("storage.meta.notebooks")}:</strong> ${info.notebooksCount}</div>
+              <div><strong>${t("storage.meta.last_note")}:</strong> ${formatTimestamp(info.lastNoteAt)}</div>
+              <div><strong>${t("storage.meta.last_note_title")}:</strong> ${info.lastNoteTitle || t("settings.unknown")}</div>
             </div>
-          <p class="storage-dialog__hint">Replace will overwrite notes.db and files only.</p>
+          <p class="storage-dialog__hint">${t("storage.replace_hint")}</p>
           </div>
           <div class="dialog__footer">
-            <button class="dialog__button dialog__button--ghost" data-storage-cancel="1">Cancel</button>
-            <button class="dialog__button" data-storage-use="1">Use existing</button>
-            <button class="dialog__button dialog__button--danger" data-storage-replace="1">Replace</button>
+            <button class="dialog__button dialog__button--ghost" data-storage-cancel="1">${t("dialog.cancel")}</button>
+            <button class="dialog__button" data-storage-use="1">${t("storage.use_existing")}</button>
+            <button class="dialog__button dialog__button--danger" data-storage-replace="1">${t("storage.replace")}</button>
           </div>
         </div>
       `;
@@ -252,23 +276,23 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
       dialog.innerHTML = `
         <div class="dialog storage-dialog">
           <div class="dialog__header">
-            <h3 class="dialog__title">Empty folder detected</h3>
-            <button class="dialog__close" type="button" data-storage-empty-cancel="1" aria-label="Close">
+            <h3 class="dialog__title">${t("storage.empty_title")}</h3>
+            <button class="dialog__close" type="button" data-storage-empty-cancel="1" aria-label="${t("settings.close")}">
               <svg class="dialog__close-icon" aria-hidden="true">
                 <use href="#icon-close"></use>
               </svg>
             </button>
           </div>
           <div class="dialog__body">
-            <p>The selected folder has no Notes Classic data.</p>
+            <p>${t("storage.empty_message")}</p>
             <div class="storage-dialog__meta">
-              <div><strong>Path:</strong> ${path}</div>
+              <div><strong>${t("storage.meta.path")}:</strong> ${path}</div>
             </div>
           </div>
           <div class="dialog__footer">
-            <button class="dialog__button dialog__button--ghost" data-storage-empty-cancel="1">Choose another</button>
-            <button class="dialog__button" data-storage-empty-copy="1">Copy existing storage</button>
-            <button class="dialog__button dialog__button--primary" data-storage-empty-create="1">Create new storage</button>
+            <button class="dialog__button dialog__button--ghost" data-storage-empty-cancel="1">${t("storage.empty_choose")}</button>
+            <button class="dialog__button" data-storage-empty-copy="1">${t("storage.empty_copy")}</button>
+            <button class="dialog__button dialog__button--primary" data-storage-empty-create="1">${t("storage.empty_create")}</button>
           </div>
         </div>
       `;
@@ -303,14 +327,14 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
     dialog.innerHTML = `
       <div class="dialog storage-dialog">
         <div class="dialog__header">
-          <h3 class="dialog__title">Restart required</h3>
+          <h3 class="dialog__title">${t("storage.restart_title")}</h3>
         </div>
         <div class="dialog__body">
-          <p>The storage location has changed. Restart the app to continue.</p>
+          <p>${t("storage.restart_message")}</p>
         </div>
         <div class="dialog__footer">
-          <button class="dialog__button" data-restart-now="1">Restart now</button>
-          <button class="dialog__button dialog__button--danger" data-exit-now="1">Exit</button>
+          <button class="dialog__button" data-restart-now="1">${t("storage.restart_now")}</button>
+          <button class="dialog__button dialog__button--danger" data-exit-now="1">${t("storage.exit_now")}</button>
         </div>
       </div>
     `;
@@ -344,10 +368,15 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
     draftDeleteToTrash = Boolean(deleteTrashInput.checked);
   });
 
+  languageSelect?.addEventListener("change", () => {
+    if (!languageSelect) return;
+    draftLanguage = languageSelect.value as typeof draftLanguage;
+  });
+
   storageChange?.addEventListener("click", async () => {
     setStorageStatus("", "muted");
     const selected = await open({
-      title: "Select storage folder",
+      title: t("settings.storage_select_title"),
       directory: true,
       multiple: false,
     });
@@ -367,7 +396,7 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
       }
       const emptyChoice = await openStorageEmptyDialog(selected);
       if (emptyChoice === "cancel") {
-        setStorageStatus("Select a different folder.", "muted");
+        setStorageStatus(t("settings.storage_select_other"), "muted");
         return;
       }
       draftStorageMode = "custom";
@@ -398,7 +427,7 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
         if (!info.hasData) {
           const emptyChoice = await openStorageEmptyDialog(defaultStoragePath);
           if (emptyChoice === "cancel") {
-            setStorageStatus("Default storage unchanged.", "muted");
+            setStorageStatus(t("settings.storage_status_default"), "muted");
             return;
           }
           draftStorageMode = "default";
@@ -425,7 +454,8 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
   applyBtn?.addEventListener("click", async () => {
     setStorageStatus("", "muted");
     setLoading(true);
-    appStore.setState({ deleteToTrash: draftDeleteToTrash });
+    appStore.setState({ deleteToTrash: draftDeleteToTrash, language: draftLanguage });
+    const languageChanged = draftLanguage !== initialLanguage;
     const storageChanged =
       draftStorageMode !== initialStorageMode ||
       (draftStorageMode === "custom" && draftStoragePath !== initialStoragePath) ||
@@ -456,26 +486,35 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
         initialStorageMode = draftStorageMode;
         initialStoragePath = draftStoragePath;
         initialStorageAction = draftStorageAction;
-        setStorageStatus("Storage updated. Restart required.", "ok");
+        setStorageStatus(t("settings.storage_update_success"), "ok");
         setLoading(false);
         closeModal();
         openRestartDialog();
         return;
       } catch (e) {
         logError("[settings] storage update failed", e);
-        setStorageStatus("Failed to update storage location.", "error");
+        setStorageStatus(t("settings.storage_update_failed"), "error");
         setLoading(false);
         return;
       }
     }
     setLoading(false);
     closeModal();
+    if (languageChanged) {
+      try {
+        await invoke("set_settings", { settings: { language: draftLanguage } });
+      } catch (e) {
+        logError("[settings] language update failed", e);
+      }
+      window.location.reload();
+    }
   });
 
   const openModal = () => {
     if (isOpen) return;
     isOpen = true;
     overlay.style.display = "flex";
+    renderLanguageOptions();
     syncState();
     setStorageStatus("", "muted");
     refreshStoragePath();

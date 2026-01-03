@@ -1,3 +1,5 @@
+import { t } from "../services/i18n";
+
 type NotebookDialogOptions = {
   parentId: number | null;
 };
@@ -27,25 +29,25 @@ export const openNotebookDialog = ({ parentId }: NotebookDialogOptions): Promise
     overlay.className = "dialog-overlay";
     overlay.dataset.dialogOverlay = "1";
 
-    const title = parentId === null ? "Create notebook stack" : "Create notebook";
+    const title = parentId === null ? t("dialog.notebook_stack_title") : t("dialog.notebook_title");
     const subtitle = parentId === null
-      ? "Stacks appear at the top level."
-      : "Notebooks can be created only inside stacks.";
-    const placeholder = parentId === null ? "New stack" : "New notebook";
+      ? t("dialog.notebook_stack_subtitle")
+      : t("dialog.notebook_subtitle");
+    const placeholder = parentId === null ? t("dialog.notebook_stack_placeholder") : t("dialog.notebook_placeholder");
 
     overlay.innerHTML = `
       <div class="dialog">
         <div class="dialog__header">
           <h3 class="dialog__title">${title}</h3>
           <p class="dialog__subtitle">${subtitle}</p>
-          <button class="dialog__close" type="button" data-dialog-close="1" aria-label="Close">
+          <button class="dialog__close" type="button" data-dialog-close="1" aria-label="${t("settings.close")}">
             <svg class="dialog__close-icon" aria-hidden="true">
               <use href="#icon-close"></use>
             </svg>
           </button>
         </div>
         <div class="dialog__body">
-          <label class="dialog__label">Name</label>
+          <label class="dialog__label">${t("dialog.name")}</label>
           <input
             class="dialog__input"
             placeholder="${placeholder}"
@@ -54,10 +56,10 @@ export const openNotebookDialog = ({ parentId }: NotebookDialogOptions): Promise
         </div>
         <div class="dialog__footer">
           <button class="dialog__button dialog__button--ghost" data-dialog-cancel="1">
-            Cancel
+            ${t("dialog.cancel")}
           </button>
           <button class="dialog__button dialog__button--primary" data-dialog-submit="1">
-            Create
+            ${t("dialog.create")}
           </button>
         </div>
       </div>
@@ -83,7 +85,7 @@ export const openNotebookDialog = ({ parentId }: NotebookDialogOptions): Promise
     const submit = () => {
       const value = (input?.value || "").trim();
       if (!value) {
-        showError("Enter a name");
+        showError(t("dialog.enter_name"));
         return;
       }
       cleanup(value);
@@ -121,25 +123,25 @@ export const openTagDialog = ({ parentId }: TagDialogOptions): Promise<string | 
     overlay.className = "dialog-overlay";
     overlay.dataset.dialogOverlay = "1";
 
-    const title = parentId === null ? "Create tag" : "Create nested tag";
+    const title = parentId === null ? t("dialog.tag_title") : t("dialog.tag_nested_title");
     const subtitle = parentId === null
-      ? "Tags can be nested."
-      : "Nested tags stay grouped under the parent tag.";
-    const placeholder = "New tag";
+      ? t("dialog.tag_subtitle")
+      : t("dialog.tag_nested_subtitle");
+    const placeholder = t("dialog.tag_placeholder");
 
     overlay.innerHTML = `
       <div class="dialog">
         <div class="dialog__header">
           <h3 class="dialog__title">${title}</h3>
           <p class="dialog__subtitle">${subtitle}</p>
-          <button class="dialog__close" type="button" data-dialog-close="1" aria-label="Close">
+          <button class="dialog__close" type="button" data-dialog-close="1" aria-label="${t("settings.close")}">
             <svg class="dialog__close-icon" aria-hidden="true">
               <use href="#icon-close"></use>
             </svg>
           </button>
         </div>
         <div class="dialog__body">
-          <label class="dialog__label">Name</label>
+          <label class="dialog__label">${t("dialog.name")}</label>
           <input
             class="dialog__input"
             placeholder="${placeholder}"
@@ -148,10 +150,10 @@ export const openTagDialog = ({ parentId }: TagDialogOptions): Promise<string | 
         </div>
         <div class="dialog__footer">
           <button class="dialog__button dialog__button--ghost" data-dialog-cancel="1">
-            Cancel
+            ${t("dialog.cancel")}
           </button>
           <button class="dialog__button dialog__button--primary" data-dialog-submit="1">
-            Create
+            ${t("dialog.create")}
           </button>
         </div>
       </div>
@@ -177,7 +179,7 @@ export const openTagDialog = ({ parentId }: TagDialogOptions): Promise<string | 
     const submit = () => {
       const value = (input?.value || "").trim();
       if (!value) {
-        showError("Enter a name");
+        showError(t("dialog.enter_name"));
         return;
       }
       cleanup(value);
@@ -211,40 +213,43 @@ export const openTagDialog = ({ parentId }: TagDialogOptions): Promise<string | 
 
 export const openPasswordDialog = ({
   title,
-  message = "Enter password",
-  confirmLabel = "Unlock",
-  cancelLabel = "Cancel",
+  message,
+  confirmLabel,
+  cancelLabel,
 }: PasswordDialogOptions): Promise<string | null> => {
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
     overlay.className = "dialog-overlay";
     overlay.dataset.dialogOverlay = "1";
+    const resolvedMessage = message ?? t("dialog.password_prompt");
+    const resolvedConfirmLabel = confirmLabel ?? t("dialog.unlock");
+    const resolvedCancelLabel = cancelLabel ?? t("dialog.cancel");
 
     overlay.innerHTML = `
       <div class="dialog">
         <div class="dialog__header">
           <h3 class="dialog__title">${title}</h3>
-          <button class="dialog__close" type="button" data-dialog-close="1" aria-label="Close">
+          <button class="dialog__close" type="button" data-dialog-close="1" aria-label="${t("settings.close")}">
             <svg class="dialog__close-icon" aria-hidden="true">
               <use href="#icon-close"></use>
             </svg>
           </button>
         </div>
         <div class="dialog__body">
-          <label class="dialog__label">${message}</label>
+          <label class="dialog__label">${resolvedMessage}</label>
           <input
             class="dialog__input"
             type="password"
-            placeholder="Password"
+            placeholder="${t("dialog.password_placeholder")}"
           />
           <div class="dialog__error is-hidden" data-dialog-error="1"></div>
         </div>
         <div class="dialog__footer">
           <button class="dialog__button dialog__button--ghost" data-dialog-cancel="1">
-            ${cancelLabel}
+            ${resolvedCancelLabel}
           </button>
           <button class="dialog__button dialog__button--primary" data-dialog-submit="1">
-            ${confirmLabel}
+            ${resolvedConfirmLabel}
           </button>
         </div>
       </div>
@@ -270,7 +275,7 @@ export const openPasswordDialog = ({
     const submit = () => {
       const value = (input?.value || "").trim();
       if (!value) {
-        showError("Enter a password");
+        showError(t("dialog.password_error"));
         return;
       }
       cleanup(value);
@@ -305,20 +310,22 @@ export const openPasswordDialog = ({
 export const openConfirmDialog = ({
   title,
   message,
-  confirmLabel = "Confirm",
-  cancelLabel = "Cancel",
+  confirmLabel,
+  cancelLabel,
   danger = false,
 }: ConfirmDialogOptions): Promise<boolean> => {
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
     overlay.className = "dialog-overlay";
     overlay.dataset.dialogOverlay = "1";
+    const resolvedConfirmLabel = confirmLabel ?? t("dialog.confirm");
+    const resolvedCancelLabel = cancelLabel ?? t("dialog.cancel");
 
     overlay.innerHTML = `
       <div class="dialog">
         <div class="dialog__header">
           <h3 class="dialog__title">${title}</h3>
-          <button class="dialog__close" type="button" data-dialog-close="1" aria-label="Close">
+          <button class="dialog__close" type="button" data-dialog-close="1" aria-label="${t("settings.close")}">
             <svg class="dialog__close-icon" aria-hidden="true">
               <use href="#icon-close"></use>
             </svg>
@@ -329,10 +336,10 @@ export const openConfirmDialog = ({
         </div>
         <div class="dialog__footer">
           <button class="dialog__button dialog__button--ghost" data-dialog-cancel="1">
-            ${cancelLabel}
+            ${resolvedCancelLabel}
           </button>
           <button class="dialog__button ${danger ? "dialog__button--danger" : "dialog__button--primary"}" data-dialog-confirm="1">
-            ${confirmLabel}
+            ${resolvedConfirmLabel}
           </button>
         </div>
       </div>

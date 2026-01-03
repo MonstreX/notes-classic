@@ -1,5 +1,6 @@
 import type { Tag } from "../state/types";
 import { DRAG_START_PX, hasDragDistance } from "./dragConfig";
+import { t, tCount } from "../services/i18n";
 
 export interface NotesListItem {
   id: number;
@@ -94,31 +95,31 @@ const renderViewIcon = () => `
 `;
 
 const getHeaderTitle = (state: NotesListState) => {
-  if (state.selectedTrash) return "Trash";
+  if (state.selectedTrash) return t("sidebar.trash");
   const tagTitle = state.selectedTagId
-    ? state.tags.find((tag) => tag.id === state.selectedTagId)?.name || "Tag"
+    ? state.tags.find((tag) => tag.id === state.selectedTagId)?.name || t("notes.tag_default")
     : null;
   const title = tagTitle
     ? tagTitle
     : state.selectedNotebookId
-      ? state.notebooks.find((n) => n.id === state.selectedNotebookId)?.name || "Notebooks"
-      : "All Notes";
-  return title === "All Notes" ? "Notes" : title;
+      ? state.notebooks.find((n) => n.id === state.selectedNotebookId)?.name || t("sidebar.notebooks")
+      : t("sidebar.all_notes");
+  return title === t("sidebar.all_notes") ? t("notes.title") : title;
 };
 
 const getCountLabel = (state: NotesListState) => {
   const count = state.notes.length;
-  return `${count} ${count === 1 ? "Note" : "Notes"}`;
+  return tCount("notes.count", count);
 };
 
 const getSortLabel = (state: NotesListState) => {
   return state.notesSortBy === "title"
-    ? state.notesSortDir === "asc" ? "Name A-Z" : "Name Z-A"
-    : state.notesSortDir === "asc" ? "Oldest first" : "Newest first";
+    ? state.notesSortDir === "asc" ? t("notes.sort.name_asc") : t("notes.sort.name_desc")
+    : state.notesSortDir === "asc" ? t("notes.sort.oldest") : t("notes.sort.newest");
 };
 
 const getViewLabel = (state: NotesListState) =>
-  state.notesListView === "compact" ? "Compact view" : "Detailed view";
+  state.notesListView === "compact" ? t("notes.view.compact") : t("notes.view.detailed");
 
 const renderHeader = (state: NotesListState) => {
   const countLabel = getCountLabel(state);
@@ -138,7 +139,7 @@ const renderHeader = (state: NotesListState) => {
       <div class="notes-list__header-bottom">
         <div class="notes-list__count">${countLabel}</div>
         <div class="notes-list__actions">
-          <button class="notes-list__action" data-action="filter" title="Filter (coming soon)">
+          <button class="notes-list__action" data-action="filter" title="${t("notes.filter.coming")}">
             ${renderFilterIcon()}
           </button>
           <button class="notes-list__action" data-action="sort" title="${sortLabel}">
@@ -160,7 +161,7 @@ const renderNoteRow = (note: NotesListItem, state: NotesListState) => {
       <div class="notes-list__row notes-list__row--compact ${isSelected ? "is-selected" : ""}" data-note-row="1" data-note-id="${note.id}">
         <div class="notes-list__row-line">
           <h3 class="notes-list__row-title">
-            ${escapeHtml(note.title || "Untitled")}
+            ${escapeHtml(note.title || t("notes.untitled"))}
           </h3>
           <div class="notes-list__row-date">
             ${formatDate(note.updatedAt)}
@@ -175,11 +176,11 @@ const renderNoteRow = (note: NotesListItem, state: NotesListState) => {
     <div class="notes-list__row ${isSelected ? "is-selected" : ""}" data-note-row="1" data-note-id="${note.id}">
       <div class="notes-list__row-top">
         <h3 class="notes-list__row-title notes-list__row-title--strong">
-          ${escapeHtml(note.title || "Untitled")}
+          ${escapeHtml(note.title || t("notes.untitled"))}
         </h3>
       </div>
       <p class="notes-list__excerpt">
-        ${escapeHtml(excerpt || "No text")}
+        ${escapeHtml(excerpt || t("notes.no_text"))}
       </p>
       <div class="notes-list__row-date">
         ${formatDate(note.updatedAt)}
@@ -241,19 +242,19 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
     menu.className = "notes-list__sort-menu";
     menu.innerHTML = `
       <button class="notes-list__sort-item" data-sort="updated_desc">
-        <span>Newest first</span>
+        <span>${t("notes.sort.newest")}</span>
         <span class="notes-list__sort-check">${state.notesSortBy === "updated" && state.notesSortDir === "desc" ? "✓" : ""}</span>
       </button>
       <button class="notes-list__sort-item" data-sort="updated_asc">
-        <span>Oldest first</span>
+        <span>${t("notes.sort.oldest")}</span>
         <span class="notes-list__sort-check">${state.notesSortBy === "updated" && state.notesSortDir === "asc" ? "✓" : ""}</span>
       </button>
       <button class="notes-list__sort-item" data-sort="title_asc">
-        <span>Name A-Z</span>
+        <span>${t("notes.sort.name_asc")}</span>
         <span class="notes-list__sort-check">${state.notesSortBy === "title" && state.notesSortDir === "asc" ? "✓" : ""}</span>
       </button>
       <button class="notes-list__sort-item" data-sort="title_desc">
-        <span>Name Z-A</span>
+        <span>${t("notes.sort.name_desc")}</span>
         <span class="notes-list__sort-check">${state.notesSortBy === "title" && state.notesSortDir === "desc" ? "✓" : ""}</span>
       </button>
     `;
@@ -332,7 +333,7 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
     dragOverlay.style.transform = `translate(${clientX + 10}px, ${clientY + 10}px)`;
     dragOverlay.innerHTML = `
       <div class="notes-list__drag-card">
-        ${escapeHtml(label || "Untitled")}
+        ${escapeHtml(label || t("notes.untitled"))}
       </div>
     `;
     document.body.appendChild(dragOverlay);
@@ -424,7 +425,7 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
       }
       const selectedIds = currentState?.selectedNoteIds ?? new Set<number>();
       const isGrouped = selectedIds.has(dragNoteId) && selectedIds.size > 1;
-      const label = isGrouped ? `${selectedIds.size} Notes` : note.title;
+      const label = isGrouped ? tCount("notes.count", selectedIds.size) : note.title;
       startDrag(label, event.clientX, event.clientY);
     }
     updateOverlay(event.clientX, event.clientY);

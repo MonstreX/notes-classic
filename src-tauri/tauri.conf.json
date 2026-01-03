@@ -58,7 +58,9 @@
     "icon": ["icons/app.ico"],
     "resources": [
       "resources/ocr/tessdata/eng.traineddata.gz",
-      "resources/ocr/tessdata/rus.traineddata.gz"
+      "resources/ocr/tessdata/rus.traineddata.gz",
+      "resources/i18n/en.json",
+      "resources/i18n/ru.json"
     ]
   },
   "plugins": {}

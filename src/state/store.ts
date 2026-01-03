@@ -1,4 +1,5 @@
 import type { Notebook, NoteListItem, NoteDetail, NotesListView, NotesSortBy, NotesSortDir, Tag } from "./types";
+import type { LanguageCode } from "../services/i18n";
 
 export type AppState = {
   notebooks: Notebook[];
@@ -22,6 +23,7 @@ export type AppState = {
   sidebarWidth: number;
   listWidth: number;
   deleteToTrash: boolean;
+  language: LanguageCode;
   title: string;
   content: string;
   activeNote: NoteDetail | null;
@@ -53,6 +55,7 @@ let state: AppState = {
   sidebarWidth: 240,
   listWidth: 350,
   deleteToTrash: true,
+  language: "en",
   title: "",
   content: "",
   activeNote: null,

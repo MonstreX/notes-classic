@@ -1,4 +1,5 @@
 import { createIcon } from "./icons";
+import { t } from "../services/i18n";
 
 export type AppLayout = {
   root: HTMLElement;
@@ -54,7 +55,7 @@ export const createAppLayout = (root: HTMLElement, handlers: AppLayoutHandlers):
   const searchIcon = createIcon("icon-search", "btn__icon");
   searchButton.appendChild(searchIcon);
   const searchLabel = document.createElement("span");
-  searchLabel.textContent = "Search";
+  searchLabel.textContent = t("app.search");
   searchButton.appendChild(searchLabel);
   searchButton.addEventListener("click", handlers.onSearch);
   sidebarInner.appendChild(searchButton);
@@ -64,7 +65,7 @@ export const createAppLayout = (root: HTMLElement, handlers: AppLayoutHandlers):
   const plusIcon = createIcon("icon-plus", "btn__icon");
   newNoteButton.appendChild(plusIcon);
   const newNoteLabel = document.createElement("span");
-  newNoteLabel.textContent = "New Note";
+  newNoteLabel.textContent = t("app.new_note");
   newNoteButton.appendChild(newNoteLabel);
   newNoteButton.addEventListener("click", handlers.onNewNote);
   sidebarInner.appendChild(newNoteButton);
@@ -103,7 +104,7 @@ export const createAppLayout = (root: HTMLElement, handlers: AppLayoutHandlers):
 
   const titleInput = document.createElement("input");
   titleInput.className = "app-shell__title-input";
-  titleInput.placeholder = "Title";
+  titleInput.placeholder = t("notes.title_placeholder");
   titleBar.appendChild(titleInput);
 
   const editorHost = document.createElement("div");
@@ -116,7 +117,7 @@ export const createAppLayout = (root: HTMLElement, handlers: AppLayoutHandlers):
   emptyState.appendChild(emptyIcon);
   const emptyText = document.createElement("p");
   emptyText.className = "app-shell__empty-text";
-  emptyText.textContent = "Select a note";
+  emptyText.textContent = t("notes.empty_select");
   emptyState.appendChild(emptyText);
   editorPane.appendChild(emptyState);
 
