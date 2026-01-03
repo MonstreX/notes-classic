@@ -33,7 +33,10 @@ export const mountEvernoteImportModal = (root: HTMLElement): EvernoteImportModal
           Select the folder that contains RemoteGraph.sql, internal_rteDoc, and resource-cache.
         </div>
         <div class="import-modal__path" data-import-path>Not selected</div>
-        <div class="import-modal__status" data-import-status></div>
+        <div class="import-modal__status" data-import-status>
+          <span class="import-modal__spinner" data-import-spinner></span>
+          <span class="import-modal__status-text" data-import-status-text></span>
+        </div>
         <div class="import-modal__summary is-hidden" data-import-summary></div>
         <div class="import-modal__report is-hidden" data-import-report></div>
       </div>
@@ -53,13 +56,22 @@ export const mountEvernoteImportModal = (root: HTMLElement): EvernoteImportModal
   const cancelBtn = overlay.querySelector<HTMLButtonElement>("[data-import-cancel]");
   const pathEl = overlay.querySelector<HTMLElement>("[data-import-path]");
   const statusEl = overlay.querySelector<HTMLElement>("[data-import-status]");
+  const statusTextEl = overlay.querySelector<HTMLElement>("[data-import-status-text]");
+  const spinnerEl = overlay.querySelector<HTMLElement>("[data-import-spinner]");
   const summaryEl = overlay.querySelector<HTMLElement>("[data-import-summary]");
   const reportEl = overlay.querySelector<HTMLElement>("[data-import-report]");
 
-  const setStatus = (message: string, tone: "ok" | "error" | "muted" = "muted") => {
+  const setStatus = (message: string, tone: "ok" | "error" | "muted" = "muted", loading = false) => {
     if (!statusEl) return;
-    statusEl.textContent = message;
-    statusEl.className = `import-modal__status is-${tone}`;
+    if (statusTextEl) {
+      statusTextEl.textContent = message;
+    } else {
+      statusEl.textContent = message;
+    }
+    statusEl.className = `import-modal__status is-${tone} ${loading ? "is-loading" : ""}`;
+    if (spinnerEl) {
+      spinnerEl.style.display = loading ? "inline-flex" : "none";
+    }
   };
 
   const setSummary = (nextSummary: typeof summary) => {
@@ -130,7 +142,7 @@ export const mountEvernoteImportModal = (root: HTMLElement): EvernoteImportModal
         resolved = normalized.slice(0, -"/remotegraph.sql".length);
       }
       if (pathEl) pathEl.textContent = resolved;
-      setStatus("Scanning Evernote data...", "muted");
+      setStatus("Scanning Evernote data...", "muted", true);
       summaryEl?.classList.add("is-hidden");
       const nextSummary = await scanEvernoteSource(resolved);
       setSummary(nextSummary);
@@ -168,9 +180,9 @@ export const mountEvernoteImportModal = (root: HTMLElement): EvernoteImportModal
     }
     runBtn.disabled = true;
     selectBtn?.setAttribute("disabled", "disabled");
-    setStatus("Preparing import...", "muted");
+    setStatus("Preparing import...", "muted", true);
     try {
-      const report = await runEvernoteImport(summary, (message) => setStatus(message, "muted"));
+      const report = await runEvernoteImport(summary, (message) => setStatus(message, "muted", true));
       reportPath = `${report.backupDir}/import_report.json`;
       const hasErrors = report.errors.length > 0;
       setStatus(hasErrors ? "Import finished with errors." : "Import finished.", hasErrors ? "error" : "ok");
