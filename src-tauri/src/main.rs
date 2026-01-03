@@ -1098,14 +1098,103 @@ fn create_evernote_backup(state: State<'_, AppState>) -> Result<String, String> 
     Ok(backup_dir.to_string_lossy().to_string())
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EvernotePaths {
+    db_path: Option<String>,
+    rte_root: Option<String>,
+    resources_root: Option<String>,
+}
+
+fn updated_at_ts(path: &Path) -> i64 {
+    fs::metadata(path)
+        .and_then(|meta| meta.modified())
+        .ok()
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .map(|dur| dur.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+#[tauri::command]
+fn find_evernote_paths(base_path: String) -> Result<EvernotePaths, String> {
+    let base = PathBuf::from(base_path);
+    if !base.exists() {
+        return Err("Base path not found".to_string());
+    }
+    let mut stack: Vec<(PathBuf, usize)> = vec![(base.clone(), 0)];
+    let mut db_candidate: Option<(PathBuf, i64)> = None;
+    let mut rte_candidate: Option<(PathBuf, i64)> = None;
+    let mut resources_candidate: Option<(PathBuf, i64)> = None;
+
+    const MAX_DEPTH: usize = 6;
+    const MAX_ENTRIES: usize = 20000;
+    let mut visited = 0usize;
+
+    while let Some((path, depth)) = stack.pop() {
+        if visited > MAX_ENTRIES {
+            break;
+        }
+        visited += 1;
+        let entries = match fs::read_dir(&path) {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+        for entry in entries {
+            let entry = match entry {
+                Ok(value) => value,
+                Err(_) => continue,
+            };
+            let entry_path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            if entry_path.is_file() && name.to_lowercase().ends_with("remotegraph.sql") {
+                let ts = updated_at_ts(&entry_path);
+                if db_candidate.as_ref().map(|(_, best)| ts > *best).unwrap_or(true) {
+                    db_candidate = Some((entry_path.clone(), ts));
+                }
+                continue;
+            }
+            if entry_path.is_dir() {
+                if name.eq_ignore_ascii_case("internal_rteDoc") {
+                    let ts = updated_at_ts(&entry_path);
+                    if rte_candidate.as_ref().map(|(_, best)| ts > *best).unwrap_or(true) {
+                        rte_candidate = Some((entry_path.clone(), ts));
+                    }
+                } else if name.eq_ignore_ascii_case("resource-cache") {
+                    let ts = updated_at_ts(&entry_path);
+                    if resources_candidate
+                        .as_ref()
+                        .map(|(_, best)| ts > *best)
+                        .unwrap_or(true)
+                    {
+                        resources_candidate = Some((entry_path.clone(), ts));
+                    }
+                }
+                if depth < MAX_DEPTH {
+                    stack.push((entry_path, depth + 1));
+                }
+            }
+        }
+    }
+
+    Ok(EvernotePaths {
+        db_path: db_candidate.map(|(path, _)| path.to_string_lossy().to_string()),
+        rte_root: rte_candidate.map(|(path, _)| path.to_string_lossy().to_string()),
+        resources_root: resources_candidate.map(|(path, _)| path.to_string_lossy().to_string()),
+    })
+}
+
 #[tauri::command]
 async fn select_evernote_folder(app_handle: AppHandle) -> Result<Option<String>, String> {
-    let (tx, rx) = tokio::sync::oneshot::channel();
+    let (tx, rx): (
+        tokio::sync::oneshot::Sender<Option<String>>,
+        tokio::sync::oneshot::Receiver<Option<String>>,
+    ) = tokio::sync::oneshot::channel();
     app_handle
         .dialog()
         .file()
         .pick_folder(move |folder| {
-            let _ = tx.send(folder.map(|path| path.to_string_lossy().to_string()));
+            let path = folder.and_then(|value| value.into_path().ok());
+            let _ = tx.send(path.map(|value| value.to_string_lossy().to_string()));
         });
     rx.await.map_err(|e| e.to_string())
 }
@@ -1205,8 +1294,9 @@ async fn import_evernote_from_json(json_path: String, assets_dir: String, state:
             .and_then(|v| v.as_str())
             .or_else(|| nb.get("name").and_then(|v| v.as_str()))
             .or_else(|| nb.get("title").and_then(|v| v.as_str()))
-            .or_else(|| nb.get("id").and_then(value_to_string).as_deref())
-            .unwrap_or("Notebook");
+            .map(|value| value.to_string())
+            .or_else(|| nb.get("id").and_then(value_to_string))
+            .unwrap_or_else(|| "Notebook".to_string());
         let external_id = nb.get("id").and_then(value_to_string).unwrap_or_default();
         sqlx::query(
             "INSERT INTO notebooks (name, created_at, parent_id, notebook_type, sort_order, external_id)
@@ -1232,7 +1322,8 @@ async fn import_evernote_from_json(json_path: String, assets_dir: String, state:
     for note in &notes {
         let title = note.get("title")
             .and_then(|v| v.as_str())
-            .unwrap_or("Untitled");
+            .unwrap_or("Untitled")
+            .to_string();
         let content = note.get("contentNormalized")
             .and_then(|v| v.as_str())
             .or_else(|| note.get("content").and_then(|v| v.as_str()))
@@ -1251,7 +1342,7 @@ async fn import_evernote_from_json(json_path: String, assets_dir: String, state:
             "INSERT INTO notes (title, content, created_at, updated_at, notebook_id, external_id, meta, content_hash, content_size)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
-        .bind(title)
+        .bind(&title)
         .bind(content)
         .bind(created_at)
         .bind(updated_at)
@@ -1274,7 +1365,7 @@ async fn import_evernote_from_json(json_path: String, assets_dir: String, state:
              VALUES (?, ?, ?)",
         )
         .bind(row_id.0)
-        .bind(title)
+        .bind(&title)
         .bind(plain)
         .execute(&mut *tx)
         .await
@@ -1291,14 +1382,15 @@ async fn import_evernote_from_json(json_path: String, assets_dir: String, state:
         let name = tag.get("name")
             .and_then(|v| v.as_str())
             .or_else(|| tag.get("label").and_then(|v| v.as_str()))
-            .or_else(|| tag.get("id").and_then(value_to_string).as_deref())
-            .unwrap_or("Tag");
+            .map(|value| value.to_string())
+            .or_else(|| tag.get("id").and_then(value_to_string))
+            .unwrap_or_else(|| "Tag".to_string());
         let external_id = tag.get("id").and_then(value_to_string).unwrap_or_default();
         sqlx::query(
             "INSERT INTO tags (name, parent_id, created_at, updated_at, external_id)
              VALUES (?, NULL, ?, ?, ?)",
         )
-        .bind(name)
+        .bind(&name)
         .bind(now)
         .bind(now)
         .bind(external_id.clone())
@@ -1324,14 +1416,15 @@ async fn import_evernote_from_json(json_path: String, assets_dir: String, state:
         let name = tag.get("name")
             .and_then(|v| v.as_str())
             .or_else(|| tag.get("label").and_then(|v| v.as_str()))
-            .or_else(|| tag.get("id").and_then(value_to_string).as_deref())
-            .unwrap_or("Tag");
+            .map(|value| value.to_string())
+            .or_else(|| tag.get("id").and_then(value_to_string))
+            .unwrap_or_else(|| "Tag".to_string());
         let external_id = tag.get("id").and_then(value_to_string).unwrap_or_default();
         sqlx::query(
             "INSERT INTO tags (name, parent_id, created_at, updated_at, external_id)
              VALUES (?, ?, ?, ?, ?)",
         )
-        .bind(name)
+        .bind(&name)
         .bind(parent_id)
         .bind(now)
         .bind(now)
@@ -1742,6 +1835,7 @@ fn main() {
             resolve_resource_roots,
             count_missing_rte,
             create_evernote_backup,
+            find_evernote_paths,
             select_evernote_folder,
             import_evernote_from_json,
             get_ocr_pending_files,
