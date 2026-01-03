@@ -11,27 +11,33 @@ const ensureIconSprite = () => {
   document.body.insertAdjacentHTML("afterbegin", iconsSprite);
 };
 
-const initLanguage = async () => {
+const initLanguage = async (): Promise<"restart" | "ready"> => {
   try {
     const stored = await invoke<any>("get_settings");
     const storedLang = stored?.language;
     if (storedLang && isSupportedLanguage(storedLang)) {
       await initI18n(storedLang);
-      return;
+      return "ready";
     }
     const systemLang = detectSystemLanguage();
     await initI18n(systemLang);
     await invoke("set_settings", { settings: { language: systemLang } });
+    return "restart";
   } catch {
     const systemLang = detectSystemLanguage();
     await initI18n(systemLang);
+    return "ready";
   }
 };
 
 const root = document.getElementById("root");
 if (root) {
   ensureIconSprite();
-  initLanguage().finally(() => {
+  initLanguage().then((result) => {
+    if (result === "restart") {
+      invoke("restart_app");
+      return;
+    }
     mountApp(root);
   });
 }
