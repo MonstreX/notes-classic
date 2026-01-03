@@ -555,16 +555,6 @@ fn resolve_portable_paths(app_handle: &AppHandle) -> Result<(PathBuf, PathBuf), 
     }
     ensure_dir_writable(&data_dir)?;
 
-    let legacy_dir = app_handle
-        .path()
-        .app_data_dir()
-        .map_err(|_| "Failed to resolve app data directory".to_string())?;
-    let legacy_db = legacy_dir.join("notes_classic.db");
-    let new_db = data_dir.join("notes.db");
-    if !new_db.exists() && legacy_db.exists() {
-        fs::copy(&legacy_db, &new_db).map_err(|e| e.to_string())?;
-    }
-
     Ok((data_dir, settings_dir))
 }
 
