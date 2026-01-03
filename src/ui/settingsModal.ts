@@ -56,10 +56,6 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
           </section>
           <section class="settings-modal__section" data-settings-section="storage">
             <div class="settings-row">
-              <div class="settings-row__label">Active storage</div>
-              <div class="settings-row__path" data-settings-active-path>Loading...</div>
-            </div>
-            <div class="settings-row">
               <div class="settings-row__label">Storage location</div>
               <div class="settings-row__path" data-settings-storage-path>Loading...</div>
               <div class="settings-row__actions">
@@ -85,7 +81,6 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
   const navItems = Array.from(overlay.querySelectorAll<HTMLButtonElement>("[data-settings-tab]"));
   const sections = Array.from(overlay.querySelectorAll<HTMLElement>("[data-settings-section]"));
   const deleteTrashInput = overlay.querySelector<HTMLInputElement>("[data-setting-delete-trash]");
-  const activePath = overlay.querySelector<HTMLElement>("[data-settings-active-path]");
   const storagePath = overlay.querySelector<HTMLElement>("[data-settings-storage-path]");
   const storageChange = overlay.querySelector<HTMLButtonElement>("[data-settings-storage-change]");
   const storageDefault = overlay.querySelector<HTMLButtonElement>("[data-settings-storage-default]");
@@ -102,6 +97,21 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
   let initialStoragePath = "";
   let initialStorageAction: "copy" | "use" | "replace" = "copy";
   let defaultStoragePath = "";
+
+  const formatDefaultPath = () => {
+    if (!defaultStoragePath) return "\\data\\<storage>";
+    return "\\data\\<storage>";
+  };
+
+  const setStoragePathDisplay = (mode: "default" | "custom", path: string) => {
+    if (!storagePath) return;
+    if (mode === "default") {
+      storagePath.textContent = formatDefaultPath();
+      return;
+    }
+    const normalized = path.replace(/[\\/]+$/, "");
+    storagePath.textContent = `${normalized}\\<storage>`;
+  };
 
   const syncState = () => {
     const state = appStore.getState();
@@ -125,10 +135,6 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
   const refreshStoragePath = async () => {
     if (!storagePath) return;
     try {
-      if (activePath) {
-        const current = await getDataDir();
-        activePath.textContent = current;
-      }
       defaultStoragePath = await getDefaultStoragePath();
       const override = await getStorageOverride();
       if (override) {
@@ -143,7 +149,7 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
       initialStorageMode = draftStorageMode;
       initialStoragePath = draftStoragePath;
       initialStorageAction = draftStorageAction;
-      storagePath.textContent = draftStorageMode === "default" ? "Default path" : draftStoragePath;
+      setStoragePathDisplay(draftStorageMode, draftStoragePath);
     } catch (e) {
       storagePath.textContent = "Unable to read";
       logError("[settings] storage path failed", e);
@@ -255,17 +261,13 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
         draftStorageMode = "custom";
         draftStoragePath = selected;
         draftStorageAction = choice;
-        if (storagePath) {
-          storagePath.textContent = selected;
-        }
+        setStoragePathDisplay(draftStorageMode, draftStoragePath);
         return;
       }
       draftStorageMode = "custom";
       draftStoragePath = selected;
       draftStorageAction = "copy";
-      if (storagePath) {
-        storagePath.textContent = selected;
-      }
+      setStoragePathDisplay(draftStorageMode, draftStoragePath);
     } catch (e) {
       logError("[settings] storage info failed", e);
     }
@@ -276,9 +278,7 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
       draftStorageMode = "default";
       draftStoragePath = "";
       draftStorageAction = "copy";
-      if (storagePath) {
-        storagePath.textContent = "Default path";
-      }
+      setStoragePathDisplay(draftStorageMode, draftStoragePath);
     };
     if (!defaultStoragePath) {
       applyDefault();
@@ -295,9 +295,7 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
         draftStorageMode = "default";
         draftStoragePath = "";
         draftStorageAction = choice;
-        if (storagePath) {
-          storagePath.textContent = "Default path";
-        }
+        setStoragePathDisplay(draftStorageMode, draftStoragePath);
       })
       .catch((e) => {
         logError("[settings] storage info failed", e);
