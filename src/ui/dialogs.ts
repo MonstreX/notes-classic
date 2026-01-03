@@ -38,6 +38,11 @@ export const openNotebookDialog = ({ parentId }: NotebookDialogOptions): Promise
         <div class="dialog__header">
           <h3 class="dialog__title">${title}</h3>
           <p class="dialog__subtitle">${subtitle}</p>
+          <button class="dialog__close" type="button" data-dialog-close="1" aria-label="Close">
+            <svg class="dialog__close-icon" aria-hidden="true">
+              <use href="#icon-close"></use>
+            </svg>
+          </button>
         </div>
         <div class="dialog__body">
           <label class="dialog__label">Name</label>
@@ -60,8 +65,9 @@ export const openNotebookDialog = ({ parentId }: NotebookDialogOptions): Promise
 
     const input = overlay.querySelector("input") as HTMLInputElement | null;
     const error = overlay.querySelector("[data-dialog-error]") as HTMLDivElement | null;
-    const cancelBtn = overlay.querySelector("[data-dialog-cancel]") as HTMLButtonElement | null;
+    const cancelBtns = overlay.querySelectorAll("[data-dialog-cancel]");
     const submitBtn = overlay.querySelector("[data-dialog-submit]") as HTMLButtonElement | null;
+    const closeBtns = overlay.querySelectorAll("[data-dialog-close]");
 
     const cleanup = (result: string | null) => {
       overlay.remove();
@@ -83,7 +89,8 @@ export const openNotebookDialog = ({ parentId }: NotebookDialogOptions): Promise
       cleanup(value);
     };
 
-    cancelBtn?.addEventListener("click", () => cleanup(null));
+    cancelBtns.forEach((btn) => btn.addEventListener("click", () => cleanup(null)));
+    closeBtns.forEach((btn) => btn.addEventListener("click", () => cleanup(null)));
     submitBtn?.addEventListener("click", submit);
     input?.addEventListener("input", () => {
       if (!error) return;
@@ -125,6 +132,11 @@ export const openTagDialog = ({ parentId }: TagDialogOptions): Promise<string | 
         <div class="dialog__header">
           <h3 class="dialog__title">${title}</h3>
           <p class="dialog__subtitle">${subtitle}</p>
+          <button class="dialog__close" type="button" data-dialog-close="1" aria-label="Close">
+            <svg class="dialog__close-icon" aria-hidden="true">
+              <use href="#icon-close"></use>
+            </svg>
+          </button>
         </div>
         <div class="dialog__body">
           <label class="dialog__label">Name</label>
@@ -147,8 +159,9 @@ export const openTagDialog = ({ parentId }: TagDialogOptions): Promise<string | 
 
     const input = overlay.querySelector("input") as HTMLInputElement | null;
     const error = overlay.querySelector("[data-dialog-error]") as HTMLDivElement | null;
-    const cancelBtn = overlay.querySelector("[data-dialog-cancel]") as HTMLButtonElement | null;
+    const cancelBtns = overlay.querySelectorAll("[data-dialog-cancel]");
     const submitBtn = overlay.querySelector("[data-dialog-submit]") as HTMLButtonElement | null;
+    const closeBtns = overlay.querySelectorAll("[data-dialog-close]");
 
     const cleanup = (result: string | null) => {
       overlay.remove();
@@ -170,7 +183,8 @@ export const openTagDialog = ({ parentId }: TagDialogOptions): Promise<string | 
       cleanup(value);
     };
 
-    cancelBtn?.addEventListener("click", () => cleanup(null));
+    cancelBtns.forEach((btn) => btn.addEventListener("click", () => cleanup(null)));
+    closeBtns.forEach((btn) => btn.addEventListener("click", () => cleanup(null)));
     submitBtn?.addEventListener("click", submit);
     input?.addEventListener("input", () => {
       if (!error) return;
@@ -210,6 +224,11 @@ export const openPasswordDialog = ({
       <div class="dialog">
         <div class="dialog__header">
           <h3 class="dialog__title">${title}</h3>
+          <button class="dialog__close" type="button" data-dialog-close="1" aria-label="Close">
+            <svg class="dialog__close-icon" aria-hidden="true">
+              <use href="#icon-close"></use>
+            </svg>
+          </button>
         </div>
         <div class="dialog__body">
           <label class="dialog__label">${message}</label>
@@ -233,8 +252,9 @@ export const openPasswordDialog = ({
 
     const input = overlay.querySelector("input") as HTMLInputElement | null;
     const error = overlay.querySelector("[data-dialog-error]") as HTMLDivElement | null;
-    const cancelBtn = overlay.querySelector("[data-dialog-cancel]") as HTMLButtonElement | null;
+    const cancelBtns = overlay.querySelectorAll("[data-dialog-cancel]");
     const submitBtn = overlay.querySelector("[data-dialog-submit]") as HTMLButtonElement | null;
+    const closeBtns = overlay.querySelectorAll("[data-dialog-close]");
 
     const cleanup = (result: string | null) => {
       overlay.remove();
@@ -256,7 +276,8 @@ export const openPasswordDialog = ({
       cleanup(value);
     };
 
-    cancelBtn?.addEventListener("click", () => cleanup(null));
+    cancelBtns.forEach((btn) => btn.addEventListener("click", () => cleanup(null)));
+    closeBtns.forEach((btn) => btn.addEventListener("click", () => cleanup(null)));
     submitBtn?.addEventListener("click", submit);
     input?.addEventListener("input", () => {
       if (!error) return;
@@ -297,6 +318,11 @@ export const openConfirmDialog = ({
       <div class="dialog">
         <div class="dialog__header">
           <h3 class="dialog__title">${title}</h3>
+          <button class="dialog__close" type="button" data-dialog-close="1" aria-label="Close">
+            <svg class="dialog__close-icon" aria-hidden="true">
+              <use href="#icon-close"></use>
+            </svg>
+          </button>
         </div>
         <div class="dialog__body dialog__body--message">
           ${message}
@@ -317,10 +343,12 @@ export const openConfirmDialog = ({
       resolve(result);
     };
 
-    const cancelBtn = overlay.querySelector("[data-dialog-cancel]") as HTMLButtonElement | null;
+    const cancelBtns = overlay.querySelectorAll("[data-dialog-cancel]");
     const confirmBtn = overlay.querySelector("[data-dialog-confirm]") as HTMLButtonElement | null;
+    const closeBtns = overlay.querySelectorAll("[data-dialog-close]");
 
-    cancelBtn?.addEventListener("click", () => cleanup(false));
+    cancelBtns.forEach((btn) => btn.addEventListener("click", () => cleanup(false)));
+    closeBtns.forEach((btn) => btn.addEventListener("click", () => cleanup(false)));
     confirmBtn?.addEventListener("click", () => cleanup(true));
     overlay.addEventListener("click", (event) => {
       if (event.target === overlay) cleanup(false);

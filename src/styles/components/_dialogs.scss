@@ -19,12 +19,34 @@
 .dialog__header {
   padding: 16px 20px;
   border-bottom: 1px solid #e5e7eb;
+  position: relative;
 }
 
 .dialog__title {
   font-size: 14px;
   font-weight: 600;
   margin: 0;
+}
+
+.dialog__close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  border: 0;
+  background: transparent;
+  padding: 4px;
+  cursor: pointer;
+  color: #6b7280;
+}
+
+.dialog__close-icon {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+.dialog__close:hover {
+  color: #111827;
 }
 
 .dialog__subtitle {

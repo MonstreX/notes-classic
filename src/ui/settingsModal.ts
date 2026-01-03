@@ -193,6 +193,11 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
         <div class="dialog storage-dialog">
           <div class="dialog__header">
             <h3 class="dialog__title">Existing storage found</h3>
+            <button class="dialog__close" type="button" data-storage-cancel="1" aria-label="Close">
+              <svg class="dialog__close-icon" aria-hidden="true">
+                <use href="#icon-close"></use>
+              </svg>
+            </button>
           </div>
           <div class="dialog__body">
             <p>This folder already contains notes data.</p>
@@ -220,9 +225,11 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
           resolve("cancel");
         }
       });
-      dialog.querySelector("[data-storage-cancel]")?.addEventListener("click", () => {
-        cleanup();
-        resolve("cancel");
+      dialog.querySelectorAll("[data-storage-cancel]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          cleanup();
+          resolve("cancel");
+        });
       });
       dialog.querySelector("[data-storage-use]")?.addEventListener("click", () => {
         cleanup();

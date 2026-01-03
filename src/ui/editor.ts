@@ -665,15 +665,20 @@ const openAttachmentPreview = (title: string, content: string) => {
   overlay.className = "dialog-overlay";
   overlay.dataset.dialogOverlay = "1";
 
-  overlay.innerHTML = `
-    <div class="dialog attachment-dialog">
-      <div class="dialog__header">
-        <h3 class="dialog__title"></h3>
-      </div>
-      <div class="dialog__body">
-        <pre class="attachment-dialog__content"></pre>
-      </div>
-      <div class="dialog__footer">
+    overlay.innerHTML = `
+      <div class="dialog attachment-dialog">
+        <div class="dialog__header">
+          <h3 class="dialog__title"></h3>
+          <button class="dialog__close" type="button" data-attachment-close="1" aria-label="Close">
+            <svg class="dialog__close-icon" aria-hidden="true">
+              <use href="#icon-close"></use>
+            </svg>
+          </button>
+        </div>
+        <div class="dialog__body">
+          <pre class="attachment-dialog__content"></pre>
+        </div>
+        <div class="dialog__footer">
         <button class="dialog__button dialog__button--primary" data-attachment-close="1">Close</button>
       </div>
     </div>
@@ -692,7 +697,9 @@ const openAttachmentPreview = (title: string, content: string) => {
   overlay.addEventListener("click", (event) => {
     if (event.target === overlay) cleanup();
   });
-  overlay.querySelector("[data-attachment-close]")?.addEventListener("click", cleanup);
+  overlay.querySelectorAll("[data-attachment-close]").forEach((el) => {
+    el.addEventListener("click", cleanup);
+  });
   window.addEventListener(
     "keydown",
     (event) => {
@@ -711,10 +718,15 @@ const openSecureEditor = (html: string): Promise<void> => {
     overlay.dataset.dialogOverlay = "1";
 
     overlay.innerHTML = `
-      <div class="dialog secure-dialog">
-        <div class="dialog__header">
-          <h3 class="dialog__title">Encrypted content</h3>
-        </div>
+        <div class="dialog secure-dialog">
+          <div class="dialog__header">
+            <h3 class="dialog__title">Encrypted content</h3>
+            <button class="dialog__close" type="button" data-secure-close="1" aria-label="Close">
+              <svg class="dialog__close-icon" aria-hidden="true">
+                <use href="#icon-close"></use>
+              </svg>
+            </button>
+          </div>
         <div class="dialog__body">
           <div class="secure-dialog__content">
             <div class="notes-editor notes-editor--preview">
@@ -789,7 +801,9 @@ const openSecureEditor = (html: string): Promise<void> => {
     overlay.addEventListener("click", (event) => {
       if (event.target === overlay) cleanup();
     });
-    overlay.querySelector("[data-secure-close]")?.addEventListener("click", cleanup);
+    overlay.querySelectorAll("[data-secure-close]").forEach((el) => {
+      el.addEventListener("click", cleanup);
+    });
     window.addEventListener(
       "keydown",
       (event) => {
