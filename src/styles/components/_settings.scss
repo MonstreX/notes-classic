@@ -192,6 +192,11 @@
   cursor: pointer;
 }
 
+.settings-row__button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .settings-row__button--ghost {
   background: transparent;
   color: #111827;

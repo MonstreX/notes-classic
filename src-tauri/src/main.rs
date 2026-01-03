@@ -38,6 +38,18 @@ struct AppState {
     data_dir: PathBuf,
 }
 
+#[tauri::command]
+fn restart_app(app_handle: AppHandle) -> Result<(), String> {
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    app_handle.restart();
+}
+
+#[tauri::command]
+fn exit_app(app_handle: AppHandle) -> Result<(), String> {
+    app_handle.exit(0);
+    Ok(())
+}
+
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct StorageInfo {
@@ -1236,6 +1248,8 @@ fn main() {
             get_default_storage_path,
             get_storage_override,
             get_storage_info,
+            restart_app,
+            exit_app,
             set_storage_path,
             set_storage_default,
             set_storage_default_existing,

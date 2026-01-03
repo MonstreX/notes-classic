@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { appStore } from "../state/store";
 import {
@@ -97,6 +98,7 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
   let initialStoragePath = "";
   let initialStorageAction: "copy" | "use" | "replace" = "copy";
   let defaultStoragePath = "";
+  let currentStoragePath = "";
 
   const formatDefaultPath = () => {
     if (!defaultStoragePath) return "\\data\\<storage>";
@@ -113,12 +115,19 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
     storagePath.textContent = `${normalized}\\<storage>`;
   };
 
+  const updateDefaultButtonState = () => {
+    if (!storageDefault) return;
+    const isDefault = draftStorageMode === "default" && draftStoragePath === "";
+    storageDefault.disabled = isDefault;
+  };
+
   const syncState = () => {
     const state = appStore.getState();
     if (deleteTrashInput) {
       draftDeleteToTrash = state.deleteToTrash;
       deleteTrashInput.checked = draftDeleteToTrash;
     }
+    updateDefaultButtonState();
   };
 
   const setStorageStatus = (message: string, tone: "ok" | "error" | "muted" = "muted") => {
@@ -136,6 +145,7 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
     if (!storagePath) return;
     try {
       defaultStoragePath = await getDefaultStoragePath();
+      currentStoragePath = await getDataDir();
       const override = await getStorageOverride();
       if (override) {
         draftStorageMode = "custom";
@@ -150,6 +160,7 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
       initialStoragePath = draftStoragePath;
       initialStorageAction = draftStorageAction;
       setStoragePathDisplay(draftStorageMode, draftStoragePath);
+      updateDefaultButtonState();
     } catch (e) {
       storagePath.textContent = "Unable to read";
       logError("[settings] storage path failed", e);
@@ -224,6 +235,33 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
       document.body.appendChild(dialog);
     });
 
+  const openRestartDialog = () => {
+    const dialog = document.createElement("div");
+    dialog.className = "dialog-overlay";
+    dialog.dataset.dialogOverlay = "1";
+    dialog.innerHTML = `
+      <div class="dialog storage-dialog">
+        <div class="dialog__header">
+          <h3 class="dialog__title">Restart required</h3>
+        </div>
+        <div class="dialog__body">
+          <p>The storage location has changed. Restart the app to continue.</p>
+        </div>
+        <div class="dialog__footer">
+          <button class="dialog__button" data-restart-now="1">Restart now</button>
+          <button class="dialog__button dialog__button--danger" data-exit-now="1">Exit</button>
+        </div>
+      </div>
+    `;
+    dialog.querySelector("[data-restart-now]")?.addEventListener("click", () => {
+      invoke("restart_app");
+    });
+    dialog.querySelector("[data-exit-now]")?.addEventListener("click", () => {
+      invoke("exit_app");
+    });
+    document.body.appendChild(dialog);
+  };
+
   const setActiveTab = (id: string) => {
     navItems.forEach((btn) => {
       btn.classList.toggle("is-active", btn.dataset.settingsTab === id);
@@ -253,6 +291,7 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
       multiple: false,
     });
     if (!selected || typeof selected !== "string") return;
+    if (selected === currentStoragePath || selected === draftStoragePath) return;
     try {
       const info = await getStorageInfo(selected);
       if (info.hasData) {
@@ -262,12 +301,14 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
         draftStoragePath = selected;
         draftStorageAction = choice;
         setStoragePathDisplay(draftStorageMode, draftStoragePath);
+        updateDefaultButtonState();
         return;
       }
       draftStorageMode = "custom";
       draftStoragePath = selected;
       draftStorageAction = "copy";
       setStoragePathDisplay(draftStorageMode, draftStoragePath);
+      updateDefaultButtonState();
     } catch (e) {
       logError("[settings] storage info failed", e);
     }
@@ -279,7 +320,9 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
       draftStoragePath = "";
       draftStorageAction = "copy";
       setStoragePathDisplay(draftStorageMode, draftStoragePath);
+      updateDefaultButtonState();
     };
+    if (draftStorageMode === "default" && draftStoragePath === "") return;
     if (!defaultStoragePath) {
       applyDefault();
       return;
@@ -296,6 +339,7 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
         draftStoragePath = "";
         draftStorageAction = choice;
         setStoragePathDisplay(draftStorageMode, draftStoragePath);
+        updateDefaultButtonState();
       })
       .catch((e) => {
         logError("[settings] storage info failed", e);
@@ -336,6 +380,7 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
         setStorageStatus("Storage updated. Restart required.", "ok");
         setLoading(false);
         closeModal();
+        openRestartDialog();
         return;
       } catch (e) {
         logError("[settings] storage update failed", e);
