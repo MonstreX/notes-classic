@@ -1,4 +1,3 @@
-import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { openConfirmDialog } from "./dialogs";
 import { runEvernoteImport, scanEvernoteSource } from "../services/evernoteImport";
@@ -123,16 +122,17 @@ export const mountEvernoteImportModal = (root: HTMLElement): EvernoteImportModal
 
   selectBtn?.addEventListener("click", async () => {
     try {
-      const selected = await open({
-        title: "Select Evernote data folder",
-        directory: true,
-        multiple: false,
-      });
+      const selected = await invoke<string | null>("select_evernote_folder");
       if (!selected || typeof selected !== "string") return;
-      if (pathEl) pathEl.textContent = selected;
+      let resolved = selected;
+      const normalized = selected.replace(/\\/g, "/");
+      if (normalized.toLowerCase().endsWith("/remotegraph.sql")) {
+        resolved = normalized.slice(0, -"/remotegraph.sql".length);
+      }
+      if (pathEl) pathEl.textContent = resolved;
       setStatus("Scanning Evernote data...", "muted");
       summaryEl?.classList.add("is-hidden");
-      const nextSummary = await scanEvernoteSource(selected);
+      const nextSummary = await scanEvernoteSource(resolved);
       setSummary(nextSummary);
       if (!nextSummary.valid) {
         setStatus(nextSummary.errors.join(" "), "error");

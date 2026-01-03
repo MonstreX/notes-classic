@@ -1007,6 +1007,12 @@ fn read_file_bytes(path: String) -> Result<Vec<u8>, String> {
 }
 
 #[tauri::command]
+fn path_is_dir(path: String) -> Result<bool, String> {
+    let path = PathBuf::from(path);
+    Ok(path.is_dir())
+}
+
+#[tauri::command]
 fn copy_file(source: String, dest: String) -> Result<(), String> {
     let source = PathBuf::from(source);
     let dest = PathBuf::from(dest);
@@ -1090,6 +1096,18 @@ fn create_evernote_backup(state: State<'_, AppState>) -> Result<String, String> 
     copy_dir_recursive(&state.data_dir.join("files"), &backup_dir.join("files"))?;
     copy_dir_recursive(&state.data_dir.join("ocr"), &backup_dir.join("ocr"))?;
     Ok(backup_dir.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+async fn select_evernote_folder(app_handle: AppHandle) -> Result<Option<String>, String> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app_handle
+        .dialog()
+        .file()
+        .pick_folder(move |folder| {
+            let _ = tx.send(folder.map(|path| path.to_string_lossy().to_string()));
+        });
+    rx.await.map_err(|e| e.to_string())
 }
 
 #[derive(serde::Serialize)]
@@ -1716,6 +1734,7 @@ fn main() {
             read_attachment_bytes,
             save_bytes_as,
             path_exists,
+            path_is_dir,
             ensure_dir,
             read_file_bytes,
             copy_file,
@@ -1723,6 +1742,7 @@ fn main() {
             resolve_resource_roots,
             count_missing_rte,
             create_evernote_backup,
+            select_evernote_folder,
             import_evernote_from_json,
             get_ocr_pending_files,
             upsert_ocr_text,
