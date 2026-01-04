@@ -199,6 +199,9 @@ export const mountApp = (root: HTMLElement) => {
     editorScheduler,
     isEditorFocused: () => editorFocused,
   });
+  editorScheduler.setOnIdle(() => {
+    renderer.render(appStore.getState());
+  });
 
   let isResizingSidebar = false;
   let isResizingList = false;

@@ -21,6 +21,10 @@ const setSelection = async (noteIds: number[], primaryId: number | null) => {
     return;
   }
   appStore.setState({ selectedNoteIds: nextSelectedIds });
+  if (nextPrimary !== null && (state.isNoteLoading || state.activeNote?.id !== nextPrimary)) {
+    appStore.setState({ isNoteLoading: true });
+    await loadSelectedNote();
+  }
 };
 
 export const selectionActions = {

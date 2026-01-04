@@ -1210,6 +1210,20 @@ fn read_file_bytes(path: String) -> Result<Vec<u8>, String> {
 }
 
 #[tauri::command]
+async fn get_attachment_by_path(path: String, state: State<'_, AppState>) -> Result<Option<Attachment>, String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    let normalized = path.replace('\\', "/");
+    let normalized = if normalized.starts_with("files/") {
+        normalized
+    } else {
+        format!("files/{}", normalized.trim_start_matches('/'))
+    };
+    repo.get_attachment_by_path(&normalized)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn path_is_dir(path: String) -> Result<bool, String> {
     let path = PathBuf::from(path);
     Ok(path.is_dir())
@@ -2041,6 +2055,7 @@ fn main() {
             save_attachment_as,
             read_attachment_text,
             read_attachment_bytes,
+            get_attachment_by_path,
             save_bytes_as,
             path_exists,
             path_is_dir,

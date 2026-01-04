@@ -1456,6 +1456,22 @@ impl SqliteRepository {
         .await
     }
 
+    pub async fn get_attachment_by_path(&self, local_path: &str) -> Result<Option<Attachment>, sqlx::Error> {
+        sqlx::query_as::<_, Attachment>(
+            "SELECT id,
+                    note_id,
+                    COALESCE(filename, '') AS filename,
+                    COALESCE(mime, '') AS mime,
+                    COALESCE(size, 0) AS size,
+                    COALESCE(local_path, '') AS local_path
+             FROM attachments
+             WHERE local_path = ?",
+        )
+        .bind(local_path)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
     pub async fn delete_attachment(&self, id: i64) -> Result<Option<String>, sqlx::Error> {
         let mut tx = self.pool.begin().await?;
         let row: Option<(String,)> =

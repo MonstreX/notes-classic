@@ -3,6 +3,7 @@ import type { EditorInstance } from "./editor";
 type SchedulerOptions = {
   editor: EditorInstance;
   getSelectedNoteId: () => number | null;
+  onIdle?: () => void;
 };
 
 export type EditorScheduler = {
@@ -10,10 +11,11 @@ export type EditorScheduler = {
   getLastRenderedNoteId: () => number | null;
   getLastRenderedContent: () => string;
   isUpdating: () => boolean;
+  setOnIdle: (callback: (() => void) | null) => void;
   reset: () => void;
 };
 
-export const createEditorScheduler = ({ editor, getSelectedNoteId }: SchedulerOptions): EditorScheduler => {
+export const createEditorScheduler = ({ editor, getSelectedNoteId, onIdle }: SchedulerOptions): EditorScheduler => {
   let pendingUpdate: number | null = null;
   let pendingNoteId: number | null = null;
   let pendingContent = "";
@@ -27,6 +29,8 @@ export const createEditorScheduler = ({ editor, getSelectedNoteId }: SchedulerOp
       pendingUpdate = null;
     }
   };
+
+  let onIdleCallback: (() => void) | null = onIdle ?? null;
 
   const schedule = (noteId: number | null, content: string) => {
     clearPending();
@@ -48,6 +52,7 @@ export const createEditorScheduler = ({ editor, getSelectedNoteId }: SchedulerOp
         console.error("[editor] update failed", e);
       } finally {
         updating = false;
+        onIdleCallback?.();
       }
     }, 0);
   };
@@ -66,6 +71,9 @@ export const createEditorScheduler = ({ editor, getSelectedNoteId }: SchedulerOp
     getLastRenderedNoteId: () => lastRenderedNoteId,
     getLastRenderedContent: () => lastRenderedContent,
     isUpdating: () => updating,
+    setOnIdle: (callback) => {
+      onIdleCallback = callback ?? null;
+    },
     reset,
   };
 };

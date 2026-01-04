@@ -40,6 +40,7 @@ import { createIcon } from "./icons";
 import {
   importAttachment,
   importAttachmentBytes,
+  getAttachmentByPath,
   deleteAttachment,
   readAttachmentBytes,
   readAttachmentText,
@@ -282,6 +283,65 @@ const shouldConvertImageSrc = (src: string) => {
   if (src.startsWith("http://asset.localhost/")) return false;
   if (src.startsWith("https://asset.localhost/")) return false;
   return true;
+};
+
+const extractRelFromSrc = (src: string) => {
+  if (!src) return null;
+  if (src.startsWith("notes-file://files/")) {
+    return src.slice("notes-file://files/".length);
+  }
+  if (src.startsWith("files/")) {
+    return src.slice("files/".length);
+  }
+  const tryDecode = (value: string) => {
+    try {
+      return decodeURIComponent(value);
+    } catch (e) {
+      return value;
+    }
+  };
+  const decoded = tryDecode(src);
+  const marker = "/files/";
+  const idx = decoded.toLowerCase().indexOf(marker);
+  if (idx >= 0) {
+    return decoded.slice(idx + marker.length);
+  }
+  const encoded = src.toLowerCase();
+  const encodedMarker = "%2ffiles%2f";
+  const encodedIdx = encoded.indexOf(encodedMarker);
+  if (encodedIdx >= 0) {
+    const relEncoded = src.slice(encodedIdx + encodedMarker.length);
+    return tryDecode(relEncoded);
+  }
+  return null;
+};
+
+const replaceAttachmentImages = async (editor: any) => {
+  const root = editor?.editor as HTMLElement | undefined;
+  if (!root) return;
+  const images = Array.from(root.querySelectorAll("img")) as HTMLImageElement[];
+  for (const img of images) {
+    const src = img.getAttribute("src") || "";
+    if (!src.toLowerCase().includes(".attachment")) continue;
+    const rel = extractRelFromSrc(src);
+    if (!rel) continue;
+    try {
+      const attachment = await getAttachmentByPath(`files/${rel}`);
+      if (!attachment) {
+        img.remove();
+        continue;
+      }
+      const node = buildAttachmentElement(root.ownerDocument || document, {
+        id: attachment.id,
+        filename: attachment.filename,
+        size: attachment.size,
+        mime: attachment.mime,
+      });
+      img.replaceWith(node);
+    } catch (e) {
+      logError("[attachment] resolve failed", e);
+    }
+  }
 };
 
 const isTextAttachment = (name: string, mime: string) => {
@@ -1252,8 +1312,8 @@ const openNoteLinkDialog = (): Promise<{ href: string; title: string } | null> =
 
 const setupNoteLinkHandlers = (editor: any, onOpenNote?: (target: string) => void) => {
   if (!editor || !editor.editor) return;
-  if ((editor as any).__noteLinkSetup) return;
-  (editor as any).__noteLinkSetup = true;
+  if ((editor as any).__noteLinkInternalSetup) return;
+  (editor as any).__noteLinkInternalSetup = true;
 
   editor.editor.addEventListener(
     "click",
@@ -1276,8 +1336,8 @@ const setupNoteLinkHandlers = (editor: any, onOpenNote?: (target: string) => voi
 
 const setupLinkHandlers = (editor: any) => {
   if (!editor || !editor.editor) return;
-  if ((editor as any).__noteLinkSetup) return;
-  (editor as any).__noteLinkSetup = true;
+  if ((editor as any).__noteLinkExternalSetup) return;
+  (editor as any).__noteLinkExternalSetup = true;
 
   editor.editor.addEventListener(
     "click",
@@ -1288,6 +1348,9 @@ const setupLinkHandlers = (editor: any) => {
       if (!anchor) return;
       const href = anchor.getAttribute("href");
       if (!href) return;
+      if (href.startsWith("note://")) {
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       try {
@@ -2233,6 +2296,7 @@ export const mountEditor = (root: HTMLElement, options: EditorOptions): EditorIn
   setupLinkHandlers(editor);
   setupNoteLinkHandlers(editor, options.onOpenNote);
   applyHighlightToEditor(editor);
+  void replaceAttachmentImages(editor);
 
   const handleFocus = () => {
     options.onFocus?.();
@@ -2280,6 +2344,7 @@ export const mountEditor = (root: HTMLElement, options: EditorOptions): EditorIn
       editor.events.on("change", handleChange);
       isUpdating = false;
       applyHighlightToEditor(editor);
+      void replaceAttachmentImages(editor);
     },
     destroy: () => {
       editor.events.off("change", handleChange);
@@ -2327,6 +2392,7 @@ export const mountPreviewEditor = (root: HTMLElement): EditorInstance => {
       const next = content || "";
       if (next === editor.value) return;
       editor.value = next;
+      void replaceAttachmentImages(editor);
     },
     destroy: () => {
       editor.destruct();

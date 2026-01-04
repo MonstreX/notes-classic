@@ -40,3 +40,6 @@ export const readAttachmentBytes = async (id: number) => {
 
 export const saveBytesAs = (destPath: string, bytes: Uint8Array) =>
   invoke("save_bytes_as", { destPath, bytes: Array.from(bytes) });
+
+export const getAttachmentByPath = (path: string) =>
+  invoke<AttachmentInfo | null>("get_attachment_by_path", { path });
