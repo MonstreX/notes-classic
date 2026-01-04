@@ -13,16 +13,20 @@ export type OcrStats = {
   pending: number;
 };
 
+export type OcrRuntimeStatus = "running" | "paused";
+
 const OCR_LANGS = ["eng", "rus"];
 const OCR_LANG = OCR_LANGS.join("+");
 const BATCH_SIZE = 2;
 const IDLE_DELAY_MS = 30000;
 const RETRY_DELAY_MS = 5000;
+const MAX_WORKER_FAILURES = 3;
 const OCR_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "jfif", "tif", "tiff"]);
 const WORKER_START_TIMEOUT_MS = 120000;
 
 let dataDirPromise: Promise<string> | null = null;
 let resourceDirPromise: Promise<string> | null = null;
+let runtimeStatus: OcrRuntimeStatus = "running";
 
 const logOcr = async (_message: string) => {};
 
@@ -123,6 +127,8 @@ export const startOcrQueue = () => {
   let timer: number | null = null;
   let workerPromise: Promise<OcrWorker> | null = null;
   let worker: OcrWorker | null = null;
+  let consecutiveFailures = 0;
+  runtimeStatus = "running";
 
   const schedule = (delay: number) => {
     if (cancelled) return;
@@ -140,6 +146,26 @@ export const startOcrQueue = () => {
     }
     worker = null;
     workerPromise = null;
+  };
+
+  const pauseQueue = () => {
+    runtimeStatus = "paused";
+    cancelled = true;
+    if (timer !== null) {
+      window.clearTimeout(timer);
+      timer = null;
+    }
+  };
+
+  const handleFailure = async (error: unknown) => {
+    console.error("[ocr] failed", error);
+    consecutiveFailures += 1;
+    await resetWorker();
+    if (consecutiveFailures >= MAX_WORKER_FAILURES) {
+      pauseQueue();
+      return false;
+    }
+    return true;
   };
 
   const getWorker = async () => {
@@ -165,6 +191,7 @@ export const startOcrQueue = () => {
         schedule(IDLE_DELAY_MS);
         return;
       }
+      consecutiveFailures = 0;
       const workerInstance = await getWorker();
       for (const file of files) {
         if (cancelled) return;
@@ -192,15 +219,17 @@ export const startOcrQueue = () => {
         } catch (err) {
           console.error("[ocr] recognize failed", file.filePath, err);
           await markOcrFailed(file.fileId, "recognize");
-          await resetWorker();
+          const shouldRetry = await handleFailure(err);
+          if (!shouldRetry) return;
           continue;
         }
         await markOcrDone(file.fileId, hash, cleaned);
+        consecutiveFailures = 0;
       }
       schedule(0);
     } catch (e) {
-      console.error("[ocr] failed", e);
-      await resetWorker();
+      const shouldRetry = await handleFailure(e);
+      if (!shouldRetry) return;
       schedule(RETRY_DELAY_MS);
     }
   };
@@ -216,3 +245,4 @@ export const startOcrQueue = () => {
 };
 
 export const getOcrStats = () => invoke<OcrStats>("get_ocr_stats");
+export const getOcrRuntimeStatus = () => runtimeStatus;

@@ -19,13 +19,17 @@ const getResourceDir = async () => {
 };
 
 const loadMessages = async (lang: LanguageCode) => {
-  const base = await getResourceDir();
-  const url = convertFileSrc(`${base}/i18n/${lang}.json`);
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`i18n load failed: ${lang}`);
+  try {
+    const base = await getResourceDir();
+    const url = convertFileSrc(`${base}/i18n/${lang}.json`);
+    const response = await fetch(url);
+    if (!response.ok) {
+      return {};
+    }
+    return (await response.json()) as Record<string, string>;
+  } catch {
+    return {};
   }
-  return (await response.json()) as Record<string, string>;
 };
 
 export const isSupportedLanguage = (value: string | null | undefined): value is LanguageCode => {
@@ -41,7 +45,8 @@ export const detectSystemLanguage = (): LanguageCode => {
 
 export const initI18n = async (lang: LanguageCode) => {
   fallbackMessages = await loadMessages(FALLBACK_LANG);
-  messages = lang === FALLBACK_LANG ? fallbackMessages : await loadMessages(lang);
+  const current = lang === FALLBACK_LANG ? fallbackMessages : await loadMessages(lang);
+  messages = Object.keys(current).length > 0 ? current : fallbackMessages;
   currentLang = lang;
   pluralRules = new Intl.PluralRules(currentLang);
 };

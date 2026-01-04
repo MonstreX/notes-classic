@@ -731,8 +731,14 @@ fn t(
     key.to_string()
 }
 
-fn resolve_i18n_dir<R: Runtime>(_app_handle: &AppHandle<R>) -> PathBuf {
+fn resolve_i18n_dir<R: Runtime>(app_handle: &AppHandle<R>) -> PathBuf {
     let has_i18n = |dir: &PathBuf| dir.join("i18n").join("en.json").exists();
+    if let Ok(resource_dir) = app_handle.path().resource_dir() {
+        let dir = resource_dir;
+        if has_i18n(&dir) {
+            return dir;
+        }
+    }
     if let Ok(exe) = std::env::current_exe() {
         if let Some(exe_dir) = exe.parent().map(|p| p.to_path_buf()) {
             let candidate = exe_dir.join("resources");
@@ -1939,6 +1945,8 @@ fn main() {
                 }
             };
             app.manage(AppState { pool, settings_dir, data_dir });
+            let menu = build_menu(&app_handle)?;
+            app.set_menu(menu)?;
             let pool = app.state::<AppState>().pool.clone();
             let data_dir = app.state::<AppState>().data_dir.clone();
             tauri::async_runtime::spawn(async move {
@@ -1953,7 +1961,6 @@ fn main() {
             });
             Ok(())
         })
-        .menu(|app_handle| build_menu(app_handle))
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())

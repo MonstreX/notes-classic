@@ -1,6 +1,6 @@
 import { normalizeFileLinks, normalizeEnmlContent, toDisplayContent } from "../services/content";
 import { getNote, searchNotes } from "../services/notes";
-import { getOcrStats } from "../services/ocr";
+import { getOcrRuntimeStatus, getOcrStats } from "../services/ocr";
 import { appStore } from "../state/store";
 import type { NoteListItem } from "../state/types";
 import { mountPreviewEditor, type EditorInstance } from "./editor";
@@ -349,13 +349,19 @@ export const mountSearchModal = (container: HTMLElement, handlers: SearchModalHa
   const updateOcrStatus = async () => {
     try {
       const stats = await getOcrStats();
-        if (stats.total === 0) {
-          searchOcrText.textContent = t("search.index.none");
-          searchOcrStatus.classList.remove("is-active");
-        } else {
-          searchOcrText.textContent = t("search.index.progress", { done: stats.done, total: stats.total });
-          searchOcrStatus.classList.toggle("is-active", stats.pending > 0);
-        }
+      const runtime = getOcrRuntimeStatus();
+      if (runtime === "paused") {
+        searchOcrText.textContent = t("search.index.paused");
+        searchOcrStatus.classList.remove("is-active");
+        return;
+      }
+      if (stats.total === 0) {
+        searchOcrText.textContent = t("search.index.none");
+        searchOcrStatus.classList.remove("is-active");
+      } else {
+        searchOcrText.textContent = t("search.index.progress", { done: stats.done, total: stats.total });
+        searchOcrStatus.classList.toggle("is-active", stats.pending > 0);
+      }
       } catch (e) {
       console.error("[ocr] stats failed", e);
       searchOcrText.textContent = t("search.index.unavailable");

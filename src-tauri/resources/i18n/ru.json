@@ -38,6 +38,7 @@
   "search.no_results": "Ничего не найдено",
   "search.index.none": "Нет проиндексированных изображений",
   "search.index.progress": "{done} из {total} изображений проиндексировано",
+  "search.index.paused": "OCR остановлен",
   "search.index.unavailable": "Индексация недоступна",
   "settings.title": "Настройки",
   "settings.general": "Общие",

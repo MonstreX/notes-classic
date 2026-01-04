@@ -38,6 +38,7 @@
   "search.no_results": "No results found",
   "search.index.none": "No images indexed",
   "search.index.progress": "{done} of {total} images indexed",
+  "search.index.paused": "OCR paused",
   "search.index.unavailable": "Indexing unavailable",
   "settings.title": "Settings",
   "settings.general": "General",
