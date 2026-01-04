@@ -224,6 +224,7 @@ Links:
 
 - Click on anchor opens in system browser via shell plugin.
 - Prevents default navigation in editor.
+- Note links use `note://` scheme and are handled internally (no external browser).
 
 Preview editor:
 
@@ -232,16 +233,22 @@ Preview editor:
 
 ### 5.6 Meta bar (src/ui/metaBar.ts)
 
-Displays context above editor:
+Displays history navigation above editor:
 
-- Stack icon and name.
-- Notebook icon and name.
-- Last edited timestamp from active note.
+- Back and Forward buttons (chevron icons).
+- Buttons are disabled when there is no history to navigate.
+- Last edited timestamp from the active note.
 
 When no note is selected:
 
-- Meta elements are hidden.
-- Text is cleared.
+- Buttons are disabled.
+- Timestamp is cleared.
+
+History shortcuts:
+
+- Alt+Left: go back.
+- Alt+Right: go forward.
+- Mouse back/forward buttons trigger the same actions unless focus is inside an input or editor.
 
 ### 5.7 Tags bar (src/ui/tagsBar.ts)
 

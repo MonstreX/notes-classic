@@ -87,6 +87,19 @@ Behavior:
 - Click on a link opens system browser via shell plugin.
 - Default navigation is prevented.
 
+Note links:
+
+- Note links use the scheme `note://<id-or-external-id>`.
+- A toolbar button opens a note search dialog.
+- Results are keyboard navigable (up/down); Enter inserts the selected note.
+- Clicking a result inserts immediately.
+- The dialog inserts a plain anchor without extra formatting.
+
+Runtime:
+
+- Clicking a note link opens the target note inside the app.
+- Note links do not trigger the external browser handler.
+
 ### 8.7 Preview editor
 
 Behavior:

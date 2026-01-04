@@ -50,6 +50,8 @@ Actions map:
 - createNotebook, deleteNotebook
 - moveNoteToNotebook, moveNotesToNotebook, moveNotebookByDrag
 - restoreNote, restoreNotes, restoreAllTrash
+- openNote (recorded navigation)
+- goBack, goForward (note history navigation)
 
 Selection safeguards:
 
@@ -93,6 +95,16 @@ State structure:
 - activeNote: NoteDetail or null
 - isLoaded: boolean
 - isNoteLoading: boolean
+- historyBack: number[]
+- historyForward: number[]
+- historyCurrent: number | null
+
+History navigation:
+
+- The app records explicit note opens (list clicks, search opens, note links).
+- A back stack and forward stack behave like a browser history.
+- Back/Forward actions update selection and reload note content.
+- Automatic selection changes (e.g., after delete) do not create history entries.
 
 Update semantics:
 
