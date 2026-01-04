@@ -30,7 +30,10 @@ export const mountApp = (root: HTMLElement) => {
     }
   });
 
-  const metaBar = mountMetaBar(layout.editorShell);
+  const metaBar = mountMetaBar(layout.editorShell, {
+    onBack: () => actions.goBack(),
+    onForward: () => actions.goForward(),
+  });
   const tagsBar = mountTagsBar(layout.editorShell, {
     onAddTag: actions.addTagToNote,
     onRemoveTag: actions.removeTagFromNote,
@@ -47,8 +50,7 @@ export const mountApp = (root: HTMLElement) => {
           appStore.setState({ expandedNotebooks: nextExpanded });
         }
       }
-      actions.selectNotebook(notebookId);
-      actions.selectNote(noteId);
+      actions.openNote(noteId);
     },
   });
   openSearchModal = () => searchModal.open();
@@ -104,8 +106,8 @@ export const mountApp = (root: HTMLElement) => {
   };
 
   const notesListHandlers: NotesListHandlers = {
-    onSelectNote: (id) => actions.selectNote(id),
-    onSelectNotes: (ids, primaryId) => actions.setNoteSelection(ids, primaryId),
+    onSelectNote: (id) => actions.openNote(id),
+    onSelectNotes: (ids, primaryId) => actions.setNoteSelectionWithHistory(ids, primaryId),
     onDeleteNote: (id) => actions.deleteNote(id),
     onSelectSort: (sortBy, sortDir) => actions.setNotesSort(sortBy, sortDir),
     onToggleView: () => {
@@ -205,6 +207,33 @@ export const mountApp = (root: HTMLElement) => {
 
   let isResizingSidebar = false;
   let isResizingList = false;
+  const isEditableTarget = (target: EventTarget | null) => {
+    if (!(target instanceof HTMLElement)) return false;
+    if (target.isContentEditable) return true;
+    const tag = target.tagName;
+    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+  };
+  const handleHistoryKey = (event: KeyboardEvent) => {
+    if (!event.altKey) return;
+    if (isEditableTarget(event.target)) return;
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      actions.goBack();
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      actions.goForward();
+    }
+  };
+  const handleHistoryMouse = (event: MouseEvent) => {
+    if (isEditableTarget(event.target)) return;
+    if (event.button === 3) {
+      event.preventDefault();
+      actions.goBack();
+    } else if (event.button === 4) {
+      event.preventDefault();
+      actions.goForward();
+    }
+  };
 
   const handleMouseMove = (event: MouseEvent) => {
     const state = appStore.getState();
@@ -228,6 +257,8 @@ export const mountApp = (root: HTMLElement) => {
   });
   window.addEventListener("mousemove", handleMouseMove);
   window.addEventListener("mouseup", handleMouseUp);
+  window.addEventListener("keydown", handleHistoryKey);
+  window.addEventListener("mouseup", handleHistoryMouse, true);
 
   const render = () => renderer.render(appStore.getState());
   const unsubscribe = appStore.subscribe(render);
@@ -254,6 +285,8 @@ export const mountApp = (root: HTMLElement) => {
     tagsBar.destroy();
     window.removeEventListener("mousemove", handleMouseMove);
     window.removeEventListener("mouseup", handleMouseUp);
+    window.removeEventListener("keydown", handleHistoryKey);
+    window.removeEventListener("mouseup", handleHistoryMouse, true);
     layout.destroy();
   };
 };

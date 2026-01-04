@@ -36,6 +36,64 @@ const fetchData = async (force = false) => {
   }
 };
 
+const HISTORY_LIMIT = 200;
+
+const recordHistory = (noteId: number) => {
+  const state = appStore.getState();
+  if (state.historyCurrent === noteId) return;
+  const nextBack = [...state.historyBack];
+  if (state.historyCurrent !== null) {
+    nextBack.push(state.historyCurrent);
+  }
+  if (nextBack.length > HISTORY_LIMIT) {
+    nextBack.splice(0, nextBack.length - HISTORY_LIMIT);
+  }
+  appStore.setState({
+    historyBack: nextBack,
+    historyForward: [],
+    historyCurrent: noteId,
+  });
+};
+
+const openNoteInternal = async (noteId: number, record: boolean) => {
+  const note = await getNote(noteId);
+  if (!note) return;
+  if (record) {
+    recordHistory(noteId);
+  } else {
+    appStore.setState({ historyCurrent: noteId });
+  }
+  appStore.setState({ selectedNotebookId: note.notebookId, selectedTagId: null, selectedTrash: false });
+  await fetchData(true);
+  await selectionActions.selectNote(noteId);
+};
+
+const goBack = async () => {
+  const state = appStore.getState();
+  if (state.historyBack.length === 0) return;
+  const nextBack = [...state.historyBack];
+  const target = nextBack.pop();
+  if (!target) return;
+  const nextForward = state.historyCurrent !== null
+    ? [state.historyCurrent, ...state.historyForward]
+    : [...state.historyForward];
+  appStore.setState({ historyBack: nextBack, historyForward: nextForward, historyCurrent: target });
+  await openNoteInternal(target, false);
+};
+
+const goForward = async () => {
+  const state = appStore.getState();
+  if (state.historyForward.length === 0) return;
+  const nextForward = [...state.historyForward];
+  const target = nextForward.shift();
+  if (!target) return;
+  const nextBack = state.historyCurrent !== null
+    ? [...state.historyBack, state.historyCurrent]
+    : [...state.historyBack];
+  appStore.setState({ historyBack: nextBack, historyForward: nextForward, historyCurrent: target });
+  await openNoteInternal(target, false);
+};
+
 let saveTimer: number | null = null;
 
 const scheduleAutosave = () => {
@@ -62,7 +120,7 @@ const scheduleAutosave = () => {
 };
 
 const tagActions = createTagActions(fetchData);
-const noteActions = createNoteActions(fetchData, selectionActions.selectNote);
+const noteActions = createNoteActions(fetchData, (id) => openNoteInternal(id, true));
 const notebookActions = createNotebookActions(fetchData);
 
 export const actions = {
@@ -70,6 +128,13 @@ export const actions = {
   ...noteActions,
   ...tagActions,
   ...notebookActions,
+  openNote: async (id: number) => openNoteInternal(id, true),
+  setNoteSelectionWithHistory: async (ids: number[], primaryId: number) => {
+    recordHistory(primaryId);
+    await selectionActions.setNoteSelection(ids, primaryId);
+  },
+  goBack,
+  goForward,
   openNoteByLink: async (target: string) => {
     const trimmed = target.trim();
     if (!trimmed) return;
@@ -77,11 +142,7 @@ export const actions = {
       ? Number(trimmed)
       : await getNoteIdByExternalId(trimmed);
     if (!noteId) return;
-    const note = await getNote(noteId);
-    if (!note) return;
-    appStore.setState({ selectedNotebookId: note.notebookId, selectedTagId: null, selectedTrash: false });
-    await fetchData(true);
-    await selectionActions.selectNote(noteId);
+    await openNoteInternal(noteId, true);
   },
   setNotesSort: (sortBy: "updated" | "title", sortDir: "asc" | "desc") => {
     resortNotes(sortBy, sortDir);
