@@ -18,8 +18,6 @@ Frontend tree:
 - src/services/      IPC wrappers and content utilities.
 - src/state/         In-memory store and types.
 - src/styles/        SCSS (base, layout, components).
-- src/components/    Legacy React artifacts (unused).
-- src/hooks/         Legacy React artifacts (unused).
 
 Backend tree:
 
