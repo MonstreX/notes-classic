@@ -433,6 +433,44 @@
   animation: editor-spin 0.8s linear infinite;
 }
 
+.note-link-dialog__input {
+  width: 100%;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-size: 13px;
+  outline: none;
+}
+
+.note-link-dialog__results {
+  margin-top: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.note-link-dialog__item {
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.note-link-dialog__item:hover,
+.note-link-dialog__item.is-active {
+  background: #f3f4f6;
+}
+
+.note-link-dialog__empty {
+  padding: 12px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
 @keyframes editor-spin {
   to {
     transform: rotate(360deg);

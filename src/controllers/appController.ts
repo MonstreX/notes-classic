@@ -6,6 +6,8 @@ import { logError } from "../services/logger";
 import { toStorageContent } from "../services/content";
 import { cleanupSettings, loadSettings, persistSettings } from "../services/settings";
 import {
+  getNote,
+  getNoteIdByExternalId,
   setNotesListView,
   updateNote,
 } from "../services/notes";
@@ -68,6 +70,19 @@ export const actions = {
   ...noteActions,
   ...tagActions,
   ...notebookActions,
+  openNoteByLink: async (target: string) => {
+    const trimmed = target.trim();
+    if (!trimmed) return;
+    const noteId = /^\d+$/.test(trimmed)
+      ? Number(trimmed)
+      : await getNoteIdByExternalId(trimmed);
+    if (!noteId) return;
+    const note = await getNote(noteId);
+    if (!note) return;
+    appStore.setState({ selectedNotebookId: note.notebookId, selectedTagId: null, selectedTrash: false });
+    await fetchData(true);
+    await selectionActions.selectNote(noteId);
+  },
   setNotesSort: (sortBy: "updated" | "title", sortDir: "asc" | "desc") => {
     resortNotes(sortBy, sortDir);
   },

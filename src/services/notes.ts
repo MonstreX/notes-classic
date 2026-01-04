@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { NoteCounts, NoteDetail, NoteListItem, Notebook } from "../state/types";
+import type { NoteCounts, NoteDetail, NoteLinkItem, NoteListItem, Notebook } from "../state/types";
 
 export const getNotebooks = () => invoke<Notebook[]>("get_notebooks");
 
@@ -18,6 +18,12 @@ export const searchNotes = (query: string, notebookId: number | null) =>
 export const getNote = (id: number) => invoke<NoteDetail | null>("get_note", { id });
 
 export const getNoteCounts = () => invoke<NoteCounts>("get_note_counts");
+
+export const searchNotesByTitle = (query: string, limit = 20) =>
+  invoke<NoteLinkItem[]>("search_notes_by_title", { query, limit });
+
+export const getNoteIdByExternalId = (externalId: string) =>
+  invoke<number | null>("get_note_id_by_external_id", { externalId });
 
 export const createNote = (title: string, content: string, notebookId: number | null) =>
   invoke<number>("upsert_note", { id: null, title, content, notebookId });

@@ -29,6 +29,13 @@ export interface NoteDetail {
   contentSize?: number | null;
 }
 
+export interface NoteLinkItem {
+  id: number;
+  title: string;
+  notebookId: number | null;
+  externalId?: string | null;
+}
+
 export interface Tag {
   id: number;
   name: string;

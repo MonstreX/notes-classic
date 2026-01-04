@@ -182,6 +182,7 @@ export const mountApp = (root: HTMLElement) => {
       editorFocused = false;
     },
     getNoteId: () => appStore.getState().selectedNoteId,
+    onOpenNote: (target) => actions.openNoteByLink(target),
   });
 
   const editorScheduler = createEditorScheduler({

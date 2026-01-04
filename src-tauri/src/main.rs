@@ -909,6 +909,19 @@ async fn get_note(id: i64, state: State<'_, AppState>) -> Result<Option<Note>, S
 }
 
 #[tauri::command]
+async fn search_notes_by_title(query: String, limit: Option<i64>, state: State<'_, AppState>) -> Result<Vec<db::NoteLinkItem>, String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    let max = limit.unwrap_or(20).max(1);
+    repo.search_notes_by_title(&query, max).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_note_id_by_external_id(external_id: String, state: State<'_, AppState>) -> Result<Option<i64>, String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    repo.get_note_id_by_external_id(&external_id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn get_note_counts(state: State<'_, AppState>) -> Result<NoteCounts, String> {
     let repo = SqliteRepository { pool: state.pool.clone() };
     repo.get_note_counts().await.map_err(|e| e.to_string())
@@ -2009,7 +2022,9 @@ fn main() {
             get_notes_by_tag,
             get_trashed_notes,
             search_notes,
+            search_notes_by_title,
             get_note,
+            get_note_id_by_external_id,
             get_note_counts,
             get_data_dir,
             upsert_note,

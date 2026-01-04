@@ -205,6 +205,15 @@ pub struct NoteListItem {
 
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct NoteLinkItem {
+  pub id: i64,
+  pub title: String,
+  pub notebook_id: Option<i64>,
+  pub external_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Attachment {
     pub id: i64,
     pub note_id: i64,
@@ -1084,6 +1093,35 @@ impl SqliteRepository {
         let _ = self.sync_note_files_tx(&mut tx, id, content).await?;
         tx.commit().await?;
         Ok(id)
+    }
+
+    pub async fn search_notes_by_title(&self, query: &str, limit: i64) -> Result<Vec<NoteLinkItem>, sqlx::Error> {
+        let trimmed = query.trim();
+        if trimmed.is_empty() {
+            return Ok(Vec::new());
+        }
+        let like = format!("%{}%", trimmed.replace('%', "\\%").replace('_', "\\_"));
+        sqlx::query_as::<_, NoteLinkItem>(
+            "SELECT id, title, notebook_id, external_id
+             FROM notes
+             WHERE deleted_at IS NULL AND LOWER(title) LIKE LOWER(?) ESCAPE '\\'
+             ORDER BY updated_at DESC
+             LIMIT ?",
+        )
+        .bind(like)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn get_note_id_by_external_id(&self, external_id: &str) -> Result<Option<i64>, sqlx::Error> {
+        let row: Option<(i64,)> = sqlx::query_as(
+            "SELECT id FROM notes WHERE external_id = ? AND deleted_at IS NULL LIMIT 1",
+        )
+        .bind(external_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(|value| value.0))
     }
 
     pub async fn update_note_notebook(&self, note_id: i64, notebook_id: Option<i64>) -> Result<(), sqlx::Error> {
