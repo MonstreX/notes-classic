@@ -29,6 +29,9 @@ export type AppState = {
   activeNote: NoteDetail | null;
   isLoaded: boolean;
   isNoteLoading: boolean;
+  historyBack: number[];
+  historyForward: number[];
+  historyCurrent: number | null;
 };
 
 type Listener = () => void;
@@ -61,6 +64,9 @@ let state: AppState = {
   activeNote: null,
   isLoaded: false,
   isNoteLoading: false,
+  historyBack: [],
+  historyForward: [],
+  historyCurrent: null,
 };
 
 const listeners = new Set<Listener>();

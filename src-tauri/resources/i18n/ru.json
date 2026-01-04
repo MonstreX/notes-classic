@@ -140,6 +140,8 @@
   "menu.delete_notebook": "Удалить блокнот",
   "menu.delete_tag": "Удалить тег",
   "meta.last_edited": "Изменено {date}",
+  "history.back": "Назад",
+  "history.forward": "Вперед",
   "tags.placeholder": "Добавить тег",
   "tags.empty": "Нет тегов",
   "tags.remove": "Удалить тег",

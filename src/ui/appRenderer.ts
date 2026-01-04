@@ -8,7 +8,7 @@ type RendererDeps = {
   layout: AppLayout;
   sidebar: { update: (state: SidebarState) => void };
   notesList: { update: (state: NotesListState) => void };
-  metaBar: { update: (state: { hasNote: boolean; notebooks: AppState["notebooks"]; selectedNotebookId: number | null; activeNote: AppState["activeNote"] | null }) => void };
+  metaBar: { update: (state: { hasNote: boolean; canGoBack: boolean; canGoForward: boolean; activeNote: AppState["activeNote"] | null }) => void };
   tagsBar: { update: (state: { hasNote: boolean; tags: AppState["tags"]; noteTags: AppState["noteTags"] }) => void };
   editorScheduler: EditorScheduler;
   isEditorFocused: () => boolean;
@@ -36,8 +36,8 @@ export const createAppRenderer = (deps: RendererDeps) => {
 
     deps.metaBar.update({
       hasNote,
-      notebooks: state.notebooks,
-      selectedNotebookId: state.selectedNotebookId,
+      canGoBack: state.historyBack.length > 0,
+      canGoForward: state.historyForward.length > 0,
       activeNote: state.activeNote,
     });
 

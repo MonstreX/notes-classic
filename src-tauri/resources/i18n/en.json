@@ -140,6 +140,8 @@
   "menu.delete_notebook": "Delete Notebook",
   "menu.delete_tag": "Delete Tag",
   "meta.last_edited": "Last edited on {date}",
+  "history.back": "Back",
+  "history.forward": "Forward",
   "tags.placeholder": "Add tag",
   "tags.empty": "No tags",
   "tags.remove": "Remove tag",
