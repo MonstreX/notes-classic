@@ -123,7 +123,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-left: 16px;
+  padding-left: 6px;
   color: #9ca3af;
   font-size: 14px;
   border-bottom: 1px solid #ddd;
@@ -132,12 +132,12 @@
 .app-shell__nav {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 2px;
 }
 
 .app-shell__nav-btn {
-  width: 26px;
-  height: 26px;
+  width: 32px;
+  height: 32px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -162,8 +162,8 @@
 }
 
 .app-shell__nav-icon {
-  width: 14px;
-  height: 14px;
+  width: 24px;
+  height: 24px;
 }
 
 .app-shell__nav-icon--back {
