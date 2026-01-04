@@ -1173,35 +1173,35 @@ const openNoteLinkDialog = (): Promise<{ href: string; title: string } | null> =
     const overlay = document.createElement("div");
     overlay.className = "dialog-overlay";
     overlay.dataset.dialogOverlay = "1";
-    overlay.innerHTML = `
-      <div class="dialog note-link-dialog">
-        <div class="dialog__header">
-          <h3 class="dialog__title">${t("note_link.title")}</h3>
-          <button class="dialog__close" type="button" data-note-link-close="1" aria-label="${t("settings.close")}">
-            <svg class="dialog__close-icon" aria-hidden="true">
-              <use href="#icon-close"></use>
-            </svg>
-          </button>
+      overlay.innerHTML = `
+        <div class="dialog note-link-dialog">
+          <div class="dialog__header">
+            <h3 class="dialog__title">${t("note_link.title")}</h3>
+            <button class="dialog__close" type="button" data-note-link-close="1" aria-label="${t("settings.close")}">
+              <svg class="dialog__close-icon" aria-hidden="true">
+                <use href="#icon-close"></use>
+              </svg>
+            </button>
+          </div>
+          <div class="dialog__body">
+            <input class="dialog__input note-link-dialog__input" type="text" placeholder="${t("note_link.placeholder")}" data-note-link-input="1" />
+            <div class="note-link-dialog__results" data-note-link-results="1"></div>
+          </div>
+          <div class="dialog__footer">
+            <button class="dialog__button" data-note-link-close="1">${t("dialog.cancel")}</button>
+          </div>
         </div>
-        <div class="dialog__body">
-          <input class="dialog__input note-link-dialog__input" type="text" placeholder="${t("note_link.placeholder")}" data-note-link-input="1" />
-          <div class="note-link-dialog__results" data-note-link-results="1"></div>
-        </div>
-        <div class="dialog__footer">
-          <button class="dialog__button dialog__button--primary" data-note-link-insert="1">${t("note_link.insert")}</button>
-          <button class="dialog__button" data-note-link-close="1">${t("dialog.cancel")}</button>
-        </div>
-      </div>
-    `;
+      `;
 
-    const input = overlay.querySelector<HTMLInputElement>("[data-note-link-input]");
-    const resultsEl = overlay.querySelector<HTMLElement>("[data-note-link-results]");
-    const insertBtn = overlay.querySelector<HTMLButtonElement>("[data-note-link-insert]");
+      const input = overlay.querySelector<HTMLInputElement>("[data-note-link-input]");
+      const resultsEl = overlay.querySelector<HTMLElement>("[data-note-link-results]");
 
-    let activeId: number | null = null;
-    let activeExternal: string | null = null;
-    let activeTitle = "";
-    let debounce: number | null = null;
+      let activeId: number | null = null;
+      let activeExternal: string | null = null;
+      let activeTitle = "";
+      let activeIndex = -1;
+      let activeItems: Awaited<ReturnType<typeof searchNotesByTitle>> = [];
+      let debounce: number | null = null;
 
     let onKeydown: ((event: KeyboardEvent) => void) | null = null;
     const cleanup = () => {
@@ -1222,24 +1222,27 @@ const openNoteLinkDialog = (): Promise<{ href: string; title: string } | null> =
       });
     };
 
-    const renderResults = (items: Awaited<ReturnType<typeof searchNotesByTitle>>) => {
-      if (!resultsEl) return;
-      if (!items.length) {
-        resultsEl.innerHTML = `<div class="note-link-dialog__empty">${t("note_link.empty")}</div>`;
-        activeId = null;
-        activeExternal = null;
-        activeTitle = "";
-        return;
-      }
-      resultsEl.innerHTML = items
-        .map((item) => {
-          const title = item.title || t("notes.untitled");
-          return `<button type="button" class="note-link-dialog__item" data-note-id="${item.id}" data-note-external="${item.externalId ?? ""}">${title}</button>`;
-        })
-        .join("");
-      const first = items[0];
-      selectResult(first.id, first.externalId ?? null, first.title || t("notes.untitled"));
-    };
+      const renderResults = (items: Awaited<ReturnType<typeof searchNotesByTitle>>) => {
+        if (!resultsEl) return;
+        activeItems = items;
+        if (!items.length) {
+          resultsEl.innerHTML = `<div class="note-link-dialog__empty">${t("note_link.empty")}</div>`;
+          activeId = null;
+          activeExternal = null;
+          activeTitle = "";
+          activeIndex = -1;
+          return;
+        }
+        resultsEl.innerHTML = items
+          .map((item) => {
+            const title = item.title || t("notes.untitled");
+            return `<button type="button" class="note-link-dialog__item" data-note-id="${item.id}" data-note-external="${item.externalId ?? ""}">${title}</button>`;
+          })
+          .join("");
+        const first = items[0];
+        activeIndex = 0;
+        selectResult(first.id, first.externalId ?? null, first.title || t("notes.untitled"));
+      };
 
     const runSearch = async () => {
       const value = input?.value.trim() ?? "";
@@ -1261,45 +1264,46 @@ const openNoteLinkDialog = (): Promise<{ href: string; title: string } | null> =
       debounce = window.setTimeout(runSearch, 160);
     };
 
-    const confirm = () => {
-      if (!activeId) return;
-      const target = activeExternal && activeExternal.trim().length > 0 ? activeExternal.trim() : String(activeId);
-      resolve({ href: `note://${target}`, title: activeTitle });
-      overlay.remove();
-    };
+      const confirm = () => {
+        if (!activeId) return;
+        const target = activeExternal && activeExternal.trim().length > 0 ? activeExternal.trim() : String(activeId);
+        resolve({ href: `note://${target}`, title: activeTitle });
+        overlay.remove();
+      };
 
-    input?.addEventListener("input", scheduleSearch);
-    resultsEl?.addEventListener("click", (event) => {
-      const target = event.target as HTMLElement | null;
-      const item = target?.closest<HTMLElement>("[data-note-id]");
-      if (!item) return;
-      const id = Number(item.getAttribute("data-note-id"));
-      const external = item.getAttribute("data-note-external");
-      const title = item.textContent?.trim() || t("notes.untitled");
-      selectResult(id, external && external.length ? external : null, title);
-    });
-    resultsEl?.addEventListener("dblclick", (event) => {
-      const target = event.target as HTMLElement | null;
-      const item = target?.closest<HTMLElement>("[data-note-id]");
-      if (!item) return;
-      const id = Number(item.getAttribute("data-note-id"));
-      const external = item.getAttribute("data-note-external");
-      const title = item.textContent?.trim() || t("notes.untitled");
-      selectResult(id, external && external.length ? external : null, title);
-      confirm();
-    });
-    insertBtn?.addEventListener("click", confirm);
+      input?.addEventListener("input", scheduleSearch);
+      resultsEl?.addEventListener("click", (event) => {
+        const target = event.target as HTMLElement | null;
+        const item = target?.closest<HTMLElement>("[data-note-id]");
+        if (!item) return;
+        const id = Number(item.getAttribute("data-note-id"));
+        const external = item.getAttribute("data-note-external");
+        const title = item.textContent?.trim() || t("notes.untitled");
+        selectResult(id, external && external.length ? external : null, title);
+        confirm();
+      });
 
-    overlay.querySelectorAll("[data-note-link-close]").forEach((el) => {
-      el.addEventListener("click", cleanup);
-    });
-    overlay.addEventListener("click", (event) => {
-      if (event.target === overlay) cleanup();
-    });
-    onKeydown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") cleanup();
-      if (event.key === "Enter") confirm();
-    };
+      overlay.querySelectorAll("[data-note-link-close]").forEach((el) => {
+        el.addEventListener("click", cleanup);
+      });
+      overlay.addEventListener("click", (event) => {
+        if (event.target === overlay) cleanup();
+      });
+      onKeydown = (event: KeyboardEvent) => {
+        if (event.key === "Escape") cleanup();
+        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+          if (!activeItems.length) return;
+          event.preventDefault();
+          const delta = event.key === "ArrowDown" ? 1 : -1;
+          const nextIndex = Math.min(activeItems.length - 1, Math.max(0, activeIndex + delta));
+          const nextItem = activeItems[nextIndex];
+          if (!nextItem) return;
+          activeIndex = nextIndex;
+          selectResult(nextItem.id, nextItem.externalId ?? null, nextItem.title || t("notes.untitled"));
+          return;
+        }
+        if (event.key === "Enter") confirm();
+      };
     window.addEventListener("keydown", onKeydown);
 
     document.body.appendChild(overlay);
@@ -2096,20 +2100,27 @@ const createEditorConfig = (overrides: Record<string, unknown> = {}, getNoteId?:
           }
         },
       },
-      "note-link": {
-        tooltip: t("note_link.tooltip"),
-        text: "",
-        icon: "note-link",
-        exec: async (editor: any) => {
-          if (!editor || !editor.s) return;
-          const result = await openNoteLinkDialog();
-          if (!result) return;
-          const title = result.title || t("notes.untitled");
-          const html = `<a href="${result.href}" data-note-link="1">${title}</a>`;
-          editor.s.insertHTML(html);
-          editor.s.synchronizeValues();
+        "note-link": {
+          tooltip: t("note_link.tooltip"),
+          text: "",
+          icon: "note-link",
+          exec: async (editor: any) => {
+            if (!editor || !editor.s) return;
+            const selection = editor.s;
+            const savedRange = selection.range ? selection.range.cloneRange() : null;
+            const result = await openNoteLinkDialog();
+            if (!result) return;
+            if (savedRange) selection.selectRange(savedRange);
+            const title = (result.title || t("notes.untitled")).replace(/\uFEFF/g, "").trim();
+            const link = editor.createInside.element("a");
+            link.setAttribute("href", result.href);
+            link.setAttribute("data-note-link", "1");
+            link.textContent = title || t("notes.untitled");
+            selection.insertNode(link);
+            selection.setCursorAfter(link);
+            selection.synchronizeValues();
+          },
         },
-      },
     },
     cleanHTML: {
       fillEmptyParagraph: false,
