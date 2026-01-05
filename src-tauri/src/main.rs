@@ -785,10 +785,6 @@ fn build_menu<R: Runtime>(app_handle: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .build()?;
 
     let file_menu = SubmenuBuilder::new(app_handle, label("menu.file"))
-        .item(&MenuItem::with_id(app_handle, MENU_NEW_NOTE, label("menu.new_note"), true, None::<&str>)?)
-        .item(&MenuItem::with_id(app_handle, MENU_NEW_NOTEBOOK, label("menu.new_notebook"), true, None::<&str>)?)
-        .item(&MenuItem::with_id(app_handle, MENU_NEW_STACK, label("menu.new_stack"), true, None::<&str>)?)
-        .separator()
         .item(&import_submenu)
         .separator()
         .item(&MenuItem::with_id(app_handle, MENU_SETTINGS, label("menu.settings"), true, None::<&str>)?)
@@ -811,13 +807,17 @@ fn build_menu<R: Runtime>(app_handle: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .build()?;
 
     let note_menu = SubmenuBuilder::new(app_handle, label("menu.note"))
+        .item(&MenuItem::with_id(app_handle, MENU_NEW_NOTE, label("menu.new_note"), true, None::<&str>)?)
+        .item(&MenuItem::with_id(app_handle, MENU_NEW_NOTEBOOK, label("menu.new_notebook"), true, None::<&str>)?)
+        .item(&MenuItem::with_id(app_handle, MENU_NEW_STACK, label("menu.new_stack"), true, None::<&str>)?)
+        .separator()
+        .item(&MenuItem::with_id(app_handle, MENU_SEARCH, label("menu.search"), true, None::<&str>)?)
+        .item(&MenuItem::with_id(app_handle, MENU_HISTORY, label("menu.history"), true, None::<&str>)?)
+        .separator()
         .item(&MenuItem::with_id(app_handle, MENU_DELETE_NOTE, label("menu.delete_note"), true, None::<&str>)?)
         .build()?;
 
-    let tools_menu = SubmenuBuilder::new(app_handle, label("menu.tools"))
-        .item(&MenuItem::with_id(app_handle, MENU_SEARCH, label("menu.search"), true, None::<&str>)?)
-        .item(&MenuItem::with_id(app_handle, MENU_HISTORY, label("menu.history"), true, None::<&str>)?)
-        .build()?;
+    let tools_menu = SubmenuBuilder::new(app_handle, label("menu.tools")).build()?;
 
     MenuBuilder::new(app_handle)
         .item(&file_menu)

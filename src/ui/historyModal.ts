@@ -80,7 +80,7 @@ export const mountHistoryModal = (
           .map((item) => {
             const title = item.noteTitle || t("notes.untitled");
             const notebookLabel = item.notebookName || t("notes.notebook_default");
-            const stackLabel = item.stackName ? `${item.stackName} — ${notebookLabel}` : notebookLabel;
+            const stackLabel = item.stackName ? `${item.stackName} - ${notebookLabel}` : notebookLabel;
             const when = formatTimestamp(item.openedAt);
             return `
               <div class="history-item" data-history-item="1" data-note-id="${item.noteId}">
@@ -90,7 +90,6 @@ export const mountHistoryModal = (
                 </div>
                 <div class="history-item__right">
                   <div class="history-item__time">${when}</div>
-                  <button class="history-item__action" type="button" data-history-open="1">${t("history.open")}</button>
                 </div>
               </div>
             `;
@@ -130,15 +129,12 @@ export const mountHistoryModal = (
   });
   overlay.addEventListener("click", (event) => {
     const target = event.target as HTMLElement | null;
-    const action = target?.closest<HTMLElement>("[data-history-open]");
     const row = target?.closest<HTMLElement>("[data-history-item]");
     if (!row) return;
     const noteId = Number(row.getAttribute("data-note-id"));
     if (!Number.isFinite(noteId)) return;
-    if (action || row) {
-      handlers.onOpenNote(noteId);
-      closeModal();
-    }
+    handlers.onOpenNote(noteId);
+    closeModal();
   });
   overlay.addEventListener("dblclick", (event) => {
     const target = event.target as HTMLElement | null;
