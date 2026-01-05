@@ -8,6 +8,7 @@ import { mountSearchModal } from "./searchModal";
 import { mountSettingsModal } from "./settingsModal";
 import { mountEvernoteImportModal } from "./evernoteImportModal";
 import { mountObsidianImportModal } from "./obsidianImportModal";
+import { mountHtmlImportModal } from "./htmlImportModal";
 import { mountHistoryModal } from "./historyModal";
 import { mountSidebar, type SidebarHandlers, type SidebarInstance } from "./sidebar";
 import { mountTagsBar } from "./tagsBar";
@@ -80,6 +81,20 @@ export const mountApp = (root: HTMLElement) => {
     },
   });
   listen("import-obsidian", () => obsidianImportModal.open());
+  const htmlImportModal = mountHtmlImportModal(layout.editorPane, {
+    onImportStart: async () => {
+      if (cleanupOcr) {
+        await cleanupOcr();
+        cleanupOcr = undefined;
+      }
+    },
+    onImportEnd: () => {
+      if (!cleanupOcr) {
+        cleanupOcr = startOcrQueue();
+      }
+    },
+  });
+  listen("import-html", () => htmlImportModal.open());
 
   const historyModal = mountHistoryModal(layout.editorPane, {
     onOpenNote: (noteId) => actions.openNote(noteId),
