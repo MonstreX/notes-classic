@@ -312,16 +312,15 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border: 1px solid #e5e7eb;
+  border: 0;
   border-radius: 4px;
-  padding: 10px 12px;
+  padding: 8px 10px;
   cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease;
+  transition: background 0.12s ease;
 }
 
 .history-item:hover {
-  background: #f8f8f8;
-  border-color: #d1d5db;
+  background: #f3f4f6;
 }
 
 .history-item__main {
