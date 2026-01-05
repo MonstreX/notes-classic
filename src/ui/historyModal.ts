@@ -12,6 +12,13 @@ export const mountHistoryModal = (
   handlers: { onOpenNote: (noteId: number) => void }
 ): HistoryModal => {
   let isOpen = false;
+  const escapeHtml = (value: string) =>
+    value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\"/g, "&quot;")
+      .replace(/'/g, "&#039;");
   const overlay = document.createElement("div");
   overlay.className = "history-modal";
   overlay.style.display = "none";
@@ -78,10 +85,12 @@ export const mountHistoryModal = (
       .map(([group, groupItems]) => {
         const rows = groupItems
           .map((item) => {
-            const title = item.noteTitle || t("notes.untitled");
-            const notebookLabel = item.notebookName || t("notes.notebook_default");
-            const stackLabel = item.stackName ? `${item.stackName} - ${notebookLabel}` : notebookLabel;
-            const when = formatTimestamp(item.openedAt);
+            const title = escapeHtml(item.noteTitle || t("notes.untitled"));
+            const notebookLabel = escapeHtml(item.notebookName || t("notes.notebook_default"));
+            const stackLabel = item.stackName
+              ? `${escapeHtml(item.stackName)} - ${notebookLabel}`
+              : notebookLabel;
+            const when = escapeHtml(formatTimestamp(item.openedAt));
             return `
               <div class="history-item" data-history-item="1" data-note-id="${item.noteId}">
                 <div class="history-item__main">
