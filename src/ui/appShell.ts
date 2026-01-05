@@ -13,6 +13,7 @@ import { mountTextImportModal } from "./textImportModal";
 import { mountHistoryModal } from "./historyModal";
 import { mountSidebar, type SidebarHandlers, type SidebarInstance } from "./sidebar";
 import { mountTagsBar } from "./tagsBar";
+import { mountExportModal } from "./exportModal";
 import { createEditorScheduler } from "./editorScheduler";
 import { createAppLayout } from "./appLayout";
 import { createAppRenderer } from "./appRenderer";
@@ -115,6 +116,8 @@ export const mountApp = (root: HTMLElement) => {
     onOpenNote: (noteId) => actions.openNote(noteId),
   });
   openHistoryModal = () => historyModal.open();
+  const exportModal = mountExportModal(layout.editorPane);
+  listen("export-notes-classic", () => exportModal.open());
 
   const sidebarHandlers: SidebarHandlers = {
     onSelectNotebook: (id) => actions.selectNotebook(id),

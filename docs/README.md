@@ -107,6 +107,11 @@ notes-classic/
 - All importers back up current storage and require restart.
 - Details: `docs/IMPORTS.md`
 
+### 10. Export (In-App)
+- Export full storage to a portable package.
+- Includes notes HTML, metadata, attachments, OCR files, tags, and history.
+- Details: `docs/EXPORT.md`
+
 ---
 
 ## Development and Build

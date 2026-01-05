@@ -26,6 +26,7 @@ const FILE_IMPORT_EVERNOTE: &str = "file_import_evernote";
 const FILE_IMPORT_OBSIDIAN: &str = "file_import_obsidian";
 const FILE_IMPORT_HTML: &str = "file_import_html";
 const FILE_IMPORT_TEXT: &str = "file_import_text";
+const FILE_EXPORT_NOTES_CLASSIC: &str = "file_export_notes_classic";
 const MENU_NEW_NOTE: &str = "menu_new_note";
 const MENU_NEW_NOTEBOOK: &str = "menu_new_notebook";
 const MENU_NEW_STACK: &str = "menu_new_stack";
@@ -833,9 +834,15 @@ fn build_menu<R: Runtime>(app_handle: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .item(&import_html)
         .item(&import_text)
         .build()?;
+    let export_notes_classic =
+        MenuItem::with_id(app_handle, FILE_EXPORT_NOTES_CLASSIC, label("menu.export_notes_classic"), true, None::<&str>)?;
+    let export_submenu = SubmenuBuilder::new(app_handle, label("menu.export"))
+        .item(&export_notes_classic)
+        .build()?;
 
     let file_menu = SubmenuBuilder::new(app_handle, label("menu.file"))
         .item(&import_submenu)
+        .item(&export_submenu)
         .separator()
         .item(&MenuItem::with_id(app_handle, MENU_SETTINGS, label("menu.settings"), true, None::<&str>)?)
         .separator()
@@ -1961,6 +1968,385 @@ async fn select_text_folder(app_handle: AppHandle) -> Result<Option<String>, Str
 }
 
 #[tauri::command]
+async fn select_export_folder(app_handle: AppHandle) -> Result<Option<String>, String> {
+    let (tx, rx): (
+        tokio::sync::oneshot::Sender<Option<String>>,
+        tokio::sync::oneshot::Receiver<Option<String>>,
+    ) = tokio::sync::oneshot::channel();
+    app_handle
+        .dialog()
+        .file()
+        .set_title("Select export folder")
+        .pick_folder(move |folder| {
+            let path = folder.and_then(|path| path.into_path().ok()).map(|path| {
+                path.to_string_lossy().to_string()
+            });
+            let _ = tx.send(path);
+        });
+    rx.await.map_err(|e| e.to_string())
+}
+
+#[derive(serde::Serialize, sqlx::FromRow)]
+struct ExportNotebook {
+    id: i64,
+    name: String,
+    created_at: i64,
+    parent_id: Option<i64>,
+    notebook_type: String,
+    sort_order: i64,
+    external_id: Option<String>,
+}
+
+#[derive(serde::Serialize, Clone)]
+struct ExportNote {
+    id: i64,
+    title: String,
+    created_at: i64,
+    updated_at: i64,
+    sync_status: Option<i64>,
+    remote_id: Option<String>,
+    notebook_id: Option<i64>,
+    external_id: Option<String>,
+    meta: Option<String>,
+    content_hash: Option<String>,
+    content_size: Option<i64>,
+    deleted_at: Option<i64>,
+    deleted_from_notebook_id: Option<i64>,
+    content_path: String,
+    meta_path: String,
+}
+
+#[derive(serde::Serialize, sqlx::FromRow)]
+struct ExportNoteText {
+    note_id: i64,
+    title: String,
+    plain_text: String,
+}
+
+#[derive(serde::Serialize, sqlx::FromRow)]
+struct ExportTag {
+    id: i64,
+    name: String,
+    parent_id: Option<i64>,
+    created_at: i64,
+    updated_at: i64,
+    external_id: Option<String>,
+}
+
+#[derive(serde::Serialize, sqlx::FromRow)]
+struct ExportNoteTag {
+    note_id: i64,
+    tag_id: i64,
+}
+
+#[derive(serde::Serialize)]
+struct ExportAttachment {
+    id: i64,
+    note_id: i64,
+    external_id: Option<String>,
+    hash: Option<String>,
+    filename: Option<String>,
+    mime: Option<String>,
+    size: Option<i64>,
+    width: Option<i64>,
+    height: Option<i64>,
+    local_path: Option<String>,
+    source_url: Option<String>,
+    is_attachment: Option<i64>,
+    created_at: Option<i64>,
+    updated_at: Option<i64>,
+    export_path: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+struct ExportOcrFile {
+    id: i64,
+    file_path: String,
+    attempts_left: i64,
+    last_error: Option<String>,
+    export_path: String,
+}
+
+#[derive(serde::Serialize, sqlx::FromRow)]
+struct ExportNoteFile {
+    note_id: i64,
+    file_id: i64,
+}
+
+#[derive(serde::Serialize, sqlx::FromRow)]
+struct ExportOcrText {
+    file_id: i64,
+    lang: String,
+    text: String,
+    hash: String,
+    updated_at: i64,
+}
+
+#[derive(serde::Serialize, sqlx::FromRow)]
+struct ExportHistory {
+    id: i64,
+    note_id: i64,
+    opened_at: i64,
+    note_title: String,
+    notebook_id: Option<i64>,
+    notebook_name: Option<String>,
+    stack_id: Option<i64>,
+    stack_name: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+struct ExportManifest {
+    version: String,
+    exported_at: String,
+    notebooks: Vec<ExportNotebook>,
+    notes: Vec<ExportNote>,
+    notes_text: Vec<ExportNoteText>,
+    tags: Vec<ExportTag>,
+    note_tags: Vec<ExportNoteTag>,
+    attachments: Vec<ExportAttachment>,
+    ocr_files: Vec<ExportOcrFile>,
+    note_files: Vec<ExportNoteFile>,
+    ocr_text: Vec<ExportOcrText>,
+    note_history: Vec<ExportHistory>,
+}
+
+#[derive(serde::Serialize)]
+struct ExportReport {
+    export_root: String,
+    manifest_path: String,
+    notes: i64,
+    notebooks: i64,
+    tags: i64,
+    attachments: i64,
+    images: i64,
+    errors: Vec<String>,
+}
+
+#[tauri::command]
+async fn export_notes_classic(dest_dir: String, state: State<'_, AppState>) -> Result<ExportReport, String> {
+    if dest_dir.trim().is_empty() {
+        return Err("Export folder is empty".to_string());
+    }
+    let now = chrono::Utc::now();
+    let stamp = now.format("%Y%m%d-%H%M%S").to_string();
+    let export_root = PathBuf::from(dest_dir).join(format!("notes-classic-export-{}", stamp));
+    fs::create_dir_all(&export_root).map_err(|e| e.to_string())?;
+    let notes_dir = export_root.join("notes");
+    let attachments_dir = export_root.join("attachments");
+    let files_dir = export_root.join("files");
+    fs::create_dir_all(&notes_dir).map_err(|e| e.to_string())?;
+    fs::create_dir_all(&attachments_dir).map_err(|e| e.to_string())?;
+    fs::create_dir_all(&files_dir).map_err(|e| e.to_string())?;
+
+    let pool = state.pool.clone();
+    let data_dir = state.data_dir.clone();
+    let mut errors: Vec<String> = Vec::new();
+
+    let notebooks: Vec<ExportNotebook> = sqlx::query_as(
+        "SELECT id, name, created_at, parent_id, notebook_type, sort_order, external_id FROM notebooks ORDER BY id ASC",
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let notes_rows: Vec<(i64, String, String, i64, i64, Option<i64>, Option<String>, Option<i64>, Option<String>, Option<String>, Option<String>, Option<i64>, Option<i64>, Option<i64>)> =
+        sqlx::query_as(
+            "SELECT id, title, content, created_at, updated_at, sync_status, remote_id, notebook_id, external_id, meta, content_hash, content_size, deleted_at, deleted_from_notebook_id
+             FROM notes ORDER BY id ASC",
+        )
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let notes_text: Vec<ExportNoteText> = sqlx::query_as(
+        "SELECT note_id, title, plain_text FROM notes_text ORDER BY note_id ASC",
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let tags: Vec<ExportTag> = sqlx::query_as(
+        "SELECT id, name, parent_id, created_at, updated_at, external_id FROM tags ORDER BY id ASC",
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let note_tags: Vec<ExportNoteTag> = sqlx::query_as(
+        "SELECT note_id, tag_id FROM note_tags ORDER BY note_id ASC, tag_id ASC",
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let attachments_rows: Vec<(i64, i64, Option<String>, Option<String>, Option<String>, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<String>, Option<String>, Option<i64>, Option<i64>, Option<i64>)> =
+        sqlx::query_as(
+            "SELECT id, note_id, external_id, hash, filename, mime, size, width, height, local_path, source_url, is_attachment, created_at, updated_at
+             FROM attachments ORDER BY id ASC",
+        )
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let ocr_files_rows: Vec<(i64, String, i64, Option<String>)> = sqlx::query_as(
+        "SELECT id, file_path, attempts_left, last_error FROM ocr_files ORDER BY id ASC",
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let note_files: Vec<ExportNoteFile> = sqlx::query_as(
+        "SELECT note_id, file_id FROM note_files ORDER BY note_id ASC, file_id ASC",
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let ocr_text: Vec<ExportOcrText> = sqlx::query_as(
+        "SELECT file_id, lang, text, hash, updated_at FROM ocr_text ORDER BY file_id ASC",
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let note_history: Vec<ExportHistory> = sqlx::query_as(
+        "SELECT id, note_id, opened_at, note_title, notebook_id, notebook_name, stack_id, stack_name
+         FROM note_history ORDER BY opened_at DESC, id DESC",
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut notes: Vec<ExportNote> = Vec::new();
+    for row in notes_rows {
+        let (id, title, content, created_at, updated_at, sync_status, remote_id, notebook_id, external_id, meta, content_hash, content_size, deleted_at, deleted_from_notebook_id) = row;
+        let content_path = format!("notes/{}.html", id);
+        let meta_path = format!("notes/{}.meta.json", id);
+        let note = ExportNote {
+            id,
+            title: title.clone(),
+            created_at,
+            updated_at,
+            sync_status,
+            remote_id,
+            notebook_id,
+            external_id,
+            meta,
+            content_hash,
+            content_size,
+            deleted_at,
+            deleted_from_notebook_id,
+            content_path: content_path.clone(),
+            meta_path: meta_path.clone(),
+        };
+        let html_path = export_root.join(&content_path);
+        if let Err(e) = fs::write(&html_path, content) {
+            errors.push(format!("note {} html: {}", id, e));
+        }
+        let meta_json = serde_json::to_string_pretty(&note).map_err(|e| e.to_string())?;
+        if let Err(e) = fs::write(export_root.join(&meta_path), meta_json) {
+            errors.push(format!("note {} meta: {}", id, e));
+        }
+        notes.push(note);
+    }
+
+    let mut attachments: Vec<ExportAttachment> = Vec::new();
+    for row in attachments_rows {
+        let (id, note_id, external_id, hash, filename, mime, size, width, height, local_path, source_url, is_attachment, created_at, updated_at) = row;
+        let export_path = local_path.as_ref().map(|path| {
+            let cleaned = path
+                .trim_start_matches("files/")
+                .trim_start_matches("files\\")
+                .replace('\\', "/");
+            if cleaned.starts_with("attachments/") {
+                cleaned
+            } else {
+                format!("attachments/{}", cleaned)
+            }
+        });
+        if let Some(ref rel) = local_path {
+            let source = data_dir.join(rel);
+            if let Some(ref export_rel) = export_path {
+                let target = export_root.join(export_rel);
+                if let Some(parent) = target.parent() {
+                    let _ = fs::create_dir_all(parent);
+                }
+                if let Err(e) = fs::copy(&source, &target) {
+                    errors.push(format!("attachment {} copy: {}", id, e));
+                }
+            }
+        }
+        attachments.push(ExportAttachment {
+            id,
+            note_id,
+            external_id,
+            hash,
+            filename,
+            mime,
+            size,
+            width,
+            height,
+            local_path,
+            source_url,
+            is_attachment,
+            created_at,
+            updated_at,
+            export_path,
+        });
+    }
+
+    let mut ocr_files: Vec<ExportOcrFile> = Vec::new();
+    for (id, file_path, attempts_left, last_error) in ocr_files_rows {
+        let export_path = format!("files/{}", file_path.replace('\\', "/"));
+        let source = data_dir.join("files").join(&file_path);
+        let target = export_root.join(&export_path);
+        if let Some(parent) = target.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        if let Err(e) = fs::copy(&source, &target) {
+            errors.push(format!("file {} copy: {}", id, e));
+        }
+        ocr_files.push(ExportOcrFile {
+            id,
+            file_path,
+            attempts_left,
+            last_error,
+            export_path,
+        });
+    }
+
+    let manifest = ExportManifest {
+        version: "1.0".to_string(),
+        exported_at: now.to_rfc3339(),
+        notebooks,
+        notes: notes.clone(),
+        notes_text,
+        tags,
+        note_tags,
+        attachments,
+        ocr_files,
+        note_files,
+        ocr_text,
+        note_history,
+    };
+
+    let manifest_path = export_root.join("manifest.json");
+    let manifest_json = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
+    fs::write(&manifest_path, manifest_json).map_err(|e| e.to_string())?;
+
+    Ok(ExportReport {
+        export_root: export_root.to_string_lossy().to_string(),
+        manifest_path: manifest_path.to_string_lossy().to_string(),
+        notes: notes.len() as i64,
+        notebooks: manifest.notebooks.len() as i64,
+        tags: manifest.tags.len() as i64,
+        attachments: manifest.attachments.len() as i64,
+        images: manifest.ocr_files.len() as i64,
+        errors,
+    })
+}
+
+#[tauri::command]
 async fn run_note_files_backfill(state: State<'_, AppState>) -> Result<(), String> {
     let repo = SqliteRepository { pool: state.pool.clone() };
     match repo.needs_note_files_backfill().await {
@@ -2215,6 +2601,9 @@ fn main() {
                 FILE_IMPORT_TEXT => {
                     let _ = app_handle.emit("import-text", ());
                 }
+                FILE_EXPORT_NOTES_CLASSIC => {
+                    let _ = app_handle.emit("export-notes-classic", ());
+                }
                 MENU_NEW_NOTE => {
                     let _ = app_handle.emit("menu-new-note", ());
                 }
@@ -2300,6 +2689,8 @@ fn main() {
             select_obsidian_folder,
             select_html_folder,
             select_text_folder,
+            select_export_folder,
+            export_notes_classic,
             import_evernote_from_json,
             run_note_files_backfill,
             get_ocr_pending_files,
