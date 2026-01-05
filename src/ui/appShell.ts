@@ -7,6 +7,7 @@ import { buildMenuNodes } from "./menuBuilder";
 import { mountSearchModal } from "./searchModal";
 import { mountSettingsModal } from "./settingsModal";
 import { mountEvernoteImportModal } from "./evernoteImportModal";
+import { mountObsidianImportModal } from "./obsidianImportModal";
 import { mountHistoryModal } from "./historyModal";
 import { mountSidebar, type SidebarHandlers, type SidebarInstance } from "./sidebar";
 import { mountTagsBar } from "./tagsBar";
@@ -65,6 +66,20 @@ export const mountApp = (root: HTMLElement) => {
   listen("menu-settings", () => openSettingsModal());
   const importModal = mountEvernoteImportModal(layout.editorPane);
   listen("import-evernote", () => importModal.open());
+  const obsidianImportModal = mountObsidianImportModal(layout.editorPane, {
+    onImportStart: async () => {
+      if (cleanupOcr) {
+        await cleanupOcr();
+        cleanupOcr = undefined;
+      }
+    },
+    onImportEnd: () => {
+      if (!cleanupOcr) {
+        cleanupOcr = startOcrQueue();
+      }
+    },
+  });
+  listen("import-obsidian", () => obsidianImportModal.open());
 
   const historyModal = mountHistoryModal(layout.editorPane, {
     onOpenNote: (noteId) => actions.openNote(noteId),

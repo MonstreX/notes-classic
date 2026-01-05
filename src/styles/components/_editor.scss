@@ -49,6 +49,15 @@
   padding: 40px 0 0 !important;
 }
 
+.notes-editor .jodit-wysiwyg h1,
+.notes-editor .jodit-wysiwyg h2,
+.notes-editor .jodit-wysiwyg h3,
+.notes-editor .jodit-wysiwyg h4,
+.notes-editor .jodit-wysiwyg h5,
+.notes-editor .jodit-wysiwyg h6 {
+  margin-top: 0;
+}
+
 .notes-editor .jodit-container::-webkit-scrollbar,
 .notes-editor .jodit-workplace::-webkit-scrollbar,
 .notes-editor .jodit-wysiwyg::-webkit-scrollbar {

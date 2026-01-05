@@ -27,6 +27,7 @@ const WORKER_START_TIMEOUT_MS = 120000;
 let dataDirPromise: Promise<string> | null = null;
 let resourceDirPromise: Promise<string> | null = null;
 let runtimeStatus: OcrRuntimeStatus = "running";
+let workerBlobUrl: string | null = null;
 
 const logOcr = async (_message: string) => {};
 
@@ -65,8 +66,24 @@ const getFileUrl = async (filePath: string) => {
 };
 
 const buildWorker = async () => {
-  const workerPath = new URL("tesseract.js/dist/worker.min.js", import.meta.url).toString();
-  const corePath = new URL("tesseract.js-core/tesseract-core.wasm.js", import.meta.url).toString();
+  const base = normalizePath(await getResourceDir());
+  const workerAssetPath = convertFileSrc(`${base}/ocr/worker.min.js`);
+  let workerPath = workerAssetPath;
+  try {
+    const response = await fetch(workerAssetPath);
+    if (response.ok) {
+      const code = await response.text();
+      const blob = new Blob([code], { type: "application/javascript" });
+      if (workerBlobUrl) {
+        URL.revokeObjectURL(workerBlobUrl);
+      }
+      workerBlobUrl = URL.createObjectURL(blob);
+      workerPath = workerBlobUrl;
+    }
+  } catch {
+    // fall back to asset path
+  }
+  const corePath = convertFileSrc(`${base}/ocr/tesseract-core.wasm.js`);
   const langPath = await getLangPath();
   await logOcr(`[worker] init workerPath=${workerPath}`);
   await logOcr(`[worker] init corePath=${corePath}`);
@@ -128,6 +145,8 @@ export const startOcrQueue = () => {
   let workerPromise: Promise<OcrWorker> | null = null;
   let worker: OcrWorker | null = null;
   let consecutiveFailures = 0;
+  let isRunning = false;
+  let stopPromise: Promise<void> | null = null;
   runtimeStatus = "running";
 
   const schedule = (delay: number) => {
@@ -146,6 +165,10 @@ export const startOcrQueue = () => {
     }
     worker = null;
     workerPromise = null;
+    if (workerBlobUrl) {
+      URL.revokeObjectURL(workerBlobUrl);
+      workerBlobUrl = null;
+    }
   };
 
   const pauseQueue = () => {
@@ -185,6 +208,7 @@ export const startOcrQueue = () => {
 
   const run = async () => {
     if (cancelled) return;
+    isRunning = true;
     try {
       const files = await invoke<OcrPendingFile[]>("get_ocr_pending_files", { limit: BATCH_SIZE });
       if (!files.length) {
@@ -198,6 +222,7 @@ export const startOcrQueue = () => {
         const ext = getExtension(file.filePath);
         const isImageMime = (file.mime || "").toLowerCase().startsWith("image/");
         if (!OCR_EXTENSIONS.has(ext) && !isImageMime) {
+          if (cancelled) return;
           await markOcrFailed(file.fileId, "unsupported");
           continue;
         }
@@ -205,6 +230,7 @@ export const startOcrQueue = () => {
         const response = await fetch(url);
         if (!response.ok) {
           console.warn("[ocr] fetch failed", file.filePath, response.status);
+          if (cancelled) return;
           await markOcrFailed(file.fileId, `fetch-${response.status}`);
           continue;
         }
@@ -218,11 +244,13 @@ export const startOcrQueue = () => {
           cleaned = text;
         } catch (err) {
           console.error("[ocr] recognize failed", file.filePath, err);
+          if (cancelled) return;
           await markOcrFailed(file.fileId, "recognize");
           const shouldRetry = await handleFailure(err);
           if (!shouldRetry) return;
           continue;
         }
+        if (cancelled) return;
         await markOcrDone(file.fileId, hash, cleaned);
         consecutiveFailures = 0;
       }
@@ -231,16 +259,29 @@ export const startOcrQueue = () => {
       const shouldRetry = await handleFailure(e);
       if (!shouldRetry) return;
       schedule(RETRY_DELAY_MS);
+    } finally {
+      isRunning = false;
     }
   };
 
   schedule(1000);
 
-  return () => {
-    cancelled = true;
-    if (timer !== null) {
-      window.clearTimeout(timer);
-    }
+  return async () => {
+    if (stopPromise) return stopPromise;
+    stopPromise = (async () => {
+      cancelled = true;
+      runtimeStatus = "paused";
+      if (timer !== null) {
+        window.clearTimeout(timer);
+        timer = null;
+      }
+      await resetWorker();
+      while (isRunning) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      stopPromise = null;
+    })();
+    return stopPromise;
   };
 };
 

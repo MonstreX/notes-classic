@@ -1169,6 +1169,15 @@ impl SqliteRepository {
         Ok(row.map(|value| value.0))
     }
 
+    pub async fn set_note_external_id(&self, note_id: i64, external_id: &str) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE notes SET external_id = ? WHERE id = ?")
+            .bind(external_id)
+            .bind(note_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
     pub async fn update_note_notebook(&self, note_id: i64, notebook_id: Option<i64>) -> Result<(), sqlx::Error> {
         sqlx::query("UPDATE notes SET notebook_id = ? WHERE id = ?")
             .bind(notebook_id)

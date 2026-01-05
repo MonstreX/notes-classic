@@ -23,6 +23,7 @@ const NOTES_VIEW_DETAILED: &str = "view_notes_detailed";
 const NOTES_VIEW_COMPACT: &str = "view_notes_compact";
 const SETTINGS_FILE_NAME: &str = "app.json";
 const FILE_IMPORT_EVERNOTE: &str = "file_import_evernote";
+const FILE_IMPORT_OBSIDIAN: &str = "file_import_obsidian";
 const MENU_NEW_NOTE: &str = "menu_new_note";
 const MENU_NEW_NOTEBOOK: &str = "menu_new_notebook";
 const MENU_NEW_STACK: &str = "menu_new_stack";
@@ -466,6 +467,44 @@ fn set_storage_path_replace(path: String, state: State<'_, AppState>) -> Result<
 }
 
 #[tauri::command]
+async fn clear_storage_for_import(state: State<'_, AppState>) -> Result<(), String> {
+    let pool = state.pool.clone();
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM note_tags").execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM attachments").execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM notes_text").execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM notes").execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM tags").execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM notebooks").execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM note_files").execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM ocr_text").execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM ocr_files").execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM note_history").execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM sqlite_sequence WHERE name IN ('note_tags','attachments','notes_text','notes','tags','notebooks','note_files','ocr_files','ocr_text','note_history')")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())?;
+
+    let files_dir = state.data_dir.join("files");
+    if files_dir.exists() {
+        let _ = fs::remove_dir_all(&files_dir);
+    }
+    let ocr_dir = state.data_dir.join("ocr");
+    if ocr_dir.exists() {
+        let _ = fs::remove_dir_all(&ocr_dir);
+    }
+    Ok(())
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FileEntry {
+    path: String,
+    rel_path: String,
+}
+
+#[tauri::command]
 async fn set_storage_path_empty(path: String, state: State<'_, AppState>) -> Result<(), String> {
     let new_dir = PathBuf::from(path.trim());
     if new_dir.as_os_str().is_empty() {
@@ -780,8 +819,11 @@ fn build_menu<R: Runtime>(app_handle: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let label = |key: &str| t(&messages, &fallback, key);
     let import_evernote =
         MenuItem::with_id(app_handle, FILE_IMPORT_EVERNOTE, label("menu.import_evernote"), true, None::<&str>)?;
+    let import_obsidian =
+        MenuItem::with_id(app_handle, FILE_IMPORT_OBSIDIAN, label("menu.import_obsidian"), true, None::<&str>)?;
     let import_submenu = SubmenuBuilder::new(app_handle, label("menu.import"))
         .item(&import_evernote)
+        .item(&import_obsidian)
         .build()?;
 
     let file_menu = SubmenuBuilder::new(app_handle, label("menu.file"))
@@ -921,6 +963,15 @@ async fn search_notes_by_title(query: String, limit: Option<i64>, state: State<'
 async fn get_note_id_by_external_id(external_id: String, state: State<'_, AppState>) -> Result<Option<i64>, String> {
     let repo = SqliteRepository { pool: state.pool.clone() };
     repo.get_note_id_by_external_id(&external_id).await.map_err(|e| e.to_string())
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+async fn set_note_external_id(noteId: i64, externalId: String, state: State<'_, AppState>) -> Result<(), String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    repo.set_note_external_id(noteId, &externalId)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1199,6 +1250,49 @@ fn path_exists(path: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
+fn list_files_recursive(root: String) -> Result<Vec<FileEntry>, String> {
+    let root_path = PathBuf::from(&root);
+    if !root_path.exists() {
+        return Ok(Vec::new());
+    }
+    let mut entries = Vec::new();
+    let mut stack = vec![root_path.clone()];
+    while let Some(dir) = stack.pop() {
+        let read_dir = match fs::read_dir(&dir) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+        for entry in read_dir.flatten() {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            if path.is_dir() {
+                if name == ".obsidian" {
+                    continue;
+                }
+                if name.starts_with('.') {
+                    continue;
+                }
+                stack.push(path);
+                continue;
+            }
+            if name.starts_with('.') {
+                continue;
+            }
+            let rel_path = path
+                .strip_prefix(&root_path)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            entries.push(FileEntry {
+                path: path.to_string_lossy().to_string(),
+                rel_path,
+            });
+        }
+    }
+    Ok(entries)
+}
+
+#[tauri::command]
 fn ensure_dir(path: String) -> Result<(), String> {
     let path = PathBuf::from(path);
     fs::create_dir_all(&path).map_err(|e| e.to_string())?;
@@ -1336,6 +1430,25 @@ fn count_missing_rte(rte_root: String, note_ids: Vec<String>) -> Result<i64, Str
 fn create_evernote_backup(state: State<'_, AppState>) -> Result<String, String> {
     let timestamp = chrono::Local::now().format("evernote-%Y%m%d-%H%M%S").to_string();
     let backup_dir = state.data_dir.join("backups").join(timestamp);
+    fs::create_dir_all(&backup_dir).map_err(|e| e.to_string())?;
+    let notes_db = state.data_dir.join("notes.db");
+    if notes_db.exists() {
+        fs::copy(&notes_db, backup_dir.join("notes.db")).map_err(|e| e.to_string())?;
+    }
+    copy_dir_recursive(&state.data_dir.join("files"), &backup_dir.join("files"))?;
+    Ok(backup_dir.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn create_import_backup(kind: String, state: State<'_, AppState>) -> Result<String, String> {
+    let clean = kind
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+        .collect::<String>()
+        .to_lowercase();
+    let prefix = if clean.is_empty() { "import" } else { clean.as_str() };
+    let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+    let backup_dir = state.data_dir.join("backups").join(format!("{}-{}", prefix, timestamp));
     fs::create_dir_all(&backup_dir).map_err(|e| e.to_string())?;
     let notes_db = state.data_dir.join("notes.db");
     if notes_db.exists() {
@@ -1783,6 +1896,25 @@ async fn import_evernote_from_json(json_path: String, assets_dir: String, state:
 }
 
 #[tauri::command]
+async fn select_obsidian_folder(app_handle: AppHandle) -> Result<Option<String>, String> {
+    let (tx, rx): (
+        tokio::sync::oneshot::Sender<Option<String>>,
+        tokio::sync::oneshot::Receiver<Option<String>>,
+    ) = tokio::sync::oneshot::channel();
+    app_handle
+        .dialog()
+        .file()
+        .set_title("Select Obsidian folder")
+        .pick_folder(move |folder| {
+            let path = folder.and_then(|path| path.into_path().ok()).map(|path| {
+                path.to_string_lossy().to_string()
+            });
+            let _ = tx.send(path);
+        });
+    rx.await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn run_note_files_backfill(state: State<'_, AppState>) -> Result<(), String> {
     let repo = SqliteRepository { pool: state.pool.clone() };
     match repo.needs_note_files_backfill().await {
@@ -2028,6 +2160,9 @@ fn main() {
                 FILE_IMPORT_EVERNOTE => {
                     let _ = app_handle.emit("import-evernote", ());
                 }
+                FILE_IMPORT_OBSIDIAN => {
+                    let _ = app_handle.emit("import-obsidian", ());
+                }
                 MENU_NEW_NOTE => {
                     let _ = app_handle.emit("menu-new-note", ());
                 }
@@ -2073,6 +2208,7 @@ fn main() {
             search_notes_by_title,
             get_note,
             get_note_id_by_external_id,
+            set_note_external_id,
             get_note_counts,
             get_data_dir,
             upsert_note,
@@ -2096,6 +2232,7 @@ fn main() {
             clear_note_history,
             cleanup_note_history,
             path_exists,
+            list_files_recursive,
             path_is_dir,
             ensure_dir,
             read_file_bytes,
@@ -2105,8 +2242,10 @@ fn main() {
             count_missing_rte,
             get_resource_dir,
             create_evernote_backup,
+            create_import_backup,
             find_evernote_paths,
             select_evernote_folder,
+            select_obsidian_folder,
             import_evernote_from_json,
             run_note_files_backfill,
             get_ocr_pending_files,
@@ -2126,6 +2265,7 @@ fn main() {
             get_default_storage_path,
             get_storage_override,
             get_storage_info,
+            clear_storage_for_import,
             restart_app,
             exit_app,
             set_storage_path,
