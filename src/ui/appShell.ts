@@ -7,6 +7,7 @@ import { buildMenuNodes } from "./menuBuilder";
 import { mountSearchModal } from "./searchModal";
 import { mountSettingsModal } from "./settingsModal";
 import { mountEvernoteImportModal } from "./evernoteImportModal";
+import { mountHistoryModal } from "./historyModal";
 import { mountSidebar, type SidebarHandlers, type SidebarInstance } from "./sidebar";
 import { mountTagsBar } from "./tagsBar";
 import { createEditorScheduler } from "./editorScheduler";
@@ -18,6 +19,7 @@ import { appStore } from "../state/store";
 
 export const mountApp = (root: HTMLElement) => {
   let openSearchModal = () => {};
+  let openHistoryModal = () => {};
   let openSettingsModal = () => {};
   const layout = createAppLayout(root, {
     onSearch: () => openSearchModal(),
@@ -59,9 +61,15 @@ export const mountApp = (root: HTMLElement) => {
   openSettingsModal = () => settingsModal.open();
 
   listen("menu-search", () => openSearchModal());
+  listen("menu-history", () => openHistoryModal());
   listen("menu-settings", () => openSettingsModal());
   const importModal = mountEvernoteImportModal(layout.editorPane);
   listen("import-evernote", () => importModal.open());
+
+  const historyModal = mountHistoryModal(layout.editorPane, {
+    onOpenNote: (noteId) => actions.openNote(noteId),
+  });
+  openHistoryModal = () => historyModal.open();
 
   const sidebarHandlers: SidebarHandlers = {
     onSelectNotebook: (id) => actions.selectNotebook(id),
@@ -280,6 +288,7 @@ export const mountApp = (root: HTMLElement) => {
     editorInstance.destroy();
     editorScheduler.reset();
     searchModal.destroy();
+    historyModal.destroy();
     importModal.destroy();
     metaBar.destroy();
     tagsBar.destroy();

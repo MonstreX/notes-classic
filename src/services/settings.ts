@@ -24,6 +24,7 @@ export const persistSettings = (state: AppState) => {
       notesSortDir: state.notesSortDir,
       deleteToTrash: state.deleteToTrash,
       language: state.language,
+      historyRetentionDays: state.historyRetentionDays,
     };
     invoke("set_settings", { settings: payload }).catch((e) => {
       logError("[settings] persist failed", e);
@@ -90,6 +91,12 @@ export const loadSettings = async () => {
         if (stored.deleteToTrash !== undefined) {
           draft.deleteToTrash = Boolean(stored.deleteToTrash);
         }
+        if (stored.historyRetentionDays !== undefined) {
+          const parsed = Number(stored.historyRetentionDays);
+          if (Number.isFinite(parsed) && parsed > 0) {
+            draft.historyRetentionDays = Math.floor(parsed);
+          }
+        }
         if (stored.language && isSupportedLanguage(stored.language)) {
           draft.language = stored.language;
           hasLanguage = true;
@@ -146,6 +153,12 @@ export const loadSettings = async () => {
         }
         if (legacy.deleteToTrash !== undefined) {
           draft.deleteToTrash = Boolean(legacy.deleteToTrash);
+        }
+        if (legacy.historyRetentionDays !== undefined) {
+          const parsed = Number(legacy.historyRetentionDays);
+          if (Number.isFinite(parsed) && parsed > 0) {
+            draft.historyRetentionDays = Math.floor(parsed);
+          }
         }
       });
       await invoke("set_settings", { settings: legacy });

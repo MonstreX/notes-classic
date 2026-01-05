@@ -2,7 +2,7 @@
 
 mod db;
 
-use db::{Attachment, Note, NoteCounts, NoteListItem, Notebook, OcrFileItem, OcrStats, SqliteRepository, Tag};
+use db::{Attachment, Note, NoteCounts, NoteHistoryItem, NoteListItem, Notebook, OcrFileItem, OcrStats, SqliteRepository, Tag};
 use serde_json::Value;
 use std::fs;
 use std::io::Read;
@@ -28,6 +28,7 @@ const MENU_NEW_NOTEBOOK: &str = "menu_new_notebook";
 const MENU_NEW_STACK: &str = "menu_new_stack";
 const MENU_DELETE_NOTE: &str = "menu_delete_note";
 const MENU_SEARCH: &str = "menu_search";
+const MENU_HISTORY: &str = "menu_history";
 const MENU_SETTINGS: &str = "menu_settings";
 const MAX_NOTE_FILE_BYTES: usize = 25 * 1024 * 1024;
 static NOTE_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -815,6 +816,7 @@ fn build_menu<R: Runtime>(app_handle: &AppHandle<R>) -> tauri::Result<Menu<R>> {
 
     let tools_menu = SubmenuBuilder::new(app_handle, label("menu.tools"))
         .item(&MenuItem::with_id(app_handle, MENU_SEARCH, label("menu.search"), true, None::<&str>)?)
+        .item(&MenuItem::with_id(app_handle, MENU_HISTORY, label("menu.history"), true, None::<&str>)?)
         .build()?;
 
     MenuBuilder::new(app_handle)
@@ -1221,6 +1223,35 @@ async fn get_attachment_by_path(path: String, state: State<'_, AppState>) -> Res
     repo.get_attachment_by_path(&normalized)
         .await
         .map_err(|e| e.to_string())
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+async fn add_history_entry(noteId: i64, minGapSeconds: i64, state: State<'_, AppState>) -> Result<(), String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    repo.add_history_entry(noteId, minGapSeconds)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_note_history(limit: i64, offset: i64, state: State<'_, AppState>) -> Result<Vec<NoteHistoryItem>, String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    repo.get_note_history(limit, offset)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn clear_note_history(state: State<'_, AppState>) -> Result<(), String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    repo.clear_note_history().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn cleanup_note_history(days: i64, state: State<'_, AppState>) -> Result<(), String> {
+    let repo = SqliteRepository { pool: state.pool.clone() };
+    repo.cleanup_note_history(days).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -2012,6 +2043,9 @@ fn main() {
                 MENU_SEARCH => {
                     let _ = app_handle.emit("menu-search", ());
                 }
+                MENU_HISTORY => {
+                    let _ = app_handle.emit("menu-history", ());
+                }
                 MENU_SETTINGS => {
                     let _ = app_handle.emit("menu-settings", ());
                 }
@@ -2057,6 +2091,10 @@ fn main() {
             read_attachment_bytes,
             get_attachment_by_path,
             save_bytes_as,
+            add_history_entry,
+            get_note_history,
+            clear_note_history,
+            cleanup_note_history,
             path_exists,
             path_is_dir,
             ensure_dir,

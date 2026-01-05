@@ -254,7 +254,20 @@ pub struct NoteCounts {
     pub per_notebook: Vec<NoteCountItem>,
 }
 
-const SCHEMA_VERSION: i64 = 4;
+const SCHEMA_VERSION: i64 = 5;
+
+#[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteHistoryItem {
+    pub id: i64,
+    pub note_id: i64,
+    pub opened_at: i64,
+    pub note_title: String,
+    pub notebook_id: Option<i64>,
+    pub notebook_name: Option<String>,
+    pub stack_id: Option<i64>,
+    pub stack_name: Option<String>,
+}
 
 async fn table_exists(pool: &SqlitePool, name: &str) -> Result<bool, sqlx::Error> {
     let row: Option<(String,)> = sqlx::query_as(
@@ -522,6 +535,32 @@ async fn create_schema_v3(pool: &SqlitePool) -> Result<(), sqlx::Error> {
         .execute(pool)
         .await?;
 
+    create_history_table(pool).await?;
+
+    Ok(())
+}
+
+async fn create_history_table(pool: &SqlitePool) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS note_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            note_id INTEGER NOT NULL,
+            opened_at INTEGER NOT NULL,
+            note_title TEXT NOT NULL,
+            notebook_id INTEGER,
+            notebook_name TEXT,
+            stack_id INTEGER,
+            stack_name TEXT
+        )",
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_note_history_opened_at ON note_history(opened_at)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_note_history_note_id ON note_history(note_id)")
+        .execute(pool)
+        .await?;
     Ok(())
 }
 
@@ -592,6 +631,12 @@ async fn migrate_to_v4(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     Ok(())
 }
 
+async fn migrate_to_v5(pool: &SqlitePool) -> Result<(), sqlx::Error> {
+    migrate_to_v4(pool).await?;
+    create_history_table(pool).await?;
+    Ok(())
+}
+
 
 pub async fn init_db(data_dir: &Path) -> Result<SqlitePool, String> {
     if !data_dir.exists() {
@@ -634,7 +679,7 @@ pub async fn init_db(data_dir: &Path) -> Result<SqlitePool, String> {
             .await
             .map_err(|e| e.to_string())?;
     } else if version < SCHEMA_VERSION {
-        migrate_to_v4(&pool)
+        migrate_to_v5(&pool)
             .await
             .map_err(|e| e.to_string())?;
         set_schema_version(&pool, SCHEMA_VERSION)
@@ -1503,6 +1548,95 @@ impl SqliteRepository {
         .bind(note_id)
         .fetch_all(&self.pool)
         .await
+    }
+
+    pub async fn add_history_entry(&self, note_id: i64, min_gap_seconds: i64) -> Result<(), sqlx::Error> {
+        let now = chrono::Utc::now().timestamp();
+        if min_gap_seconds > 0 {
+            let last: Option<(i64,)> = sqlx::query_as(
+                "SELECT opened_at FROM note_history WHERE note_id = ? ORDER BY opened_at DESC LIMIT 1",
+            )
+            .bind(note_id)
+            .fetch_optional(&self.pool)
+            .await?;
+            if let Some((opened_at,)) = last {
+                if now - opened_at < min_gap_seconds {
+                    return Ok(());
+                }
+            }
+        }
+
+        let row: Option<(String, Option<i64>, Option<String>, Option<i64>, Option<String>)> = sqlx::query_as(
+            "SELECT n.title,
+                    n.notebook_id,
+                    nb.name,
+                    nb.parent_id,
+                    stack.name
+             FROM notes n
+             LEFT JOIN notebooks nb ON nb.id = n.notebook_id
+             LEFT JOIN notebooks stack ON stack.id = nb.parent_id
+             WHERE n.id = ?",
+        )
+        .bind(note_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        let Some((title, notebook_id, notebook_name, stack_id, stack_name)) = row else {
+            return Ok(());
+        };
+
+        sqlx::query(
+            "INSERT INTO note_history (note_id, opened_at, note_title, notebook_id, notebook_name, stack_id, stack_name)
+             VALUES (?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(note_id)
+        .bind(now)
+        .bind(title)
+        .bind(notebook_id)
+        .bind(notebook_name)
+        .bind(stack_id)
+        .bind(stack_name)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn get_note_history(&self, limit: i64, offset: i64) -> Result<Vec<NoteHistoryItem>, sqlx::Error> {
+        sqlx::query_as::<_, NoteHistoryItem>(
+            "SELECT id,
+                    note_id,
+                    opened_at,
+                    note_title,
+                    notebook_id,
+                    notebook_name,
+                    stack_id,
+                    stack_name
+             FROM note_history
+             ORDER BY opened_at DESC
+             LIMIT ? OFFSET ?",
+        )
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn clear_note_history(&self) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM note_history")
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn cleanup_note_history(&self, days: i64) -> Result<(), sqlx::Error> {
+        if days <= 0 {
+            return Ok(());
+        }
+        let cutoff = chrono::Utc::now().timestamp() - (days * 86400);
+        sqlx::query("DELETE FROM note_history WHERE opened_at < ?")
+            .bind(cutoff)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 
     async fn backfill_note_files(&self) -> Result<(), sqlx::Error> {

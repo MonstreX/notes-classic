@@ -12,6 +12,7 @@ import {
   updateNote,
 } from "../services/notes";
 import { getTags } from "../services/tags";
+import { addHistoryEntry, cleanupNoteHistory } from "../services/history";
 import { loadSelectedNote } from "./noteLoader";
 import { fetchNotesData, resortNotes } from "./dataLoader";
 import { selectionActions } from "./selectionController";
@@ -55,13 +56,16 @@ const recordHistory = (noteId: number) => {
   });
 };
 
-const openNoteInternal = async (noteId: number, record: boolean) => {
+const openNoteInternal = async (noteId: number, recordNav: boolean, recordVisit: boolean) => {
   const note = await getNote(noteId);
   if (!note) return;
-  if (record) {
+  if (recordNav) {
     recordHistory(noteId);
   } else {
     appStore.setState({ historyCurrent: noteId });
+  }
+  if (recordVisit) {
+    addHistoryEntry(noteId, 5).catch((e) => logError("[history] add failed", e));
   }
   appStore.setState({ selectedNotebookId: note.notebookId, selectedTagId: null, selectedTrash: false });
   await fetchData(true);
@@ -78,7 +82,7 @@ const goBack = async () => {
     ? [state.historyCurrent, ...state.historyForward]
     : [...state.historyForward];
   appStore.setState({ historyBack: nextBack, historyForward: nextForward, historyCurrent: target });
-  await openNoteInternal(target, false);
+  await openNoteInternal(target, false, true);
 };
 
 const goForward = async () => {
@@ -91,7 +95,7 @@ const goForward = async () => {
     ? [...state.historyBack, state.historyCurrent]
     : [...state.historyBack];
   appStore.setState({ historyBack: nextBack, historyForward: nextForward, historyCurrent: target });
-  await openNoteInternal(target, false);
+  await openNoteInternal(target, false, true);
 };
 
 let saveTimer: number | null = null;
@@ -120,7 +124,7 @@ const scheduleAutosave = () => {
 };
 
 const tagActions = createTagActions(fetchData);
-const noteActions = createNoteActions(fetchData, (id) => openNoteInternal(id, true));
+const noteActions = createNoteActions(fetchData, (id) => openNoteInternal(id, true, true));
 const notebookActions = createNotebookActions(fetchData);
 
 export const actions = {
@@ -128,9 +132,10 @@ export const actions = {
   ...noteActions,
   ...tagActions,
   ...notebookActions,
-  openNote: async (id: number) => openNoteInternal(id, true),
+  openNote: async (id: number) => openNoteInternal(id, true, true),
   setNoteSelectionWithHistory: async (ids: number[], primaryId: number) => {
     recordHistory(primaryId);
+    addHistoryEntry(primaryId, 5).catch((e) => logError("[history] add failed", e));
     await selectionActions.setNoteSelection(ids, primaryId);
   },
   goBack,
@@ -142,7 +147,7 @@ export const actions = {
       ? Number(trimmed)
       : await getNoteIdByExternalId(trimmed);
     if (!noteId) return;
-    await openNoteInternal(noteId, true);
+    await openNoteInternal(noteId, true, true);
   },
   setNotesSort: (sortBy: "updated" | "title", sortDir: "asc" | "desc") => {
     resortNotes(sortBy, sortDir);
@@ -153,6 +158,7 @@ let prevState = appStore.getState();
 export const initApp = async () => {
   appStore.setState({ isLoaded: false });
   await loadSettings();
+  cleanupNoteHistory(appStore.getState().historyRetentionDays).catch((e) => logError("[history] cleanup failed", e));
   try {
     await fetchData(true);
     const tags = await getTags();

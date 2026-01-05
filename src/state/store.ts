@@ -32,6 +32,7 @@ export type AppState = {
   historyBack: number[];
   historyForward: number[];
   historyCurrent: number | null;
+  historyRetentionDays: number;
 };
 
 type Listener = () => void;
@@ -67,6 +68,7 @@ let state: AppState = {
   historyBack: [],
   historyForward: [],
   historyCurrent: null,
+  historyRetentionDays: 30,
 };
 
 const listeners = new Set<Listener>();

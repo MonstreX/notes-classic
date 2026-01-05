@@ -64,6 +64,13 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
               <select class="settings-row__select" id="settings-language" data-setting-language></select>
               <p class="settings-row__hint">${t("settings.language_hint")}</p>
             </div>
+            <div class="settings-row">
+              <label class="settings-row__label" for="settings-history-retention">
+                ${t("settings.history_retention")}
+              </label>
+              <input class="settings-row__input" type="number" min="1" step="1" id="settings-history-retention" data-setting-history-retention />
+              <p class="settings-row__hint">${t("settings.history_retention_hint")}</p>
+            </div>
           </section>
           <section class="settings-modal__section" data-settings-section="storage">
             <div class="settings-row">
@@ -97,6 +104,7 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
   const storageChange = overlay.querySelector<HTMLButtonElement>("[data-settings-storage-change]");
   const storageDefault = overlay.querySelector<HTMLButtonElement>("[data-settings-storage-default]");
   const storageStatus = overlay.querySelector<HTMLElement>("[data-settings-storage-status]");
+  const historyRetentionInput = overlay.querySelector<HTMLInputElement>("[data-setting-history-retention]");
   const applyBtn = overlay.querySelector<HTMLButtonElement>("[data-settings-apply]");
   const closeFooterBtn = overlay.querySelector<HTMLButtonElement>("[data-settings-close]");
   const loadingOverlay = overlay.querySelector<HTMLElement>("[data-settings-loading]");
@@ -106,10 +114,12 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
   let draftStorageMode: "default" | "custom" = "default";
   let draftStoragePath = "";
   let draftStorageAction: "copy" | "use" | "replace" | "empty" = "copy";
+  let draftHistoryRetention = appStore.getState().historyRetentionDays;
   let initialStorageMode: "default" | "custom" = "default";
   let initialStoragePath = "";
   let initialStorageAction: "copy" | "use" | "replace" | "empty" = "copy";
   let initialLanguage = appStore.getState().language;
+  let initialHistoryRetention = appStore.getState().historyRetentionDays;
   let defaultStoragePath = "";
   let currentStoragePath = "";
 
@@ -144,6 +154,11 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
       draftLanguage = state.language;
       initialLanguage = state.language;
       languageSelect.value = draftLanguage;
+    }
+    if (historyRetentionInput) {
+      draftHistoryRetention = state.historyRetentionDays;
+      initialHistoryRetention = state.historyRetentionDays;
+      historyRetentionInput.value = String(draftHistoryRetention);
     }
     updateDefaultButtonState();
   };
@@ -399,6 +414,13 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
     if (!languageSelect) return;
     draftLanguage = languageSelect.value as typeof draftLanguage;
   });
+  historyRetentionInput?.addEventListener("input", () => {
+    if (!historyRetentionInput) return;
+    const parsed = Number(historyRetentionInput.value);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      draftHistoryRetention = Math.floor(parsed);
+    }
+  });
 
   storageChange?.addEventListener("click", async () => {
     setStorageStatus("", "muted");
@@ -481,8 +503,9 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
   applyBtn?.addEventListener("click", async () => {
     setStorageStatus("", "muted");
     setLoading(true);
-    appStore.setState({ deleteToTrash: draftDeleteToTrash, language: draftLanguage });
+    appStore.setState({ deleteToTrash: draftDeleteToTrash, language: draftLanguage, historyRetentionDays: draftHistoryRetention });
     const languageChanged = draftLanguage !== initialLanguage;
+    const historyRetentionChanged = draftHistoryRetention !== initialHistoryRetention;
     const storageChanged =
       draftStorageMode !== initialStorageMode ||
       (draftStorageMode === "custom" && draftStoragePath !== initialStoragePath) ||
@@ -534,6 +557,13 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
     }
     setLoading(false);
     closeModal();
+    if (historyRetentionChanged) {
+      try {
+        await invoke("cleanup_note_history", { days: draftHistoryRetention });
+      } catch (e) {
+        logError("[settings] history retention cleanup failed", e);
+      }
+    }
     if (languageChanged) {
       try {
         await invoke("set_settings", { settings: { language: draftLanguage } });
