@@ -25,6 +25,7 @@ const SETTINGS_FILE_NAME: &str = "app.json";
 const FILE_IMPORT_EVERNOTE: &str = "file_import_evernote";
 const FILE_IMPORT_OBSIDIAN: &str = "file_import_obsidian";
 const FILE_IMPORT_HTML: &str = "file_import_html";
+const FILE_IMPORT_TEXT: &str = "file_import_text";
 const MENU_NEW_NOTE: &str = "menu_new_note";
 const MENU_NEW_NOTEBOOK: &str = "menu_new_notebook";
 const MENU_NEW_STACK: &str = "menu_new_stack";
@@ -824,10 +825,13 @@ fn build_menu<R: Runtime>(app_handle: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         MenuItem::with_id(app_handle, FILE_IMPORT_OBSIDIAN, label("menu.import_obsidian"), true, None::<&str>)?;
     let import_html =
         MenuItem::with_id(app_handle, FILE_IMPORT_HTML, label("menu.import_html"), true, None::<&str>)?;
+    let import_text =
+        MenuItem::with_id(app_handle, FILE_IMPORT_TEXT, label("menu.import_text"), true, None::<&str>)?;
     let import_submenu = SubmenuBuilder::new(app_handle, label("menu.import"))
         .item(&import_evernote)
         .item(&import_obsidian)
         .item(&import_html)
+        .item(&import_text)
         .build()?;
 
     let file_menu = SubmenuBuilder::new(app_handle, label("menu.file"))
@@ -1938,6 +1942,25 @@ async fn select_html_folder(app_handle: AppHandle) -> Result<Option<String>, Str
 }
 
 #[tauri::command]
+async fn select_text_folder(app_handle: AppHandle) -> Result<Option<String>, String> {
+    let (tx, rx): (
+        tokio::sync::oneshot::Sender<Option<String>>,
+        tokio::sync::oneshot::Receiver<Option<String>>,
+    ) = tokio::sync::oneshot::channel();
+    app_handle
+        .dialog()
+        .file()
+        .set_title("Select text folder")
+        .pick_folder(move |folder| {
+            let path = folder.and_then(|path| path.into_path().ok()).map(|path| {
+                path.to_string_lossy().to_string()
+            });
+            let _ = tx.send(path);
+        });
+    rx.await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn run_note_files_backfill(state: State<'_, AppState>) -> Result<(), String> {
     let repo = SqliteRepository { pool: state.pool.clone() };
     match repo.needs_note_files_backfill().await {
@@ -2189,6 +2212,9 @@ fn main() {
                 FILE_IMPORT_HTML => {
                     let _ = app_handle.emit("import-html", ());
                 }
+                FILE_IMPORT_TEXT => {
+                    let _ = app_handle.emit("import-text", ());
+                }
                 MENU_NEW_NOTE => {
                     let _ = app_handle.emit("menu-new-note", ());
                 }
@@ -2273,6 +2299,7 @@ fn main() {
             select_evernote_folder,
             select_obsidian_folder,
             select_html_folder,
+            select_text_folder,
             import_evernote_from_json,
             run_note_files_backfill,
             get_ocr_pending_files,
