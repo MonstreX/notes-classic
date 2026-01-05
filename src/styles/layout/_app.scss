@@ -522,7 +522,7 @@
 }
 
 .search-modal__button:active {
-  transform: translateY(calc(-50% + 1px));
+  transform: translateY(-50%) !important;
 }
 
 .search-modal__options {
