@@ -100,6 +100,13 @@ notes-classic/
 - Backup created before overwriting storage.
 - Restart required after import.
 
+### 9. Obsidian / HTML / Text Import (In-App)
+- Obsidian Markdown import with attachments, TODOs, code blocks, and note links.
+- HTML import converts `<pre>` to code blocks and rewrites local assets.
+- Text import uses Markdown-like syntax for TODOs and code blocks.
+- All importers back up current storage and require restart.
+- Details: `docs/IMPORTS.md`
+
 ---
 
 ## Development and Build
