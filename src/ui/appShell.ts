@@ -10,6 +10,7 @@ import { mountEvernoteImportModal } from "./evernoteImportModal";
 import { mountObsidianImportModal } from "./obsidianImportModal";
 import { mountHtmlImportModal } from "./htmlImportModal";
 import { mountTextImportModal } from "./textImportModal";
+import { mountNotesClassicImportModal } from "./notesClassicImportModal";
 import { mountHistoryModal } from "./historyModal";
 import { mountSidebar, type SidebarHandlers, type SidebarInstance } from "./sidebar";
 import { mountTagsBar } from "./tagsBar";
@@ -69,6 +70,20 @@ export const mountApp = (root: HTMLElement) => {
   listen("menu-settings", () => openSettingsModal());
   const importModal = mountEvernoteImportModal(layout.editorPane);
   listen("import-evernote", () => importModal.open());
+  const notesClassicImportModal = mountNotesClassicImportModal(layout.editorPane, {
+    onImportStart: async () => {
+      if (cleanupOcr) {
+        await cleanupOcr();
+        cleanupOcr = undefined;
+      }
+    },
+    onImportEnd: () => {
+      if (!cleanupOcr) {
+        cleanupOcr = startOcrQueue();
+      }
+    },
+  });
+  listen("import-notes-classic", () => notesClassicImportModal.open());
   const obsidianImportModal = mountObsidianImportModal(layout.editorPane, {
     onImportStart: async () => {
       if (cleanupOcr) {
@@ -338,6 +353,7 @@ export const mountApp = (root: HTMLElement) => {
     searchModal.destroy();
     historyModal.destroy();
     importModal.destroy();
+    notesClassicImportModal.destroy();
     metaBar.destroy();
     tagsBar.destroy();
     window.removeEventListener("mousemove", handleMouseMove);
