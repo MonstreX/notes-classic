@@ -1,6 +1,6 @@
 # Import Pipelines
 
-This document describes the **in-app** import flows for Obsidian (Markdown), HTML, and Text datasets, plus the common pitfalls and guardrails used to keep imports stable.
+This document describes the **in-app** import flows for Notes Classic exports, Obsidian (Markdown), HTML, and Text datasets, plus the common pitfalls and guardrails used to keep imports stable.
 
 Evernote import is documented separately: `docs/EVERNOTE-IMPORT.md`.
 
@@ -19,7 +19,23 @@ Evernote import is documented separately: `docs/EVERNOTE-IMPORT.md`.
 - **Attachments are tokenized then replaced.** Raw `__ATTACHMENT_*__` tokens must be replaced with `note-attachment` HTML.
 - **Assets are never shared between notes.** Each imported file is stored as a distinct entry (unique hash + file on disk).
 - **H1 titles are removed.** Note titles are already displayed above the editor; H1 in body causes duplication.
-- **Relative asset paths must be resolved.** Importers resolve `attachments/...` and `images/...` against the note’s directory and fallback to root.
+- **Relative asset paths must be resolved.** Importers resolve `attachments/...` and `images/...` against the note's directory and fallback to root.
+
+## Notes Classic Export Import
+
+**Input:**
+- Folder created by Notes Classic export (contains `manifest.json`, `notes/`, `attachments/`, `files/`).
+
+**Behavior:**
+- Imports all entities listed in `manifest.json` with original IDs preserved.
+- Copies `attachments/` into storage `files/` and restores `local_path` as `files/<rel>`.
+- Copies `files/` into storage `files/` and restores OCR data from `ocr_files` + `ocr_text`.
+- Notes are read from `notes/<id>.html`, meta from `notes/<id>.meta.json`.
+- `notes_text`, `note_tags`, and `note_history` are imported as-is.
+
+**Notes:**
+- Import requires a full replace (current storage is cleared).
+- A backup is created under `data/backups/notes-classic-YYYYMMDD-HHMMSS`.
 
 ## Obsidian (Markdown) Import
 
@@ -28,15 +44,15 @@ Evernote import is documented separately: `docs/EVERNOTE-IMPORT.md`.
 
 **Notes:**
 - Stack/Notebook mapping uses folder structure:
-  - `Root/Note.md` → `Root / General`
-  - `Root/Project/Note.md` → `Root / Project`
-  - `Root/Project/API/Note.md` → `Root / Project.API`
+  - `Root/Note.md`  `Root / General`
+  - `Root/Project/Note.md`  `Root / Project`
+  - `Root/Project/API/Note.md`  `Root / Project.API`
 - Markdown conversions:
-  - ``` fenced code ``` → `div.note-code` (AUTO language)
-  - `- [ ]` / `- [x]` → `ul[data-en-todo]` with `li[data-en-checked]`
-  - `<pre>` blocks → `div.note-callout`
-  - `![[...]]` → image or attachment
-  - `[[...]]` → note link if a target note exists, otherwise plain text
+  - ``` fenced code ```  `div.note-code` (AUTO language)
+  - `- [ ]` / `- [x]`  `ul[data-en-todo]` with `li[data-en-checked]`
+  - `<pre>` blocks  `div.note-callout`
+  - `![[...]]`  image or attachment
+  - `[[...]]`  note link if a target note exists, otherwise plain text
   - Inline `attachments/...` are resolved to real files
 - `external_id` for notes is `obsidian:<rel/path>`.
 
@@ -47,10 +63,10 @@ Evernote import is documented separately: `docs/EVERNOTE-IMPORT.md`.
 
 **Transformations:**
 - `<h1>` removed.
-- `<pre><code>` → `div.note-code` (AUTO language).
-- `<ul>/<ol>` with `input[type=checkbox]` → `ul[data-en-todo]` with `li[data-en-checked]`.
-- `<img src="attachments/...">` → stored in `files/` and rewritten to `files/<hash>.<ext>`.
-- `<a href="attachments/...">` → stored as `note-attachment` block.
+- `<pre><code>`  `div.note-code` (AUTO language).
+- `<ul>/<ol>` with `input[type=checkbox]`  `ul[data-en-todo]` with `li[data-en-checked]`.
+- `<img src="attachments/...">`  stored in `files/` and rewritten to `files/<hash>.<ext>`.
+- `<a href="attachments/...">`  stored as `note-attachment` block.
 - `external_id` for notes is `html:<rel/path>`.
 
 ## Text Import
