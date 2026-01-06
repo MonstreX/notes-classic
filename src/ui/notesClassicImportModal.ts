@@ -262,9 +262,17 @@ export const mountNotesClassicImportModal = (
         attachments: summary.attachmentCount + summary.imageCount,
         database: 1,
       });
-      const report = await runNotesClassicImport(summary.sourceRoot, (progress) => {
-        setStageProgress(progress.stage, progress.current, progress.total, progress.state ?? "running");
-      });
+      const report = await runNotesClassicImport(
+        summary.sourceRoot,
+        (progress) => {
+          setStageProgress(progress.stage, progress.current, progress.total, progress.state ?? "running");
+        },
+        (message) => {
+          if (message) {
+            setStatus(message, "muted", true);
+          }
+        }
+      );
       reportPath = `${report.backupDir}/import_report.json`;
       setStatus(t("import_notes_classic.finished"), "ok");
       setReport(t("import_notes_classic.report_saved", { path: reportPath }));

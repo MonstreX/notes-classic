@@ -150,7 +150,8 @@ export const scanNotesClassicSource = async (root: string): Promise<NotesClassic
 
 export const runNotesClassicImport = async (
   root: string,
-  onProgress?: (update: StageUpdate) => void
+  onProgress?: (update: StageUpdate) => void,
+  onStatus?: (message: string) => void
 ) => {
   const report: NotesClassicImportReport = {
     startedAt: new Date().toISOString(),
@@ -193,8 +194,10 @@ export const runNotesClassicImport = async (
     if (!summary.valid) {
       throw new Error(t("import_notes_classic.scan_failed_generic"));
     }
+    onStatus?.(t("import_notes_classic.preparing_backup"));
     const backupDir = await createBackup();
     report.backupDir = backupDir;
+    onStatus?.(t("import_notes_classic.preparing_manifest"));
     report.targetDataDir = await getDataDir();
     onProgress?.({ stage: "notes", current: 0, total: summary.noteCount, state: "running" });
     onProgress?.({
@@ -209,6 +212,7 @@ export const runNotesClassicImport = async (
       if (!event.payload) return;
       onProgress?.(event.payload);
     });
+    onStatus?.(t("import_notes_classic.preparing_import"));
     const manifestPath = `${root}/manifest.json`;
     const result = await importNotesClassic(manifestPath, backupDir);
     report.stats.notes = result.notes;
