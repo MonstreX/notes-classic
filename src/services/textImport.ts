@@ -25,6 +25,7 @@ type TextImportReport = {
   sourceRoot: string;
   targetDataDir: string;
   backupDir: string;
+  failed: boolean;
   summary: TextScanSummary;
   stats: {
     notes: number;
@@ -592,6 +593,7 @@ export const runTextImport = async (
     sourceRoot: root,
     targetDataDir: "",
     backupDir: "",
+    failed: false,
     summary: {
       sourceRoot: root,
       noteCount: 0,
@@ -637,14 +639,28 @@ export const runTextImport = async (
       fileIndex.set(normalizeKey(entry.relPath), entry.path);
     }
     const linkMap = new Map<string, string>();
+    const baseNameCounts = new Map<string, number>();
+    for (const entry of noteEntries) {
+      const relNoExt = entry.relPath.replace(/\.txt$/i, "");
+      const baseName = relNoExt.split("/").pop() || relNoExt;
+      const key = normalizeKey(baseName);
+      baseNameCounts.set(key, (baseNameCounts.get(key) ?? 0) + 1);
+    }
     for (const entry of noteEntries) {
       const relNoExt = entry.relPath.replace(/\.txt$/i, "");
       const externalId = buildExternalId(relNoExt);
       linkMap.set(normalizeKey(relNoExt), externalId);
       const baseName = relNoExt.split("/").pop() || relNoExt;
-      if (!linkMap.has(normalizeKey(baseName))) {
+      const baseKey = normalizeKey(baseName);
+      if ((baseNameCounts.get(baseKey) ?? 0) === 1 && !linkMap.has(baseKey)) {
         linkMap.set(normalizeKey(baseName), externalId);
       }
+    }
+    const ambiguous = Array.from(baseNameCounts.entries())
+      .filter(([, count]) => count > 1)
+      .map(([name]) => name);
+    if (ambiguous.length) {
+      report.errors.push(`Ambiguous note aliases: ${ambiguous.join(", ")}`);
     }
 
     const stackIds = new Map<string, number>();
@@ -733,9 +749,10 @@ export const runTextImport = async (
     return report;
   } catch (e) {
     report.finishedAt = new Date().toISOString();
+    report.failed = true;
     report.errors.push(String(e));
     logError("[import] text failed", e);
     await writeReport(report);
-    throw e;
+    return report;
   }
 };

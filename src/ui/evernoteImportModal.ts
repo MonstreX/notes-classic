@@ -297,8 +297,28 @@ export const mountEvernoteImportModal = (root: HTMLElement): EvernoteImportModal
       });
       reportPath = `${report.backupDir}/import_report.json`;
       const hasErrors = report.errors.length > 0;
-      setStatus(hasErrors ? t("import.finished_errors") : t("import.finished"), hasErrors ? "error" : "ok");
+      const isFailed = report.failed === true;
+      setStatus(
+        isFailed ? t("import.failed") : hasErrors ? t("import.finished_errors") : t("import.finished"),
+        isFailed || hasErrors ? "error" : "ok"
+      );
       setReport(t("import.report_saved", { path: reportPath }));
+      if (hasErrors || isFailed) {
+        const rollback = await openConfirmDialog({
+          title: t("import.rollback_title"),
+          message: t("import.rollback_message", { count: report.errors.length }),
+          confirmLabel: t("import.rollback_confirm"),
+          cancelLabel: t("import.rollback_continue"),
+          danger: true,
+        });
+        if (rollback) {
+          try {
+            await invoke("restore_import_backup", { backupDir: report.backupDir });
+          } catch (e) {
+            setStatus(t("import.rollback_failed", { message: String(e) }), "error");
+          }
+        }
+      }
       openRestartDialog();
     } catch (err) {
       logError("[import] failed", err);

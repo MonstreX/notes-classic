@@ -259,8 +259,29 @@ export const mountObsidianImportModal = (
         setStageProgress(progress.stage, progress.current, progress.total, progress.state ?? "running");
       });
       reportPath = `${report.backupDir}/import_report.json`;
-      setStatus(t("import_obsidian.finished"), "ok");
+      const hasErrors = report.errors.length > 0;
+      const isFailed = report.failed === true;
+      setStatus(
+        isFailed ? t("import_obsidian.failed") : hasErrors ? t("import_obsidian.finished_errors") : t("import_obsidian.finished"),
+        isFailed || hasErrors ? "error" : "ok"
+      );
       setReport(t("import_obsidian.report_saved", { path: reportPath }));
+      if (hasErrors || isFailed) {
+        const rollback = await openConfirmDialog({
+          title: t("import.rollback_title"),
+          message: t("import.rollback_message", { count: report.errors.length }),
+          confirmLabel: t("import.rollback_confirm"),
+          cancelLabel: t("import.rollback_continue"),
+          danger: true,
+        });
+        if (rollback) {
+          try {
+            await invoke("restore_import_backup", { backupDir: report.backupDir });
+          } catch (e) {
+            setStatus(t("import.rollback_failed", { message: String(e) }), "error");
+          }
+        }
+      }
       openRestartDialog();
     } catch (err) {
       logError("[import] obsidian failed", err);

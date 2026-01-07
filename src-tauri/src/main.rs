@@ -152,6 +152,102 @@ fn filename_from_url(url: &str) -> Option<String> {
     trimmed.rsplit('/').next().map(|s| s.to_string()).filter(|s| !s.is_empty())
 }
 
+fn percent_decode_lite(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut out = String::with_capacity(input.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            let hi = bytes[i + 1];
+            let lo = bytes[i + 2];
+            let hex = |b: u8| -> Option<u8> {
+                match b {
+                    b'0'..=b'9' => Some(b - b'0'),
+                    b'a'..=b'f' => Some(10 + b - b'a'),
+                    b'A'..=b'F' => Some(10 + b - b'A'),
+                    _ => None,
+                }
+            };
+            if let (Some(h), Some(l)) = (hex(hi), hex(lo)) {
+                out.push((h << 4 | l) as char);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i] as char);
+        i += 1;
+    }
+    out
+}
+
+fn extract_rel_from_asset_url(url: &str) -> Option<String> {
+    let lower = url.to_lowercase();
+    if lower.starts_with("files/") || lower.starts_with("./files/") {
+        return None;
+    }
+    if let Some(rest) = lower.strip_prefix("notes-file://files/") {
+        return Some(rest.to_string());
+    }
+    let decoded = percent_decode_lite(url).replace('\\', "/");
+    if let Some(idx) = decoded.to_lowercase().find("/files/") {
+        return Some(decoded[idx + "/files/".len()..].trim_start_matches('/').to_string());
+    }
+    if let Some(idx) = lower.find("%2ffiles%2f") {
+        let rel = &url[idx + "%2ffiles%2f".len()..];
+        let decoded_rel = percent_decode_lite(rel);
+        return Some(decoded_rel.trim_start_matches('/').replace('\\', "/"));
+    }
+    None
+}
+
+fn normalize_export_html(html: &str) -> String {
+    if html.is_empty() {
+        return String::new();
+    }
+    let mut out = String::with_capacity(html.len());
+    let mut cursor = 0;
+    while let Some(pos) = html[cursor..].find("src=") {
+        let idx = cursor + pos;
+        out.push_str(&html[cursor..idx]);
+        let after = &html[idx + 4..];
+        let quote = after.chars().next();
+        if quote != Some('"') && quote != Some('\'') {
+            out.push_str("src=");
+            cursor = idx + 4;
+            continue;
+        }
+        let q = quote.unwrap();
+        let remainder = &after[1..];
+        if let Some(end) = remainder.find(q) {
+            let url = &remainder[..end];
+            if let Some(rel) = extract_rel_from_asset_url(url) {
+                out.push_str("src=");
+                out.push(q);
+                out.push_str("files/");
+                out.push_str(&rel);
+                out.push(q);
+            } else if url.starts_with("notes-file://files/") {
+                out.push_str("src=");
+                out.push(q);
+                out.push_str("files/");
+                out.push_str(&url["notes-file://files/".len()..]);
+                out.push(q);
+            } else {
+                out.push_str("src=");
+                out.push(q);
+                out.push_str(url);
+                out.push(q);
+            }
+            cursor = idx + 4 + 1 + end + 1;
+        } else {
+            out.push_str("src=");
+            cursor = idx + 4;
+        }
+    }
+    out.push_str(&html[cursor..]);
+    out
+}
+
 fn store_note_bytes(data_dir: &Path, filename: &str, mime: &str, bytes: &[u8]) -> Result<StoredNoteFile, String> {
     if bytes.is_empty() {
         return Err("Empty file bytes".to_string());
@@ -1455,6 +1551,7 @@ fn create_evernote_backup(state: State<'_, AppState>) -> Result<String, String> 
         fs::copy(&notes_db, backup_dir.join("notes.db")).map_err(|e| e.to_string())?;
     }
     copy_dir_recursive(&state.data_dir.join("files"), &backup_dir.join("files"))?;
+    copy_dir_recursive(&state.data_dir.join("ocr"), &backup_dir.join("ocr"))?;
     Ok(backup_dir.to_string_lossy().to_string())
 }
 
@@ -1474,7 +1571,27 @@ fn create_import_backup(kind: String, state: State<'_, AppState>) -> Result<Stri
         fs::copy(&notes_db, backup_dir.join("notes.db")).map_err(|e| e.to_string())?;
     }
     copy_dir_recursive(&state.data_dir.join("files"), &backup_dir.join("files"))?;
+    copy_dir_recursive(&state.data_dir.join("ocr"), &backup_dir.join("ocr"))?;
     Ok(backup_dir.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn restore_import_backup(backup_dir: String, state: State<'_, AppState>) -> Result<(), String> {
+    let backup = PathBuf::from(backup_dir.trim());
+    if backup.as_os_str().is_empty() {
+        return Err("Backup path is empty".to_string());
+    }
+    if !backup.exists() {
+        return Err("Backup path not found".to_string());
+    }
+    remove_storage_data(&state.data_dir)?;
+    let notes_db = backup.join("notes.db");
+    if notes_db.exists() {
+        fs::copy(&notes_db, state.data_dir.join("notes.db")).map_err(|e| e.to_string())?;
+    }
+    copy_dir_recursive(&backup.join("files"), &state.data_dir.join("files"))?;
+    copy_dir_recursive(&backup.join("ocr"), &state.data_dir.join("ocr"))?;
+    Ok(())
 }
 
 #[derive(serde::Serialize)]
@@ -2281,7 +2398,8 @@ async fn export_notes_classic(dest_dir: String, state: State<'_, AppState>) -> R
             meta_path: meta_path.clone(),
         };
         let html_path = export_root.join(&content_path);
-        if let Err(e) = fs::write(&html_path, content) {
+        let normalized = normalize_export_html(&content);
+        if let Err(e) = fs::write(&html_path, normalized) {
             errors.push(format!("note {} html: {}", id, e));
         }
         let meta_json = serde_json::to_string_pretty(&note).map_err(|e| e.to_string())?;
@@ -2505,6 +2623,7 @@ async fn import_notes_classic_from_manifest(
             errors.push(format!("note {} html: {}", note.id, e));
             String::new()
         });
+        let content = normalize_export_html(&content);
         if let Err(e) = sqlx::query(
             "INSERT INTO notes (id, title, content, created_at, updated_at, sync_status, remote_id, notebook_id, external_id, meta, content_hash, content_size, deleted_at, deleted_from_notebook_id)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -3117,6 +3236,7 @@ fn main() {
             get_resource_dir,
             create_evernote_backup,
             create_import_backup,
+            restore_import_backup,
             find_evernote_paths,
             select_evernote_folder,
             select_notes_classic_folder,

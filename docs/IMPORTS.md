@@ -89,3 +89,31 @@ Demo sources live outside the repo:
 
 They share the same structure and attachments; HTML/Text are regenerated from the Obsidian set.
 
+## Verification Scripts
+
+Use these scripts to avoid manual checks after generating example data or export packages.
+
+### Import examples (Obsidian/HTML/Text)
+
+```bash
+node scripts/verify_import_examples.cjs "E:\\dev\\notes-import-examples"
+```
+
+Checks:
+- UTF-8 without BOM for note files.
+- All local asset references resolve to existing files.
+- No `asset.localhost` or `notes-file://` URLs in HTML.
+
+### Notes Classic export package
+
+```bash
+node scripts/verify_notes_classic_export.cjs "E:\\dev\\notes-export-examples\\notes-classic\\notes-classic-export-YYYYMMDD-HHMMSS"
+```
+
+Checks:
+- `manifest.json` exists and is parseable.
+- HTML content + meta files exist for each note.
+- All `files/` references resolve to actual files.
+- `attachments/` and `ocr_files` exports exist.
+- `note_files` references valid `ocr_files`.
+

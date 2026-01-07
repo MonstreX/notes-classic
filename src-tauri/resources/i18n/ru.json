@@ -340,5 +340,13 @@
   "language.en": "English",
   "language.ru": "Русский",
   "language.restart_title": "Язык изменен",
-  "language.restart_message": "Перезапустите приложение, чтобы применить новый язык."
+  "language.restart_message": "Перезапустите приложение, чтобы применить новый язык.",
+  "import.rollback_title": "Импорт завершен с ошибками",
+  "import.rollback_message": "Импорт завершился с {count} ошибкой(ами). Откатить к предыдущим данным?",
+  "import.rollback_confirm": "Откатить",
+  "import.rollback_continue": "Продолжить",
+  "import.rollback_failed": "Откат не удался: {message}",
+  "import_html.finished_errors": "Импорт завершен с ошибками.",
+  "import_text.finished_errors": "Импорт завершен с ошибками.",
+  "import_notes_classic.finished_errors": "Импорт завершен с ошибками."
 }

@@ -20,6 +20,7 @@ type NotesClassicImportReport = {
   sourceRoot: string;
   targetDataDir: string;
   backupDir: string;
+  failed: boolean;
   summary: NotesClassicScanSummary;
   stats: {
     notes: number;
@@ -159,6 +160,7 @@ export const runNotesClassicImport = async (
     sourceRoot: root,
     targetDataDir: "",
     backupDir: "",
+    failed: false,
     summary: {
       sourceRoot: root,
       noteCount: 0,
@@ -243,10 +245,11 @@ export const runNotesClassicImport = async (
     return report;
   } catch (e) {
     report.finishedAt = new Date().toISOString();
+    report.failed = true;
     report.errors.push(String(e));
     logError("[import] notes-classic failed", e);
     await writeReport(report);
-    throw e;
+    return report;
   } finally {
     unlisten?.();
   }

@@ -25,6 +25,7 @@ type HtmlImportReport = {
   sourceRoot: string;
   targetDataDir: string;
   backupDir: string;
+  failed: boolean;
   summary: HtmlScanSummary;
   stats: {
     notes: number;
@@ -353,6 +354,7 @@ export const runHtmlImport = async (
     sourceRoot: root,
     targetDataDir: "",
     backupDir: "",
+    failed: false,
     summary: {
       sourceRoot: root,
       noteCount: 0,
@@ -486,9 +488,10 @@ export const runHtmlImport = async (
     return report;
   } catch (e) {
     report.finishedAt = new Date().toISOString();
+    report.failed = true;
     report.errors.push(String(e));
     logError("[import] html failed", e);
     await writeReport(report);
-    throw e;
+    return report;
   }
 };

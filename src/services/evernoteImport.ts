@@ -32,6 +32,7 @@ type EvernoteImportReport = {
   sourceRoot: string;
   targetDataDir: string;
   backupDir: string;
+  failed: boolean;
   summary: EvernoteScanSummary;
   stats: {
     notes: number;
@@ -597,6 +598,7 @@ export const runEvernoteImport = async (
       sourceRoot: summary.sourceRoot,
       targetDataDir: dataDir,
       backupDir,
+      failed: false,
       summary,
       stats,
       missingRte,
@@ -618,6 +620,7 @@ export const runEvernoteImport = async (
       sourceRoot: summary.sourceRoot,
       targetDataDir: dataDir,
       backupDir,
+      failed: true,
       summary,
       stats: { notes: 0, notebooks: 0, tags: 0, attachments: 0 },
       missingRte,
