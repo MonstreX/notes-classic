@@ -261,14 +261,15 @@ export const mountNotesClassicImportModal = (
           return;
         }
       }
-      if (handlers?.onImportStart) {
-        await handlers.onImportStart();
-      }
+      setStatus(t("import_notes_classic.preparing_manifest"), "muted", true);
       initStages({
         notes: summary.noteCount,
         attachments: summary.attachmentCount + summary.imageCount,
         database: 4,
       });
+      if (handlers?.onImportStart) {
+        await handlers.onImportStart();
+      }
       const report = await runNotesClassicImport(
         summary.sourceRoot,
         (progress) => {
