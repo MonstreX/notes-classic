@@ -255,11 +255,12 @@ export const mountNotesClassicImportModal = (
           message: t("import_notes_classic.replace_message"),
           confirmLabel: t("import_notes_classic.replace_confirm"),
         });
-      if (!shouldReplace) {
-        setStatus(t("import_notes_classic.ready"), "ok");
-        if (runBtn) runBtn.disabled = false;
-        if (selectBtn) selectBtn.disabled = false;
-        return;
+        if (!shouldReplace) {
+          setStatus(t("import_notes_classic.ready"), "ok");
+          if (runBtn) runBtn.disabled = false;
+          if (selectBtn) selectBtn.disabled = false;
+          return;
+        }
       }
       if (handlers?.onImportStart) {
         await handlers.onImportStart();
