@@ -328,6 +328,7 @@
   "import_notes_classic.progress.notes": "Import notes",
   "import_notes_classic.progress.attachments": "Import attachments",
   "import_notes_classic.progress.database": "Finalize database",
+  "import_notes_classic.progress.package": "Read export package",
   "import_notes_classic.finished": "Import finished.",
   "import_notes_classic.finished_errors": "Import finished with errors.",
   "import_notes_classic.failed": "Import failed. See report for details.",

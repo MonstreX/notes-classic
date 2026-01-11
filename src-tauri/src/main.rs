@@ -13,6 +13,7 @@ use sha2::{Digest, Sha256};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::fs;
 use std::io::Read;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -3084,8 +3085,42 @@ async fn import_notes_classic_from_manifest(
         .ok_or_else(|| "Export root not found".to_string())?
         .to_path_buf();
 
-    let raw = fs::read_to_string(&manifest_path).map_err(|e| e.to_string())?;
-    let manifest: ExportManifest = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+    let total_bytes = fs::metadata(&manifest_path)
+        .map(|meta| meta.len() as i64)
+        .unwrap_or(0);
+    let _ = app_handle.emit(
+        "import-notes-classic-progress",
+        NotesClassicImportProgress {
+            stage: "package".to_string(),
+            current: 0,
+            total: total_bytes,
+            state: "running".to_string(),
+            message: None,
+        },
+    );
+    let mut file = fs::File::open(&manifest_path).map_err(|e| e.to_string())?;
+    let mut buffer = Vec::new();
+    let mut chunk = vec![0u8; 65536];
+    let mut read_bytes = 0i64;
+    loop {
+        let size = file.read(&mut chunk).map_err(|e| e.to_string())?;
+        if size == 0 {
+            break;
+        }
+        buffer.extend_from_slice(&chunk[..size]);
+        read_bytes += size as i64;
+        let _ = app_handle.emit(
+            "import-notes-classic-progress",
+            NotesClassicImportProgress {
+                stage: "package".to_string(),
+                current: read_bytes,
+                total: total_bytes,
+                state: "running".to_string(),
+                message: None,
+            },
+        );
+    }
+    let manifest: ExportManifest = serde_json::from_slice(&buffer).map_err(|e| e.to_string())?;
 
     let total_notes = manifest.notes.len() as i64;
     let total_attachments = manifest.attachments.len() as i64 + manifest.ocr_files.len() as i64;
@@ -3129,6 +3164,17 @@ async fn import_notes_classic_from_manifest(
             total: total_database_steps,
             state: "running".to_string(),
             message: Some("import_notes_classic.step.read_manifest".to_string()),
+        },
+    );
+
+    let _ = app_handle.emit(
+        "import-notes-classic-progress",
+        NotesClassicImportProgress {
+            stage: "package".to_string(),
+            current: total_bytes,
+            total: total_bytes,
+            state: "done".to_string(),
+            message: None,
         },
     );
 

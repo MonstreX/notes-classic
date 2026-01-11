@@ -10,6 +10,7 @@ type NotesClassicScanSummary = {
   tagCount: number;
   attachmentCount: number;
   imageCount: number;
+  manifestBytes: number;
   valid: boolean;
   errors: string[];
 };
@@ -87,6 +88,7 @@ export const scanNotesClassicSource = async (root: string): Promise<NotesClassic
       tagCount: 0,
       attachmentCount: 0,
       imageCount: 0,
+      manifestBytes: 0,
       valid: false,
       errors: [t("import_notes_classic.scan_failed_generic")],
     };
@@ -101,6 +103,7 @@ export const scanNotesClassicSource = async (root: string): Promise<NotesClassic
       tagCount: 0,
       attachmentCount: 0,
       imageCount: 0,
+      manifestBytes: 0,
       valid: false,
       errors: [t("import_notes_classic.scan_failed_generic")],
     };
@@ -115,6 +118,7 @@ export const scanNotesClassicSource = async (root: string): Promise<NotesClassic
       tagCount: 0,
       attachmentCount: 0,
       imageCount: 0,
+      manifestBytes: 0,
       valid: false,
       errors: [t("import_notes_classic.scan_failed_generic")],
     };
@@ -130,6 +134,7 @@ export const scanNotesClassicSource = async (root: string): Promise<NotesClassic
       tagCount: safeCount(manifest.tags),
       attachmentCount: safeCount(manifest.attachments),
       imageCount: safeCount(manifest.ocr_files),
+      manifestBytes: bytes.length,
       valid: safeCount(manifest.notes) > 0,
       errors,
     };
@@ -143,6 +148,7 @@ export const scanNotesClassicSource = async (root: string): Promise<NotesClassic
       tagCount: 0,
       attachmentCount: 0,
       imageCount: 0,
+      manifestBytes: 0,
       valid: false,
       errors,
     };
@@ -169,6 +175,7 @@ export const runNotesClassicImport = async (
       tagCount: 0,
       attachmentCount: 0,
       imageCount: 0,
+      manifestBytes: 0,
       valid: false,
       errors: [],
     },
