@@ -242,9 +242,9 @@ export const mountNotesClassicImportModal = (
 
   const handleRun = async () => {
     if (!summary || !pathEl) return;
-    if (handlers?.onImportStart) {
-      await handlers.onImportStart();
-    }
+    if (runBtn) runBtn.disabled = true;
+    if (selectBtn) selectBtn.disabled = true;
+    setStatus(t("import_notes_classic.preparing"), "muted", true);
     try {
       const dataDir = await invoke<string>("get_data_dir");
       const info = await invoke<{ hasData: boolean }>("get_storage_info", { path: dataDir });
@@ -254,9 +254,16 @@ export const mountNotesClassicImportModal = (
           message: t("import_notes_classic.replace_message"),
           confirmLabel: t("import_notes_classic.replace_confirm"),
         });
-        if (!shouldReplace) return;
+        if (!shouldReplace) {
+          setStatus(t("import_notes_classic.ready"), "ok");
+          if (runBtn) runBtn.disabled = false;
+          if (selectBtn) selectBtn.disabled = false;
+          return;
+        }
       }
-      setStatus(t("import_notes_classic.preparing"), "muted", true);
+      if (handlers?.onImportStart) {
+        await handlers.onImportStart();
+      }
       initStages({
         notes: summary.noteCount,
         attachments: summary.attachmentCount + summary.imageCount,
@@ -307,6 +314,8 @@ export const mountNotesClassicImportModal = (
       }
     } finally {
       handlers?.onImportEnd?.();
+      if (runBtn) runBtn.disabled = false;
+      if (selectBtn) selectBtn.disabled = false;
     }
   };
 
