@@ -65,6 +65,18 @@ export const mountApp = (root: HTMLElement) => {
   const settingsModal = mountSettingsModal(layout.editorPane);
   openSettingsModal = () => settingsModal.open();
 
+  const stopOcr = async () => {
+    if (!cleanupOcr) return;
+    const stop = cleanupOcr();
+    cleanupOcr = undefined;
+    await Promise.race([
+      stop,
+      new Promise<void>((resolve) => {
+        setTimeout(resolve, 3000);
+      }),
+    ]);
+  };
+
   listen("menu-search", () => openSearchModal());
   listen("menu-history", () => openHistoryModal());
   listen("menu-settings", () => openSettingsModal());
@@ -72,10 +84,7 @@ export const mountApp = (root: HTMLElement) => {
   listen("import-evernote", () => importModal.open());
   const notesClassicImportModal = mountNotesClassicImportModal(layout.editorPane, {
     onImportStart: async () => {
-      if (cleanupOcr) {
-        await cleanupOcr();
-        cleanupOcr = undefined;
-      }
+      await stopOcr();
     },
     onImportEnd: () => {
       if (!cleanupOcr) {
@@ -86,10 +95,7 @@ export const mountApp = (root: HTMLElement) => {
   listen("import-notes-classic", () => notesClassicImportModal.open());
   const obsidianImportModal = mountObsidianImportModal(layout.editorPane, {
     onImportStart: async () => {
-      if (cleanupOcr) {
-        await cleanupOcr();
-        cleanupOcr = undefined;
-      }
+      await stopOcr();
     },
     onImportEnd: () => {
       if (!cleanupOcr) {
@@ -100,10 +106,7 @@ export const mountApp = (root: HTMLElement) => {
   listen("import-obsidian", () => obsidianImportModal.open());
   const htmlImportModal = mountHtmlImportModal(layout.editorPane, {
     onImportStart: async () => {
-      if (cleanupOcr) {
-        await cleanupOcr();
-        cleanupOcr = undefined;
-      }
+      await stopOcr();
     },
     onImportEnd: () => {
       if (!cleanupOcr) {
@@ -114,10 +117,7 @@ export const mountApp = (root: HTMLElement) => {
   listen("import-html", () => htmlImportModal.open());
   const textImportModal = mountTextImportModal(layout.editorPane, {
     onImportStart: async () => {
-      if (cleanupOcr) {
-        await cleanupOcr();
-        cleanupOcr = undefined;
-      }
+      await stopOcr();
     },
     onImportEnd: () => {
       if (!cleanupOcr) {
