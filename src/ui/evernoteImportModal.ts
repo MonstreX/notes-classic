@@ -287,11 +287,10 @@ export const mountEvernoteImportModal = (root: HTMLElement): EvernoteImportModal
     setStatus(t("import.preparing"), "muted", true);
     try {
       const report = await runEvernoteImport(summary, (event) => {
-        if (event.stage && event.state === "running") {
-          const title = stageTitles.get(event.stage) ?? t("import.running");
-          setStatus(`${title}...`, "muted", true);
-        }
         if (event.stage) {
+          const title = event.message ?? stageTitles.get(event.stage) ?? t("import.running");
+          const isRunning = event.state === "running";
+          setStatus(isRunning ? title : `${title}`, "muted", isRunning);
           setStageProgress(event.stage, event.current ?? 0, event.total ?? 0, event.state ?? "running");
         }
       });

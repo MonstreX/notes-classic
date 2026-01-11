@@ -1,4 +1,5 @@
 import initSqlJs from "sql.js";
+import wasmUrl from "sql.js/dist/sql-wasm.wasm?url";
 import * as Y from "yjs";
 import { invoke } from "@tauri-apps/api/core";
 import { join, tempDir } from "@tauri-apps/api/path";
@@ -71,7 +72,7 @@ const importFromJson = (jsonPath: string, assetsDir: string) =>
 const saveBytesAs = (destPath: string, bytes: number[]) =>
   invoke<void>("save_bytes_as", { destPath, bytes });
 
-const wasmPath = new URL("sql.js/dist/sql-wasm.wasm", import.meta.url).toString();
+const wasmPath = wasmUrl;
 
 const sanitizeExt = (ext: string | null) => {
   if (!ext) return null;
