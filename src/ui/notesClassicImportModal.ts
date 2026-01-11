@@ -245,7 +245,6 @@ export const mountNotesClassicImportModal = (
     if (!summary || !pathEl) return;
     if (runBtn) runBtn.disabled = true;
     if (selectBtn) selectBtn.disabled = true;
-    setStatus(t("import_notes_classic.preparing"), "muted", true);
     try {
       const dataDir = await invoke<string>("get_data_dir");
       const info = await invoke<{ hasData: boolean }>("get_storage_info", { path: dataDir });
@@ -265,7 +264,6 @@ export const mountNotesClassicImportModal = (
       if (handlers?.onImportStart) {
         await handlers.onImportStart();
       }
-      setStatus(t("import_notes_classic.preparing"), "muted", true);
       initStages({
         notes: summary.noteCount,
         attachments: summary.attachmentCount + summary.imageCount,
