@@ -30,6 +30,7 @@ let runtimeStatus: OcrRuntimeStatus = "running";
 let workerBlobUrl: string | null = null;
 let workerReject: ((error: Error) => void) | null = null;
 let currentFetchAbort: AbortController | null = null;
+let recognizeReject: ((error: Error) => void) | null = null;
 
 const logOcr = async (_message: string) => {};
 
@@ -252,7 +253,10 @@ export const startOcrQueue = () => {
         const hash = await hashBuffer(buffer);
         let cleaned = "";
         try {
-          const result = await withTimeout(workerInstance.recognize(blob), 60000, "recognize");
+          const abortPromise = new Promise<never>((_, reject) => {
+            recognizeReject = reject;
+          });
+          const result = await withTimeout(Promise.race([workerInstance.recognize(blob), abortPromise]), 60000, "recognize");
           const text = normalizeText(result.data.text || "");
           cleaned = text;
         } catch (err) {
@@ -262,6 +266,8 @@ export const startOcrQueue = () => {
           const shouldRetry = await handleFailure(err);
           if (!shouldRetry) return;
           continue;
+        } finally {
+          recognizeReject = null;
         }
         if (cancelled) return;
         await markOcrDone(file.fileId, hash, cleaned);
@@ -282,6 +288,7 @@ export const startOcrQueue = () => {
   return async () => {
     if (stopPromise) return stopPromise;
     stopPromise = (async () => {
+      console.log("[ocr-stop] stopping...");
       cancelled = true;
       runtimeStatus = "paused";
       if (timer !== null) {
@@ -289,17 +296,27 @@ export const startOcrQueue = () => {
         timer = null;
       }
       if (currentFetchAbort) {
+        console.log("[ocr-stop] abort fetch");
         currentFetchAbort.abort();
         currentFetchAbort = null;
       }
+      if (recognizeReject) {
+        console.log("[ocr-stop] abort recognize");
+        recognizeReject(new Error("ocr stopped"));
+        recognizeReject = null;
+      }
       if (workerReject) {
+        console.log("[ocr-stop] reject worker start");
         workerReject(new Error("ocr stopped"));
         workerReject = null;
       }
+      const terminateStart = performance.now();
       await resetWorker();
+      console.log("[ocr-stop] worker reset", Math.round(performance.now() - terminateStart), "ms");
       while (isRunning) {
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
+      console.log("[ocr-stop] loop finished");
       stopPromise = null;
     })();
     return stopPromise;
