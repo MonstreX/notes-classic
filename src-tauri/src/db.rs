@@ -1,6 +1,6 @@
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sqlx::{sqlite::SqlitePool, FromRow};
-use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
@@ -64,7 +64,8 @@ fn extract_note_files(content: &str) -> Vec<String> {
             results.push(path.as_str().to_string());
         }
     }
-    let re_asset_encoded_double = Regex::new(r#"src="[^"]*asset\.localhost[^"]*(?i:files%2F)([^"]+)""#).unwrap();
+    let re_asset_encoded_double =
+        Regex::new(r#"src="[^"]*asset\.localhost[^"]*(?i:files%2F)([^"]+)""#).unwrap();
     for caps in re_asset_encoded_double.captures_iter(content) {
         if let Some(path) = caps.get(1) {
             let candidate = format!("files/{}", path.as_str());
@@ -73,7 +74,8 @@ fn extract_note_files(content: &str) -> Vec<String> {
             }
         }
     }
-    let re_asset_encoded_single = Regex::new(r#"src='[^']*asset\.localhost[^']*(?i:files%2F)([^']+)'"#).unwrap();
+    let re_asset_encoded_single =
+        Regex::new(r#"src='[^']*asset\.localhost[^']*(?i:files%2F)([^']+)'"#).unwrap();
     for caps in re_asset_encoded_single.captures_iter(content) {
         if let Some(path) = caps.get(1) {
             let candidate = format!("files/{}", path.as_str());
@@ -101,11 +103,10 @@ const OCR_IMAGE_FILTER: &str = "(
 )";
 
 async fn migrate_note_file_scheme(pool: &SqlitePool) -> Result<bool, sqlx::Error> {
-    let rows: Vec<(i64, String)> = sqlx::query_as(
-        "SELECT id, content FROM notes WHERE content LIKE '%notes-file://files/%'",
-    )
-    .fetch_all(pool)
-    .await?;
+    let rows: Vec<(i64, String)> =
+        sqlx::query_as("SELECT id, content FROM notes WHERE content LIKE '%notes-file://files/%'")
+            .fetch_all(pool)
+            .await?;
     if rows.is_empty() {
         return Ok(false);
     }
@@ -151,7 +152,6 @@ fn extract_attachment_ids(content: &str) -> HashSet<i64> {
     results
 }
 
-
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Notebook {
@@ -195,21 +195,21 @@ pub struct Tag {
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct NoteListItem {
-  pub id: i64,
-  pub title: String,
-  pub content: String,
-  pub updated_at: i64,
-  pub notebook_id: Option<i64>,
-  pub ocr_match: bool,
+    pub id: i64,
+    pub title: String,
+    pub content: String,
+    pub updated_at: i64,
+    pub notebook_id: Option<i64>,
+    pub ocr_match: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct NoteLinkItem {
-  pub id: i64,
-  pub title: String,
-  pub notebook_id: Option<i64>,
-  pub external_id: Option<String>,
+    pub id: i64,
+    pub title: String,
+    pub notebook_id: Option<i64>,
+    pub external_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
@@ -270,18 +270,20 @@ pub struct NoteHistoryItem {
 }
 
 async fn table_exists(pool: &SqlitePool, name: &str) -> Result<bool, sqlx::Error> {
-    let row: Option<(String,)> = sqlx::query_as(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
-    )
-    .bind(name)
-    .fetch_optional(pool)
-    .await?;
+    let row: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+            .bind(name)
+            .fetch_optional(pool)
+            .await?;
     Ok(row.is_some())
 }
 
 async fn column_exists(pool: &SqlitePool, table: &str, column: &str) -> Result<bool, sqlx::Error> {
     let table = table.replace('\'', "''");
-    let query = format!("SELECT name FROM pragma_table_info('{}') WHERE name = ?", table);
+    let query = format!(
+        "SELECT name FROM pragma_table_info('{}') WHERE name = ?",
+        table
+    );
     let row: Option<(String,)> = sqlx::query_as(&query)
         .bind(column)
         .fetch_optional(pool)
@@ -637,7 +639,6 @@ async fn migrate_to_v5(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     Ok(())
 }
 
-
 pub async fn init_db(data_dir: &Path) -> Result<SqlitePool, String> {
     if !data_dir.exists() {
         fs::create_dir_all(data_dir).map_err(|e| e.to_string())?;
@@ -672,24 +673,20 @@ pub async fn init_db(data_dir: &Path) -> Result<SqlitePool, String> {
         .await
         .map_err(|e| e.to_string())?;
     if version == 0 {
-        create_schema_v3(&pool)
-            .await
-            .map_err(|e| e.to_string())?;
+        create_schema_v3(&pool).await.map_err(|e| e.to_string())?;
         set_schema_version(&pool, SCHEMA_VERSION)
             .await
             .map_err(|e| e.to_string())?;
     } else if version < SCHEMA_VERSION {
-        migrate_to_v5(&pool)
-            .await
-            .map_err(|e| e.to_string())?;
+        migrate_to_v5(&pool).await.map_err(|e| e.to_string())?;
         set_schema_version(&pool, SCHEMA_VERSION)
             .await
             .map_err(|e| e.to_string())?;
     }
-    create_schema_v3(&pool)
+    create_schema_v3(&pool).await.map_err(|e| e.to_string())?;
+    let _ = migrate_note_file_scheme(&pool)
         .await
         .map_err(|e| e.to_string())?;
-    let _ = migrate_note_file_scheme(&pool).await.map_err(|e| e.to_string())?;
 
     let mut structure_changed = false;
     let rows: Vec<(i64, Option<i64>)> = sqlx::query_as("SELECT id, parent_id FROM notebooks")
@@ -716,12 +713,14 @@ pub async fn init_db(data_dir: &Path) -> Result<SqlitePool, String> {
                 .await
                 .map_err(|e| e.to_string())?;
         } else {
-            sqlx::query("UPDATE notebooks SET notebook_type = 'notebook', parent_id = ? WHERE id = ?")
-                .bind(root_id)
-                .bind(id)
-                .execute(&pool)
-                .await
-                .map_err(|e| e.to_string())?;
+            sqlx::query(
+                "UPDATE notebooks SET notebook_type = 'notebook', parent_id = ? WHERE id = ?",
+            )
+            .bind(root_id)
+            .bind(id)
+            .execute(&pool)
+            .await
+            .map_err(|e| e.to_string())?;
             if parent_id != Some(root_id) {
                 structure_changed = true;
             }
@@ -729,10 +728,11 @@ pub async fn init_db(data_dir: &Path) -> Result<SqlitePool, String> {
     }
 
     if structure_changed {
-        let parents: Vec<(Option<i64>,)> = sqlx::query_as("SELECT DISTINCT parent_id FROM notebooks")
-            .fetch_all(&pool)
-            .await
-            .map_err(|e| e.to_string())?;
+        let parents: Vec<(Option<i64>,)> =
+            sqlx::query_as("SELECT DISTINCT parent_id FROM notebooks")
+                .fetch_all(&pool)
+                .await
+                .map_err(|e| e.to_string())?;
         for (parent_id,) in parents {
             let ids: Vec<(i64,)> = if let Some(pid) = parent_id {
                 sqlx::query_as("SELECT id FROM notebooks WHERE parent_id = ? ORDER BY name ASC, created_at ASC")
@@ -770,10 +770,11 @@ pub async fn init_db(data_dir: &Path) -> Result<SqlitePool, String> {
         _ => true,
     };
     if needs_text {
-        let notes: Vec<(i64, String, String)> = sqlx::query_as("SELECT id, title, content FROM notes")
-            .fetch_all(&pool)
-            .await
-            .map_err(|e| e.to_string())?;
+        let notes: Vec<(i64, String, String)> =
+            sqlx::query_as("SELECT id, title, content FROM notes")
+                .fetch_all(&pool)
+                .await
+                .map_err(|e| e.to_string())?;
         for (id, title, content) in notes {
             let plain = strip_html(&content);
             sqlx::query(
@@ -832,19 +833,23 @@ impl SqliteRepository {
             .await?;
         let mut mapped = Vec::new();
         for file_path in files {
-            sqlx::query("INSERT INTO ocr_files (file_path) VALUES (?) ON CONFLICT(file_path) DO NOTHING")
-                .bind(&file_path)
-                .execute(&mut **tx)
-                .await?;
+            sqlx::query(
+                "INSERT INTO ocr_files (file_path) VALUES (?) ON CONFLICT(file_path) DO NOTHING",
+            )
+            .bind(&file_path)
+            .execute(&mut **tx)
+            .await?;
             let (file_id,): (i64,) = sqlx::query_as("SELECT id FROM ocr_files WHERE file_path = ?")
                 .bind(&file_path)
                 .fetch_one(&mut **tx)
                 .await?;
-            sqlx::query("INSERT INTO note_files (note_id, file_id) VALUES (?, ?) ON CONFLICT DO NOTHING")
-                .bind(note_id)
-                .bind(file_id)
-                .execute(&mut **tx)
-                .await?;
+            sqlx::query(
+                "INSERT INTO note_files (note_id, file_id) VALUES (?, ?) ON CONFLICT DO NOTHING",
+            )
+            .bind(note_id)
+            .bind(file_id)
+            .execute(&mut **tx)
+            .await?;
             mapped.push((file_id, file_path));
         }
         Ok(mapped)
@@ -877,12 +882,11 @@ impl SqliteRepository {
         note_id: i64,
         keep_ids: &HashSet<i64>,
     ) -> Result<Vec<String>, sqlx::Error> {
-        let existing: Vec<(i64, Option<String>)> = sqlx::query_as(
-            "SELECT id, local_path FROM attachments WHERE note_id = ?",
-        )
-        .bind(note_id)
-        .fetch_all(&mut **tx)
-        .await?;
+        let existing: Vec<(i64, Option<String>)> =
+            sqlx::query_as("SELECT id, local_path FROM attachments WHERE note_id = ?")
+                .bind(note_id)
+                .fetch_all(&mut **tx)
+                .await?;
         let mut removed = Vec::new();
         for (id, path) in existing {
             if keep_ids.contains(&id) {
@@ -901,7 +905,11 @@ impl SqliteRepository {
         Ok(removed)
     }
 
-    async fn sync_note_files(&self, note_id: i64, content: &str) -> Result<Vec<(i64, String)>, sqlx::Error> {
+    async fn sync_note_files(
+        &self,
+        note_id: i64,
+        content: &str,
+    ) -> Result<Vec<(i64, String)>, sqlx::Error> {
         let mut tx = self.pool.begin().await?;
         let mapped = self.sync_note_files_tx(&mut tx, note_id, content).await?;
         tx.commit().await?;
@@ -916,9 +924,17 @@ impl SqliteRepository {
             .await
     }
 
-    pub async fn create_notebook(&self, name: &str, parent_id: Option<i64>) -> Result<i64, sqlx::Error> {
+    pub async fn create_notebook(
+        &self,
+        name: &str,
+        parent_id: Option<i64>,
+    ) -> Result<i64, sqlx::Error> {
         let now = chrono::Utc::now().timestamp();
-        let notebook_type = if parent_id.is_some() { "notebook" } else { "stack" };
+        let notebook_type = if parent_id.is_some() {
+            "notebook"
+        } else {
+            "stack"
+        };
         if let Some(pid) = parent_id {
             let parent_type: Option<(String,)> =
                 sqlx::query_as("SELECT notebook_type FROM notebooks WHERE id = ?")
@@ -954,7 +970,10 @@ impl SqliteRepository {
     }
 
     pub async fn delete_notebook(&self, id: i64) -> Result<(), sqlx::Error> {
-        sqlx::query("DELETE FROM notebooks WHERE id = ?").bind(id).execute(&self.pool).await?;
+        sqlx::query("DELETE FROM notebooks WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -966,11 +985,12 @@ impl SqliteRepository {
     ) -> Result<(), sqlx::Error> {
         let mut tx = self.pool.begin().await?;
 
-        let current: Option<(Option<i64>, i64, String)> =
-            sqlx::query_as("SELECT parent_id, sort_order, notebook_type FROM notebooks WHERE id = ?")
-                .bind(notebook_id)
-                .fetch_optional(&mut *tx)
-                .await?;
+        let current: Option<(Option<i64>, i64, String)> = sqlx::query_as(
+            "SELECT parent_id, sort_order, notebook_type FROM notebooks WHERE id = ?",
+        )
+        .bind(notebook_id)
+        .fetch_optional(&mut *tx)
+        .await?;
         let (current_parent_id, _current_order, current_type) = match current {
             Some(data) => data,
             None => return Ok(()),
@@ -1067,7 +1087,10 @@ impl SqliteRepository {
         Ok(())
     }
 
-    pub async fn get_all_notes(&self, notebook_id: Option<i64>) -> Result<Vec<NoteListItem>, sqlx::Error> {
+    pub async fn get_all_notes(
+        &self,
+        notebook_id: Option<i64>,
+    ) -> Result<Vec<NoteListItem>, sqlx::Error> {
         if let Some(id) = notebook_id {
             sqlx::query_as::<_, NoteListItem>(
                 "WITH RECURSIVE descendant_notebooks(id) AS (
@@ -1107,21 +1130,32 @@ impl SqliteRepository {
         let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM notes WHERE deleted_at IS NULL")
             .fetch_one(&self.pool)
             .await?;
-        let trashed: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM notes WHERE deleted_at IS NOT NULL")
-            .fetch_one(&self.pool)
-            .await?;
+        let trashed: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM notes WHERE deleted_at IS NOT NULL")
+                .fetch_one(&self.pool)
+                .await?;
         let per_notebook = sqlx::query_as::<_, NoteCountItem>(
             "SELECT notebook_id, COUNT(*) AS count
              FROM notes
              WHERE notebook_id IS NOT NULL AND deleted_at IS NULL
              GROUP BY notebook_id",
         )
-            .fetch_all(&self.pool)
-            .await?;
-        Ok(NoteCounts { total: total.0, trashed: trashed.0, per_notebook })
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(NoteCounts {
+            total: total.0,
+            trashed: trashed.0,
+            per_notebook,
+        })
     }
 
-    pub async fn create_note(&self, title: &str, content: &str, notebook_id: Option<i64>, data_dir: &Path) -> Result<i64, sqlx::Error> {
+    pub async fn create_note(
+        &self,
+        title: &str,
+        content: &str,
+        notebook_id: Option<i64>,
+        data_dir: &Path,
+    ) -> Result<i64, sqlx::Error> {
         let _ = data_dir;
         let now = chrono::Utc::now().timestamp();
         let mut tx = self.pool.begin().await?;
@@ -1134,13 +1168,18 @@ impl SqliteRepository {
             .execute(&mut *tx)
             .await?;
         let id = result.last_insert_rowid();
-        self.upsert_note_text_tx(&mut tx, id, title, content).await?;
+        self.upsert_note_text_tx(&mut tx, id, title, content)
+            .await?;
         let _ = self.sync_note_files_tx(&mut tx, id, content).await?;
         tx.commit().await?;
         Ok(id)
     }
 
-    pub async fn search_notes_by_title(&self, query: &str, limit: i64) -> Result<Vec<NoteLinkItem>, sqlx::Error> {
+    pub async fn search_notes_by_title(
+        &self,
+        query: &str,
+        limit: i64,
+    ) -> Result<Vec<NoteLinkItem>, sqlx::Error> {
         let trimmed = query.trim();
         if trimmed.is_empty() {
             return Ok(Vec::new());
@@ -1159,7 +1198,10 @@ impl SqliteRepository {
         .await
     }
 
-    pub async fn get_note_id_by_external_id(&self, external_id: &str) -> Result<Option<i64>, sqlx::Error> {
+    pub async fn get_note_id_by_external_id(
+        &self,
+        external_id: &str,
+    ) -> Result<Option<i64>, sqlx::Error> {
         let row: Option<(i64,)> = sqlx::query_as(
             "SELECT id FROM notes WHERE external_id = ? AND deleted_at IS NULL LIMIT 1",
         )
@@ -1169,7 +1211,11 @@ impl SqliteRepository {
         Ok(row.map(|value| value.0))
     }
 
-    pub async fn set_note_external_id(&self, note_id: i64, external_id: &str) -> Result<(), sqlx::Error> {
+    pub async fn set_note_external_id(
+        &self,
+        note_id: i64,
+        external_id: &str,
+    ) -> Result<(), sqlx::Error> {
         sqlx::query("UPDATE notes SET external_id = ? WHERE id = ?")
             .bind(external_id)
             .bind(note_id)
@@ -1178,7 +1224,11 @@ impl SqliteRepository {
         Ok(())
     }
 
-    pub async fn update_note_notebook(&self, note_id: i64, notebook_id: Option<i64>) -> Result<(), sqlx::Error> {
+    pub async fn update_note_notebook(
+        &self,
+        note_id: i64,
+        notebook_id: Option<i64>,
+    ) -> Result<(), sqlx::Error> {
         sqlx::query("UPDATE notes SET notebook_id = ? WHERE id = ?")
             .bind(notebook_id)
             .bind(note_id)
@@ -1187,21 +1237,33 @@ impl SqliteRepository {
         Ok(())
     }
 
-    pub async fn update_note(&self, id: i64, title: &str, content: &str, notebook_id: Option<i64>, data_dir: &Path) -> Result<(), sqlx::Error> {
+    pub async fn update_note(
+        &self,
+        id: i64,
+        title: &str,
+        content: &str,
+        notebook_id: Option<i64>,
+        data_dir: &Path,
+    ) -> Result<(), sqlx::Error> {
         let attachment_ids = extract_attachment_ids(content);
         let now = chrono::Utc::now().timestamp();
         let mut tx = self.pool.begin().await?;
-        sqlx::query("UPDATE notes SET title = ?, content = ?, updated_at = ?, notebook_id = ? WHERE id = ?")
-            .bind(title)
-            .bind(content)
-            .bind(now)
-            .bind(notebook_id)
-            .bind(id)
-            .execute(&mut *tx)
+        sqlx::query(
+            "UPDATE notes SET title = ?, content = ?, updated_at = ?, notebook_id = ? WHERE id = ?",
+        )
+        .bind(title)
+        .bind(content)
+        .bind(now)
+        .bind(notebook_id)
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+        self.upsert_note_text_tx(&mut tx, id, title, content)
             .await?;
-        self.upsert_note_text_tx(&mut tx, id, title, content).await?;
         let _ = self.sync_note_files_tx(&mut tx, id, content).await?;
-        let removed_attachments = self.cleanup_note_attachments_tx(&mut tx, id, &attachment_ids).await?;
+        let removed_attachments = self
+            .cleanup_note_attachments_tx(&mut tx, id, &attachment_ids)
+            .await?;
         let orphan_files = self.cleanup_orphan_note_files_tx(&mut tx).await?;
         tx.commit().await?;
         for path in removed_attachments {
@@ -1347,12 +1409,11 @@ impl SqliteRepository {
 
     pub async fn delete_note(&self, id: i64, data_dir: &Path) -> Result<(), sqlx::Error> {
         let mut tx = self.pool.begin().await?;
-        let attachment_paths: Vec<(Option<String>,)> = sqlx::query_as(
-            "SELECT local_path FROM attachments WHERE note_id = ?",
-        )
-        .bind(id)
-        .fetch_all(&mut *tx)
-        .await?;
+        let attachment_paths: Vec<(Option<String>,)> =
+            sqlx::query_as("SELECT local_path FROM attachments WHERE note_id = ?")
+                .bind(id)
+                .fetch_all(&mut *tx)
+                .await?;
         sqlx::query("DELETE FROM notes WHERE id = ?")
             .bind(id)
             .execute(&mut *tx)
@@ -1406,18 +1467,18 @@ impl SqliteRepository {
 
     pub async fn restore_note(&self, id: i64) -> Result<(), sqlx::Error> {
         let mut tx = self.pool.begin().await?;
-        let row: Option<(Option<i64>,)> = sqlx::query_as(
-            "SELECT deleted_from_notebook_id FROM notes WHERE id = ?",
-        )
-        .bind(id)
-        .fetch_optional(&mut *tx)
-        .await?;
+        let row: Option<(Option<i64>,)> =
+            sqlx::query_as("SELECT deleted_from_notebook_id FROM notes WHERE id = ?")
+                .bind(id)
+                .fetch_optional(&mut *tx)
+                .await?;
         let target_notebook_id = if let Some((candidate,)) = row {
             if let Some(notebook_id) = candidate {
-                let exists: Option<(i64,)> = sqlx::query_as("SELECT id FROM notebooks WHERE id = ?")
-                    .bind(notebook_id)
-                    .fetch_optional(&mut *tx)
-                    .await?;
+                let exists: Option<(i64,)> =
+                    sqlx::query_as("SELECT id FROM notebooks WHERE id = ?")
+                        .bind(notebook_id)
+                        .fetch_optional(&mut *tx)
+                        .await?;
                 if exists.is_some() {
                     Some(notebook_id)
                 } else {
@@ -1483,7 +1544,11 @@ impl SqliteRepository {
         Ok(result.last_insert_rowid())
     }
 
-    pub async fn update_attachment_path(&self, id: i64, local_path: &str) -> Result<(), sqlx::Error> {
+    pub async fn update_attachment_path(
+        &self,
+        id: i64,
+        local_path: &str,
+    ) -> Result<(), sqlx::Error> {
         let now = chrono::Utc::now().timestamp();
         sqlx::query("UPDATE attachments SET local_path = ?, updated_at = ? WHERE id = ?")
             .bind(local_path)
@@ -1510,7 +1575,10 @@ impl SqliteRepository {
         .await
     }
 
-    pub async fn get_attachment_by_path(&self, local_path: &str) -> Result<Option<Attachment>, sqlx::Error> {
+    pub async fn get_attachment_by_path(
+        &self,
+        local_path: &str,
+    ) -> Result<Option<Attachment>, sqlx::Error> {
         sqlx::query_as::<_, Attachment>(
             "SELECT id,
                     note_id,
@@ -1542,9 +1610,11 @@ impl SqliteRepository {
     }
 
     pub async fn get_tags(&self) -> Result<Vec<Tag>, sqlx::Error> {
-        sqlx::query_as::<_, Tag>("SELECT * FROM tags ORDER BY parent_id IS NOT NULL, parent_id, name")
-            .fetch_all(&self.pool)
-            .await
+        sqlx::query_as::<_, Tag>(
+            "SELECT * FROM tags ORDER BY parent_id IS NOT NULL, parent_id, name",
+        )
+        .fetch_all(&self.pool)
+        .await
     }
 
     pub async fn get_note_tags(&self, note_id: i64) -> Result<Vec<Tag>, sqlx::Error> {
@@ -1559,7 +1629,11 @@ impl SqliteRepository {
         .await
     }
 
-    pub async fn add_history_entry(&self, note_id: i64, min_gap_seconds: i64) -> Result<(), sqlx::Error> {
+    pub async fn add_history_entry(
+        &self,
+        note_id: i64,
+        min_gap_seconds: i64,
+    ) -> Result<(), sqlx::Error> {
         let now = chrono::Utc::now().timestamp();
         if min_gap_seconds > 0 {
             let last: Option<(i64,)> = sqlx::query_as(
@@ -1575,7 +1649,13 @@ impl SqliteRepository {
             }
         }
 
-        let row: Option<(String, Option<i64>, Option<String>, Option<i64>, Option<String>)> = sqlx::query_as(
+        let row: Option<(
+            String,
+            Option<i64>,
+            Option<String>,
+            Option<i64>,
+            Option<String>,
+        )> = sqlx::query_as(
             "SELECT n.title,
                     n.notebook_id,
                     nb.name,
@@ -1609,7 +1689,11 @@ impl SqliteRepository {
         Ok(())
     }
 
-    pub async fn get_note_history(&self, limit: i64, offset: i64) -> Result<Vec<NoteHistoryItem>, sqlx::Error> {
+    pub async fn get_note_history(
+        &self,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<NoteHistoryItem>, sqlx::Error> {
         sqlx::query_as::<_, NoteHistoryItem>(
             "SELECT id,
                     note_id,
@@ -1706,7 +1790,13 @@ impl SqliteRepository {
             .await
     }
 
-    pub async fn upsert_ocr_text(&self, file_id: i64, lang: &str, text: &str, hash: &str) -> Result<(), sqlx::Error> {
+    pub async fn upsert_ocr_text(
+        &self,
+        file_id: i64,
+        lang: &str,
+        text: &str,
+        hash: &str,
+    ) -> Result<(), sqlx::Error> {
         let now = chrono::Utc::now().timestamp();
         sqlx::query(
             "INSERT INTO ocr_text (file_id, lang, text, hash, updated_at)
@@ -1753,9 +1843,7 @@ impl SqliteRepository {
              WHERE {filter}",
             filter = OCR_IMAGE_FILTER
         );
-        let (total,): (i64,) = sqlx::query_as(&total_query)
-            .fetch_one(&self.pool)
-            .await?;
+        let (total,): (i64,) = sqlx::query_as(&total_query).fetch_one(&self.pool).await?;
         let done_query = format!(
             "SELECT COUNT(*) FROM ocr_text t
              JOIN ocr_files f ON f.id = t.file_id
@@ -1763,9 +1851,7 @@ impl SqliteRepository {
              WHERE {filter}",
             filter = OCR_IMAGE_FILTER
         );
-        let (done,): (i64,) = sqlx::query_as(&done_query)
-            .fetch_one(&self.pool)
-            .await?;
+        let (done,): (i64,) = sqlx::query_as(&done_query).fetch_one(&self.pool).await?;
         let pending_query = format!(
             "SELECT COUNT(*) FROM ocr_files f
              LEFT JOIN ocr_text t ON t.file_id = f.id
@@ -1773,10 +1859,12 @@ impl SqliteRepository {
              WHERE t.file_id IS NULL AND f.attempts_left > 0 AND {filter}",
             filter = OCR_IMAGE_FILTER
         );
-        let (pending,): (i64,) = sqlx::query_as(&pending_query)
-            .fetch_one(&self.pool)
-            .await?;
-        Ok(OcrStats { total, done, pending })
+        let (pending,): (i64,) = sqlx::query_as(&pending_query).fetch_one(&self.pool).await?;
+        Ok(OcrStats {
+            total,
+            done,
+            pending,
+        })
     }
 
     pub async fn create_tag(&self, name: &str, parent_id: Option<i64>) -> Result<i64, sqlx::Error> {

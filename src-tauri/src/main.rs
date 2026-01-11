@@ -2,17 +2,20 @@
 
 mod db;
 
-use db::{Attachment, Note, NoteCounts, NoteHistoryItem, NoteListItem, Notebook, OcrFileItem, OcrStats, SqliteRepository, Tag};
+use db::{
+    Attachment, Note, NoteCounts, NoteHistoryItem, NoteListItem, Notebook, OcrFileItem, OcrStats,
+    SqliteRepository, Tag,
+};
+use http::{Request, Response, StatusCode, Uri};
+use reqwest;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use sha2::{Digest, Sha256};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
-use http::{Request, Response, StatusCode, Uri};
-use reqwest;
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use tauri::menu::{
     CheckMenuItem, Menu, MenuBuilder, MenuItem, MenuItemKind, PredefinedMenuItem, SubmenuBuilder,
 };
@@ -149,7 +152,11 @@ fn ext_from_mime(mime: &str) -> Option<String> {
 
 fn filename_from_url(url: &str) -> Option<String> {
     let trimmed = url.split('?').next().unwrap_or(url);
-    trimmed.rsplit('/').next().map(|s| s.to_string()).filter(|s| !s.is_empty())
+    trimmed
+        .rsplit('/')
+        .next()
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty())
 }
 
 fn percent_decode_lite(input: &str) -> String {
@@ -190,7 +197,11 @@ fn extract_rel_from_asset_url(url: &str) -> Option<String> {
     }
     let decoded = percent_decode_lite(url).replace('\\', "/");
     if let Some(idx) = decoded.to_lowercase().find("/files/") {
-        return Some(decoded[idx + "/files/".len()..].trim_start_matches('/').to_string());
+        return Some(
+            decoded[idx + "/files/".len()..]
+                .trim_start_matches('/')
+                .to_string(),
+        );
     }
     if let Some(idx) = lower.find("%2ffiles%2f") {
         let rel = &url[idx + "%2ffiles%2f".len()..];
@@ -248,7 +259,12 @@ fn normalize_export_html(html: &str) -> String {
     out
 }
 
-fn store_note_bytes(data_dir: &Path, filename: &str, mime: &str, bytes: &[u8]) -> Result<StoredNoteFile, String> {
+fn store_note_bytes(
+    data_dir: &Path,
+    filename: &str,
+    mime: &str,
+    bytes: &[u8],
+) -> Result<StoredNoteFile, String> {
     if bytes.is_empty() {
         return Err("Empty file bytes".to_string());
     }
@@ -348,7 +364,9 @@ fn default_data_dir(settings_dir: &Path) -> PathBuf {
 
 #[tauri::command]
 fn get_default_storage_path(state: State<'_, AppState>) -> Result<String, String> {
-    Ok(default_data_dir(&state.settings_dir).to_string_lossy().to_string())
+    Ok(default_data_dir(&state.settings_dir)
+        .to_string_lossy()
+        .to_string())
 }
 
 fn remove_storage_data(target: &Path) -> Result<(), String> {
@@ -405,10 +423,11 @@ async fn get_storage_info(path: String) -> Result<StorageInfo, String> {
         sqlx::query_scalar("SELECT MAX(updated_at) FROM notes WHERE deleted_at IS NULL")
             .fetch_one(&pool)
             .await;
-    let last_note_title_result: Result<Option<String>, _> =
-        sqlx::query_scalar("SELECT title FROM notes WHERE deleted_at IS NULL ORDER BY updated_at DESC LIMIT 1")
-            .fetch_optional(&pool)
-            .await;
+    let last_note_title_result: Result<Option<String>, _> = sqlx::query_scalar(
+        "SELECT title FROM notes WHERE deleted_at IS NULL ORDER BY updated_at DESC LIMIT 1",
+    )
+    .fetch_optional(&pool)
+    .await;
     let valid = notes_count_result.is_ok()
         && notebooks_count_result.is_ok()
         && last_note_at_result.is_ok()
@@ -570,16 +589,46 @@ fn set_storage_path_replace(path: String, state: State<'_, AppState>) -> Result<
 async fn clear_storage_for_import(state: State<'_, AppState>) -> Result<(), String> {
     let pool = state.pool.clone();
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
-    sqlx::query("DELETE FROM note_tags").execute(&mut *tx).await.map_err(|e| e.to_string())?;
-    sqlx::query("DELETE FROM attachments").execute(&mut *tx).await.map_err(|e| e.to_string())?;
-    sqlx::query("DELETE FROM notes_text").execute(&mut *tx).await.map_err(|e| e.to_string())?;
-    sqlx::query("DELETE FROM notes").execute(&mut *tx).await.map_err(|e| e.to_string())?;
-    sqlx::query("DELETE FROM tags").execute(&mut *tx).await.map_err(|e| e.to_string())?;
-    sqlx::query("DELETE FROM notebooks").execute(&mut *tx).await.map_err(|e| e.to_string())?;
-    sqlx::query("DELETE FROM note_files").execute(&mut *tx).await.map_err(|e| e.to_string())?;
-    sqlx::query("DELETE FROM ocr_text").execute(&mut *tx).await.map_err(|e| e.to_string())?;
-    sqlx::query("DELETE FROM ocr_files").execute(&mut *tx).await.map_err(|e| e.to_string())?;
-    sqlx::query("DELETE FROM note_history").execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM note_tags")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM attachments")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM notes_text")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM notes")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM tags")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM notebooks")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM note_files")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM ocr_text")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM ocr_files")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM note_history")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
     sqlx::query("DELETE FROM sqlite_sequence WHERE name IN ('note_tags','attachments','notes_text','notes','tags','notebooks','note_files','ocr_files','ocr_text','note_history')")
         .execute(&mut *tx)
         .await
@@ -697,7 +746,10 @@ fn resolve_portable_paths() -> Result<(PathBuf, PathBuf), String> {
 
 #[tauri::command]
 fn get_resource_dir(app_handle: AppHandle) -> Result<String, String> {
-    let resource_dir = app_handle.path().resource_dir().map_err(|e| e.to_string())?;
+    let resource_dir = app_handle
+        .path()
+        .resource_dir()
+        .map_err(|e| e.to_string())?;
     let test_name = "eng.traineddata.gz";
     let has_tessdata = |dir: &PathBuf| dir.join("ocr").join("tessdata").join(test_name).exists();
     if has_tessdata(&resource_dir) {
@@ -759,7 +811,11 @@ fn notes_file_response(data_dir: &Path, request: Request<Vec<u8>>) -> Response<V
                 .unwrap_or_else(|_| Response::new(Vec::new()))
         }
     };
-    let mime = match full_path.extension().and_then(|ext| ext.to_str()).map(|s| s.to_lowercase()) {
+    let mime = match full_path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|s| s.to_lowercase())
+    {
         Some(ext) if ext == "png" => "image/png",
         Some(ext) if ext == "jpg" || ext == "jpeg" => "image/jpeg",
         Some(ext) if ext == "jfif" => "image/jpeg",
@@ -777,7 +833,10 @@ fn notes_file_response(data_dir: &Path, request: Request<Vec<u8>>) -> Response<V
         .unwrap_or_else(|_| Response::new(Vec::new()))
 }
 
-fn find_check_menu_item<R: Runtime>(items: Vec<MenuItemKind<R>>, id: &str) -> Option<CheckMenuItem<R>> {
+fn find_check_menu_item<R: Runtime>(
+    items: Vec<MenuItemKind<R>>,
+    id: &str,
+) -> Option<CheckMenuItem<R>> {
     for item in items {
         if item.id() == &id {
             if let Some(check) = item.as_check_menuitem() {
@@ -838,13 +897,20 @@ fn resolve_language(settings_dir: &Path) -> String {
         .and_then(|v| v.as_str())
         .unwrap_or("en")
         .to_string();
-    if lang == "ru" { "ru".to_string() } else { "en".to_string() }
+    if lang == "ru" {
+        "ru".to_string()
+    } else {
+        "en".to_string()
+    }
 }
 
 fn load_i18n_bundle(
     settings_dir: &Path,
     resource_dir: &Path,
-) -> (std::collections::HashMap<String, String>, std::collections::HashMap<String, String>) {
+) -> (
+    std::collections::HashMap<String, String>,
+    std::collections::HashMap<String, String>,
+) {
     let fallback_path = resource_dir.join("i18n").join("en.json");
     let lang = resolve_language(settings_dir);
     let lang_path = resource_dir.join("i18n").join(format!("{}.json", lang));
@@ -914,19 +980,47 @@ fn build_menu<R: Runtime>(app_handle: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let resource_dir = resolve_i18n_dir(app_handle);
     let (messages, fallback) = match resolve_portable_paths() {
         Ok((_, settings_dir)) => load_i18n_bundle(&settings_dir, &resource_dir),
-        Err(_) => (std::collections::HashMap::new(), std::collections::HashMap::new()),
+        Err(_) => (
+            std::collections::HashMap::new(),
+            std::collections::HashMap::new(),
+        ),
     };
     let label = |key: &str| t(&messages, &fallback, key);
-    let import_evernote =
-        MenuItem::with_id(app_handle, FILE_IMPORT_EVERNOTE, label("menu.import_evernote"), true, None::<&str>)?;
-    let import_notes_classic =
-        MenuItem::with_id(app_handle, FILE_IMPORT_NOTES_CLASSIC, label("menu.import_notes_classic"), true, None::<&str>)?;
-    let import_obsidian =
-        MenuItem::with_id(app_handle, FILE_IMPORT_OBSIDIAN, label("menu.import_obsidian"), true, None::<&str>)?;
-    let import_html =
-        MenuItem::with_id(app_handle, FILE_IMPORT_HTML, label("menu.import_html"), true, None::<&str>)?;
-    let import_text =
-        MenuItem::with_id(app_handle, FILE_IMPORT_TEXT, label("menu.import_text"), true, None::<&str>)?;
+    let import_evernote = MenuItem::with_id(
+        app_handle,
+        FILE_IMPORT_EVERNOTE,
+        label("menu.import_evernote"),
+        true,
+        None::<&str>,
+    )?;
+    let import_notes_classic = MenuItem::with_id(
+        app_handle,
+        FILE_IMPORT_NOTES_CLASSIC,
+        label("menu.import_notes_classic"),
+        true,
+        None::<&str>,
+    )?;
+    let import_obsidian = MenuItem::with_id(
+        app_handle,
+        FILE_IMPORT_OBSIDIAN,
+        label("menu.import_obsidian"),
+        true,
+        None::<&str>,
+    )?;
+    let import_html = MenuItem::with_id(
+        app_handle,
+        FILE_IMPORT_HTML,
+        label("menu.import_html"),
+        true,
+        None::<&str>,
+    )?;
+    let import_text = MenuItem::with_id(
+        app_handle,
+        FILE_IMPORT_TEXT,
+        label("menu.import_text"),
+        true,
+        None::<&str>,
+    )?;
     let import_submenu = SubmenuBuilder::new(app_handle, label("menu.import"))
         .item(&import_notes_classic)
         .item(&import_evernote)
@@ -934,8 +1028,13 @@ fn build_menu<R: Runtime>(app_handle: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .item(&import_html)
         .item(&import_text)
         .build()?;
-    let export_notes_classic =
-        MenuItem::with_id(app_handle, FILE_EXPORT_NOTES_CLASSIC, label("menu.export_notes_classic"), true, None::<&str>)?;
+    let export_notes_classic = MenuItem::with_id(
+        app_handle,
+        FILE_EXPORT_NOTES_CLASSIC,
+        label("menu.export_notes_classic"),
+        true,
+        None::<&str>,
+    )?;
     let export_submenu = SubmenuBuilder::new(app_handle, label("menu.export"))
         .item(&export_notes_classic)
         .build()?;
@@ -944,16 +1043,34 @@ fn build_menu<R: Runtime>(app_handle: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .item(&import_submenu)
         .item(&export_submenu)
         .separator()
-        .item(&MenuItem::with_id(app_handle, MENU_SETTINGS, label("menu.settings"), true, None::<&str>)?)
+        .item(&MenuItem::with_id(
+            app_handle,
+            MENU_SETTINGS,
+            label("menu.settings"),
+            true,
+            None::<&str>,
+        )?)
         .separator()
         .item(&PredefinedMenuItem::close_window(app_handle, None)?)
         .item(&PredefinedMenuItem::quit(app_handle, None)?)
         .build()?;
 
-    let detailed_item =
-        CheckMenuItem::with_id(app_handle, NOTES_VIEW_DETAILED, label("menu.detailed"), true, true, None::<&str>)?;
-    let compact_item =
-        CheckMenuItem::with_id(app_handle, NOTES_VIEW_COMPACT, label("menu.compact"), true, false, None::<&str>)?;
+    let detailed_item = CheckMenuItem::with_id(
+        app_handle,
+        NOTES_VIEW_DETAILED,
+        label("menu.detailed"),
+        true,
+        true,
+        None::<&str>,
+    )?;
+    let compact_item = CheckMenuItem::with_id(
+        app_handle,
+        NOTES_VIEW_COMPACT,
+        label("menu.compact"),
+        true,
+        false,
+        None::<&str>,
+    )?;
     let notes_list_menu = SubmenuBuilder::new(app_handle, label("menu.notes_list"))
         .item(&detailed_item)
         .item(&compact_item)
@@ -964,14 +1081,50 @@ fn build_menu<R: Runtime>(app_handle: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .build()?;
 
     let note_menu = SubmenuBuilder::new(app_handle, label("menu.note"))
-        .item(&MenuItem::with_id(app_handle, MENU_NEW_NOTE, label("menu.new_note"), true, None::<&str>)?)
-        .item(&MenuItem::with_id(app_handle, MENU_NEW_NOTEBOOK, label("menu.new_notebook"), true, None::<&str>)?)
-        .item(&MenuItem::with_id(app_handle, MENU_NEW_STACK, label("menu.new_stack"), true, None::<&str>)?)
+        .item(&MenuItem::with_id(
+            app_handle,
+            MENU_NEW_NOTE,
+            label("menu.new_note"),
+            true,
+            None::<&str>,
+        )?)
+        .item(&MenuItem::with_id(
+            app_handle,
+            MENU_NEW_NOTEBOOK,
+            label("menu.new_notebook"),
+            true,
+            None::<&str>,
+        )?)
+        .item(&MenuItem::with_id(
+            app_handle,
+            MENU_NEW_STACK,
+            label("menu.new_stack"),
+            true,
+            None::<&str>,
+        )?)
         .separator()
-        .item(&MenuItem::with_id(app_handle, MENU_SEARCH, label("menu.search"), true, None::<&str>)?)
-        .item(&MenuItem::with_id(app_handle, MENU_HISTORY, label("menu.history"), true, None::<&str>)?)
+        .item(&MenuItem::with_id(
+            app_handle,
+            MENU_SEARCH,
+            label("menu.search"),
+            true,
+            None::<&str>,
+        )?)
+        .item(&MenuItem::with_id(
+            app_handle,
+            MENU_HISTORY,
+            label("menu.history"),
+            true,
+            None::<&str>,
+        )?)
         .separator()
-        .item(&MenuItem::with_id(app_handle, MENU_DELETE_NOTE, label("menu.delete_note"), true, None::<&str>)?)
+        .item(&MenuItem::with_id(
+            app_handle,
+            MENU_DELETE_NOTE,
+            label("menu.delete_note"),
+            true,
+            None::<&str>,
+        )?)
         .build()?;
 
     let tools_menu = SubmenuBuilder::new(app_handle, label("menu.tools")).build()?;
@@ -986,20 +1139,32 @@ fn build_menu<R: Runtime>(app_handle: &AppHandle<R>) -> tauri::Result<Menu<R>> {
 
 #[tauri::command]
 async fn get_notebooks(state: State<'_, AppState>) -> Result<Vec<Notebook>, String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     repo.get_notebooks().await.map_err(|e| e.to_string())
 }
 
 #[allow(non_snake_case)]
 #[tauri::command]
-async fn create_notebook(name: String, parentId: Option<i64>, state: State<'_, AppState>) -> Result<i64, String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
-    repo.create_notebook(&name, parentId).await.map_err(|e| e.to_string())
+async fn create_notebook(
+    name: String,
+    parentId: Option<i64>,
+    state: State<'_, AppState>,
+) -> Result<i64, String> {
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
+    repo.create_notebook(&name, parentId)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn delete_notebook(id: i64, state: State<'_, AppState>) -> Result<(), String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     repo.delete_notebook(id).await.map_err(|e| e.to_string())
 }
 
@@ -1011,7 +1176,9 @@ async fn move_notebook(
     index: usize,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     repo.move_notebook(notebookId, parentId, index)
         .await
         .map_err(|e| e.to_string())
@@ -1019,8 +1186,14 @@ async fn move_notebook(
 
 #[allow(non_snake_case)]
 #[tauri::command]
-async fn move_note(noteId: i64, notebookId: Option<i64>, state: State<'_, AppState>) -> Result<(), String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
+async fn move_note(
+    noteId: i64,
+    notebookId: Option<i64>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     repo.update_note_notebook(noteId, notebookId)
         .await
         .map_err(|e| e.to_string())
@@ -1028,8 +1201,13 @@ async fn move_note(noteId: i64, notebookId: Option<i64>, state: State<'_, AppSta
 
 #[allow(non_snake_case)]
 #[tauri::command]
-async fn get_notes(notebookId: Option<i64>, state: State<'_, AppState>) -> Result<Vec<NoteListItem>, String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
+async fn get_notes(
+    notebookId: Option<i64>,
+    state: State<'_, AppState>,
+) -> Result<Vec<NoteListItem>, String> {
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     repo.get_all_notes(notebookId)
         .await
         .map_err(|e| e.to_string())
@@ -1037,8 +1215,13 @@ async fn get_notes(notebookId: Option<i64>, state: State<'_, AppState>) -> Resul
 
 #[allow(non_snake_case)]
 #[tauri::command]
-async fn get_notes_by_tag(tagId: i64, state: State<'_, AppState>) -> Result<Vec<NoteListItem>, String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
+async fn get_notes_by_tag(
+    tagId: i64,
+    state: State<'_, AppState>,
+) -> Result<Vec<NoteListItem>, String> {
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     repo.get_notes_by_tag(tagId)
         .await
         .map_err(|e| e.to_string())
@@ -1046,16 +1229,22 @@ async fn get_notes_by_tag(tagId: i64, state: State<'_, AppState>) -> Result<Vec<
 
 #[tauri::command]
 async fn get_trashed_notes(state: State<'_, AppState>) -> Result<Vec<NoteListItem>, String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
-    repo.get_trashed_notes()
-        .await
-        .map_err(|e| e.to_string())
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
+    repo.get_trashed_notes().await.map_err(|e| e.to_string())
 }
 
 #[allow(non_snake_case)]
 #[tauri::command]
-async fn search_notes(query: String, notebookId: Option<i64>, state: State<'_, AppState>) -> Result<Vec<NoteListItem>, String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
+async fn search_notes(
+    query: String,
+    notebookId: Option<i64>,
+    state: State<'_, AppState>,
+) -> Result<Vec<NoteListItem>, String> {
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     repo.search_notes(&query, notebookId)
         .await
         .map_err(|e| e.to_string())
@@ -1063,27 +1252,50 @@ async fn search_notes(query: String, notebookId: Option<i64>, state: State<'_, A
 
 #[tauri::command]
 async fn get_note(id: i64, state: State<'_, AppState>) -> Result<Option<Note>, String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     repo.get_note(id).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn search_notes_by_title(query: String, limit: Option<i64>, state: State<'_, AppState>) -> Result<Vec<db::NoteLinkItem>, String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
+async fn search_notes_by_title(
+    query: String,
+    limit: Option<i64>,
+    state: State<'_, AppState>,
+) -> Result<Vec<db::NoteLinkItem>, String> {
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     let max = limit.unwrap_or(20).max(1);
-    repo.search_notes_by_title(&query, max).await.map_err(|e| e.to_string())
+    repo.search_notes_by_title(&query, max)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn get_note_id_by_external_id(external_id: String, state: State<'_, AppState>) -> Result<Option<i64>, String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
-    repo.get_note_id_by_external_id(&external_id).await.map_err(|e| e.to_string())
+async fn get_note_id_by_external_id(
+    external_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<i64>, String> {
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
+    repo.get_note_id_by_external_id(&external_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[allow(non_snake_case)]
 #[tauri::command]
-async fn set_note_external_id(noteId: i64, externalId: String, state: State<'_, AppState>) -> Result<(), String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
+async fn set_note_external_id(
+    noteId: i64,
+    externalId: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     repo.set_note_external_id(noteId, &externalId)
         .await
         .map_err(|e| e.to_string())
@@ -1091,7 +1303,9 @@ async fn set_note_external_id(noteId: i64, externalId: String, state: State<'_, 
 
 #[tauri::command]
 async fn get_note_counts(state: State<'_, AppState>) -> Result<NoteCounts, String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     repo.get_note_counts().await.map_err(|e| e.to_string())
 }
 
@@ -1102,8 +1316,16 @@ fn get_data_dir(state: State<'_, AppState>) -> Result<String, String> {
 
 #[allow(non_snake_case)]
 #[tauri::command]
-async fn upsert_note(id: Option<i64>, title: String, content: String, notebookId: Option<i64>, state: State<'_, AppState>) -> Result<i64, String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
+async fn upsert_note(
+    id: Option<i64>,
+    title: String,
+    content: String,
+    notebookId: Option<i64>,
+    state: State<'_, AppState>,
+) -> Result<i64, String> {
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     match id {
         Some(id) => {
             repo.update_note(id, &title, &content, notebookId, &state.data_dir)
@@ -1111,39 +1333,56 @@ async fn upsert_note(id: Option<i64>, title: String, content: String, notebookId
                 .map_err(|e| e.to_string())?;
             Ok(id)
         }
-        None => {
-            repo.create_note(&title, &content, notebookId, &state.data_dir).await.map_err(|e| e.to_string())
-        }
+        None => repo
+            .create_note(&title, &content, notebookId, &state.data_dir)
+            .await
+            .map_err(|e| e.to_string()),
     }
 }
 
 #[tauri::command]
 async fn delete_note(id: i64, state: State<'_, AppState>) -> Result<(), String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
-    repo.delete_note(id, &state.data_dir).await.map_err(|e| e.to_string())
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
+    repo.delete_note(id, &state.data_dir)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn trash_note(id: i64, state: State<'_, AppState>) -> Result<(), String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     repo.trash_note(id).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn restore_note(id: i64, state: State<'_, AppState>) -> Result<(), String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     repo.restore_note(id).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn restore_all_notes(state: State<'_, AppState>) -> Result<(), String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     repo.restore_all_notes().await.map_err(|e| e.to_string())
 }
 #[allow(non_snake_case)]
 #[tauri::command]
-async fn import_attachment(noteId: i64, sourcePath: String, state: State<'_, AppState>) -> Result<Attachment, String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
+async fn import_attachment(
+    noteId: i64,
+    sourcePath: String,
+    state: State<'_, AppState>,
+) -> Result<Attachment, String> {
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     let source = PathBuf::from(&sourcePath);
     let filename = source
         .file_name()
@@ -1160,7 +1399,9 @@ async fn import_attachment(noteId: i64, sourcePath: String, state: State<'_, App
         .create_attachment(noteId, &filename, &mime, size)
         .await
         .map_err(|e| e.to_string())?;
-    let rel_dir = PathBuf::from("files").join("attachments").join(id.to_string());
+    let rel_dir = PathBuf::from("files")
+        .join("attachments")
+        .join(id.to_string());
     let dest_dir = state.data_dir.join(&rel_dir);
     fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
     let dest_path = dest_dir.join(&filename);
@@ -1191,7 +1432,9 @@ async fn import_attachment_bytes(
     bytes: Vec<u8>,
     state: State<'_, AppState>,
 ) -> Result<Attachment, String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     let size = bytes.len() as i64;
     let resolved_mime = if mime.is_empty() {
         mime_guess::from_path(&filename)
@@ -1205,7 +1448,9 @@ async fn import_attachment_bytes(
         .create_attachment(noteId, &filename, &resolved_mime, size)
         .await
         .map_err(|e| e.to_string())?;
-    let rel_dir = PathBuf::from("files").join("attachments").join(id.to_string());
+    let rel_dir = PathBuf::from("files")
+        .join("attachments")
+        .join(id.to_string());
     let dest_dir = state.data_dir.join(&rel_dir);
     fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
     let dest_path = dest_dir.join(&filename);
@@ -1238,7 +1483,10 @@ async fn store_note_file_bytes(
 }
 
 #[tauri::command]
-async fn download_note_file(url: String, state: State<'_, AppState>) -> Result<StoredNoteFile, String> {
+async fn download_note_file(
+    url: String,
+    state: State<'_, AppState>,
+) -> Result<StoredNoteFile, String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()
@@ -1270,7 +1518,10 @@ async fn download_note_file(url: String, state: State<'_, AppState>) -> Result<S
 }
 
 #[tauri::command]
-async fn store_note_file_from_path(source_path: String, state: State<'_, AppState>) -> Result<StoredNoteFile, String> {
+async fn store_note_file_from_path(
+    source_path: String,
+    state: State<'_, AppState>,
+) -> Result<StoredNoteFile, String> {
     let path = PathBuf::from(&source_path);
     if !path.exists() {
         return Err("Source file not found".to_string());
@@ -1288,8 +1539,13 @@ async fn store_note_file_from_path(source_path: String, state: State<'_, AppStat
 }
 #[tauri::command]
 async fn delete_attachment(id: i64, state: State<'_, AppState>) -> Result<(), String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
-    let path = repo.delete_attachment(id).await.map_err(|e| e.to_string())?;
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
+    let path = repo
+        .delete_attachment(id)
+        .await
+        .map_err(|e| e.to_string())?;
     if let Some(rel) = path {
         let full_path = state.data_dir.join(rel);
         if full_path.exists() {
@@ -1303,8 +1559,14 @@ async fn delete_attachment(id: i64, state: State<'_, AppState>) -> Result<(), St
 }
 
 #[tauri::command]
-async fn save_attachment_as(id: i64, dest_path: String, state: State<'_, AppState>) -> Result<(), String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
+async fn save_attachment_as(
+    id: i64,
+    dest_path: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     let attachment = repo.get_attachment(id).await.map_err(|e| e.to_string())?;
     let Some(att) = attachment else {
         return Err("Attachment not found".to_string());
@@ -1318,8 +1580,14 @@ async fn save_attachment_as(id: i64, dest_path: String, state: State<'_, AppStat
 }
 
 #[tauri::command]
-async fn read_attachment_text(id: i64, max_bytes: i64, state: State<'_, AppState>) -> Result<String, String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
+async fn read_attachment_text(
+    id: i64,
+    max_bytes: i64,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     let attachment = repo.get_attachment(id).await.map_err(|e| e.to_string())?;
     let Some(att) = attachment else {
         return Err("Attachment not found".to_string());
@@ -1331,13 +1599,17 @@ async fn read_attachment_text(id: i64, max_bytes: i64, state: State<'_, AppState
     let file = fs::File::open(&source).map_err(|e| e.to_string())?;
     let mut buffer = Vec::new();
     let limit = max_bytes.max(0) as usize;
-    file.take(limit as u64).read_to_end(&mut buffer).map_err(|e| e.to_string())?;
+    file.take(limit as u64)
+        .read_to_end(&mut buffer)
+        .map_err(|e| e.to_string())?;
     Ok(String::from_utf8_lossy(&buffer).to_string())
 }
 
 #[tauri::command]
 async fn read_attachment_bytes(id: i64, state: State<'_, AppState>) -> Result<Vec<u8>, String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     let attachment = repo.get_attachment(id).await.map_err(|e| e.to_string())?;
     let Some(att) = attachment else {
         return Err("Attachment not found".to_string());
@@ -1421,8 +1693,13 @@ fn read_file_bytes(path: String) -> Result<Vec<u8>, String> {
 }
 
 #[tauri::command]
-async fn get_attachment_by_path(path: String, state: State<'_, AppState>) -> Result<Option<Attachment>, String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
+async fn get_attachment_by_path(
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<Option<Attachment>, String> {
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     let normalized = path.replace('\\', "/");
     let normalized = if normalized.starts_with("files/") {
         normalized
@@ -1436,16 +1713,28 @@ async fn get_attachment_by_path(path: String, state: State<'_, AppState>) -> Res
 
 #[allow(non_snake_case)]
 #[tauri::command]
-async fn add_history_entry(noteId: i64, minGapSeconds: i64, state: State<'_, AppState>) -> Result<(), String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
+async fn add_history_entry(
+    noteId: i64,
+    minGapSeconds: i64,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     repo.add_history_entry(noteId, minGapSeconds)
         .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn get_note_history(limit: i64, offset: i64, state: State<'_, AppState>) -> Result<Vec<NoteHistoryItem>, String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
+async fn get_note_history(
+    limit: i64,
+    offset: i64,
+    state: State<'_, AppState>,
+) -> Result<Vec<NoteHistoryItem>, String> {
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     repo.get_note_history(limit, offset)
         .await
         .map_err(|e| e.to_string())
@@ -1453,14 +1742,20 @@ async fn get_note_history(limit: i64, offset: i64, state: State<'_, AppState>) -
 
 #[tauri::command]
 async fn clear_note_history(state: State<'_, AppState>) -> Result<(), String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     repo.clear_note_history().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn cleanup_note_history(days: i64, state: State<'_, AppState>) -> Result<(), String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
-    repo.cleanup_note_history(days).await.map_err(|e| e.to_string())
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
+    repo.cleanup_note_history(days)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1533,7 +1828,10 @@ fn count_missing_rte(rte_root: String, note_ids: Vec<String>) -> Result<i64, Str
         }
         let sub_a = &note_id[0..3];
         let sub_b = &note_id[note_id.len() - 3..];
-        let path = root.join(sub_a).join(sub_b).join(format!("{}.dat", note_id));
+        let path = root
+            .join(sub_a)
+            .join(sub_b)
+            .join(format!("{}.dat", note_id));
         if !path.exists() {
             missing += 1;
         }
@@ -1543,7 +1841,9 @@ fn count_missing_rte(rte_root: String, note_ids: Vec<String>) -> Result<i64, Str
 
 #[tauri::command]
 fn create_evernote_backup(state: State<'_, AppState>) -> Result<String, String> {
-    let timestamp = chrono::Local::now().format("evernote-%Y%m%d-%H%M%S").to_string();
+    let timestamp = chrono::Local::now()
+        .format("evernote-%Y%m%d-%H%M%S")
+        .to_string();
     let backup_dir = state.data_dir.join("backups").join(timestamp);
     fs::create_dir_all(&backup_dir).map_err(|e| e.to_string())?;
     let notes_db = state.data_dir.join("notes.db");
@@ -1562,9 +1862,16 @@ fn create_import_backup(kind: String, state: State<'_, AppState>) -> Result<Stri
         .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
         .collect::<String>()
         .to_lowercase();
-    let prefix = if clean.is_empty() { "import" } else { clean.as_str() };
+    let prefix = if clean.is_empty() {
+        "import"
+    } else {
+        clean.as_str()
+    };
     let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
-    let backup_dir = state.data_dir.join("backups").join(format!("{}-{}", prefix, timestamp));
+    let backup_dir = state
+        .data_dir
+        .join("backups")
+        .join(format!("{}-{}", prefix, timestamp));
     fs::create_dir_all(&backup_dir).map_err(|e| e.to_string())?;
     let notes_db = state.data_dir.join("notes.db");
     if notes_db.exists() {
@@ -1645,7 +1952,11 @@ fn find_evernote_paths(basePath: String) -> Result<EvernotePaths, String> {
             let name = entry.file_name().to_string_lossy().to_string();
             if entry_path.is_file() && name.to_lowercase().ends_with("remotegraph.sql") {
                 let ts = updated_at_ts(&entry_path);
-                if db_candidate.as_ref().map(|(_, best)| ts > *best).unwrap_or(true) {
+                if db_candidate
+                    .as_ref()
+                    .map(|(_, best)| ts > *best)
+                    .unwrap_or(true)
+                {
                     db_candidate = Some((entry_path.clone(), ts));
                 }
                 continue;
@@ -1653,7 +1964,11 @@ fn find_evernote_paths(basePath: String) -> Result<EvernotePaths, String> {
             if entry_path.is_dir() {
                 if name.eq_ignore_ascii_case("internal_rteDoc") {
                     let ts = updated_at_ts(&entry_path);
-                    if rte_candidate.as_ref().map(|(_, best)| ts > *best).unwrap_or(true) {
+                    if rte_candidate
+                        .as_ref()
+                        .map(|(_, best)| ts > *best)
+                        .unwrap_or(true)
+                    {
                         rte_candidate = Some((entry_path.clone(), ts));
                     }
                 } else if name.eq_ignore_ascii_case("resource-cache") {
@@ -1686,13 +2001,10 @@ async fn select_evernote_folder(app_handle: AppHandle) -> Result<Option<String>,
         tokio::sync::oneshot::Sender<Option<String>>,
         tokio::sync::oneshot::Receiver<Option<String>>,
     ) = tokio::sync::oneshot::channel();
-    app_handle
-        .dialog()
-        .file()
-        .pick_folder(move |folder| {
-            let path = folder.and_then(|value| value.into_path().ok());
-            let _ = tx.send(path.map(|value| value.to_string_lossy().to_string()));
-        });
+    app_handle.dialog().file().pick_folder(move |folder| {
+        let path = folder.and_then(|value| value.into_path().ok());
+        let _ = tx.send(path.map(|value| value.to_string_lossy().to_string()));
+    });
     rx.await.map_err(|e| e.to_string())
 }
 
@@ -1706,39 +2018,135 @@ struct EvernoteImportResult {
 }
 
 #[tauri::command]
-async fn import_evernote_from_json(json_path: String, assets_dir: String, state: State<'_, AppState>) -> Result<EvernoteImportResult, String> {
+async fn import_evernote_from_json(
+    json_path: String,
+    assets_dir: String,
+    state: State<'_, AppState>,
+) -> Result<EvernoteImportResult, String> {
     let raw = fs::read_to_string(&json_path).map_err(|e| e.to_string())?;
     let data: Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
-    let stacks = data.get("stacks").and_then(|v| v.as_array()).cloned().unwrap_or_default();
-    let notebooks = data.get("notebooks").and_then(|v| v.as_array()).cloned().unwrap_or_default();
-    let notes = data.get("notes").and_then(|v| v.as_array()).cloned().unwrap_or_default();
-    let tags = data.get("tags").and_then(|v| v.as_array()).cloned().unwrap_or_default();
-    let note_tags = data.get("noteTags").and_then(|v| v.as_array()).cloned().unwrap_or_default();
-    let attachments = data.get("attachments").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let stacks = data
+        .get("stacks")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let notebooks = data
+        .get("notebooks")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let notes = data
+        .get("notes")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let tags = data
+        .get("tags")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let note_tags = data
+        .get("noteTags")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let attachments = data
+        .get("attachments")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
 
     let now = chrono::Utc::now().timestamp();
     let pool = state.pool.clone();
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
-    sqlx::query("DELETE FROM note_tags").execute(&mut *tx).await.map_err(|e| e.to_string())?;
-    sqlx::query("DELETE FROM attachments").execute(&mut *tx).await.map_err(|e| e.to_string())?;
-    sqlx::query("DELETE FROM notes_text").execute(&mut *tx).await.map_err(|e| e.to_string())?;
-    sqlx::query("DELETE FROM notes").execute(&mut *tx).await.map_err(|e| e.to_string())?;
-    sqlx::query("DELETE FROM tags").execute(&mut *tx).await.map_err(|e| e.to_string())?;
-    sqlx::query("DELETE FROM notebooks").execute(&mut *tx).await.map_err(|e| e.to_string())?;
-    sqlx::query("DELETE FROM note_files").execute(&mut *tx).await.map_err(|e| e.to_string())?;
-    sqlx::query("DELETE FROM ocr_text").execute(&mut *tx).await.map_err(|e| e.to_string())?;
-    sqlx::query("DELETE FROM ocr_files").execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM note_tags")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM attachments")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM notes_text")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM notes")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM tags")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM notebooks")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM note_files")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM ocr_text")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM ocr_files")
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
     sqlx::query("DELETE FROM sqlite_sequence WHERE name IN ('note_tags','attachments','notes_text','notes','tags','notebooks','note_files','ocr_files','ocr_text')")
         .execute(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
 
+    let mut stack_name_map: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+    let mut stack_order: Vec<String> = Vec::new();
+    let mut stack_seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    for stack in &stacks {
+        if let Some(raw_id) = stack.get("id").and_then(|v| v.as_str()) {
+            if let Some(stack_key) = normalize_stack_id(Some(raw_id)) {
+                if stack_seen.insert(stack_key.clone()) {
+                    stack_order.push(stack_key.clone());
+                    let name = stack
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(raw_id)
+                        .to_string();
+                    stack_name_map.insert(stack_key, name);
+                }
+            }
+        }
+    }
+
+    let mut unsorted_needed = false;
+    for nb in &notebooks {
+        let stack_raw = nb
+            .get("personal_Stack_id")
+            .and_then(|v| v.as_str())
+            .or_else(|| nb.get("stack_Stack_id").and_then(|v| v.as_str()));
+        if let Some(stack_key) = normalize_stack_id(stack_raw) {
+            if stack_seen.insert(stack_key.clone()) {
+                stack_order.push(stack_key.clone());
+                stack_name_map
+                    .entry(stack_key.clone())
+                    .or_insert(stack_key.clone());
+            }
+        } else {
+            unsorted_needed = true;
+        }
+    }
+
     let mut stack_id_map = std::collections::HashMap::new();
     let mut stack_index = 0i64;
-    for stack in &stacks {
-        let stack_id = stack.get("id").and_then(|v| v.as_str()).unwrap_or("stack");
-        let name = stack.get("name").and_then(|v| v.as_str()).unwrap_or(stack_id);
+    for stack_key in &stack_order {
+        let name = stack_name_map
+            .get(stack_key)
+            .cloned()
+            .unwrap_or_else(|| stack_key.clone());
         sqlx::query(
             "INSERT INTO notebooks (name, created_at, parent_id, notebook_type, sort_order, external_id)
              VALUES (?, ?, NULL, 'stack', ?, ?)",
@@ -1746,7 +2154,7 @@ async fn import_evernote_from_json(json_path: String, assets_dir: String, state:
         .bind(name)
         .bind(now)
         .bind(stack_index)
-        .bind(format!("stack:{}", stack_id))
+        .bind(format!("stack:{}", stack_key))
         .execute(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
@@ -1754,15 +2162,11 @@ async fn import_evernote_from_json(json_path: String, assets_dir: String, state:
             .fetch_one(&mut *tx)
             .await
             .map_err(|e| e.to_string())?;
-        stack_id_map.insert(stack_id.to_string(), row_id.0);
+        stack_id_map.insert(stack_key.clone(), row_id.0);
         stack_index += 1;
     }
 
-    let unsorted_needed = notebooks.iter().any(|nb| {
-        let stack_raw = nb.get("personal_Stack_id").and_then(|v| v.as_str());
-        normalize_stack_id(stack_raw).is_none()
-    });
-    if unsorted_needed {
+    if unsorted_needed && !stack_id_map.contains_key("__unsorted__") {
         sqlx::query(
             "INSERT INTO notebooks (name, created_at, parent_id, notebook_type, sort_order, external_id)
              VALUES ('Unsorted', ?, NULL, 'stack', ?, ?)",
@@ -1781,13 +2185,18 @@ async fn import_evernote_from_json(json_path: String, assets_dir: String, state:
     }
 
     let mut notebook_id_map = std::collections::HashMap::new();
-    let mut notebook_order: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    let mut notebook_order: std::collections::HashMap<String, i64> =
+        std::collections::HashMap::new();
     for nb in &notebooks {
-        let stack_raw = nb.get("personal_Stack_id").and_then(|v| v.as_str());
+        let stack_raw = nb
+            .get("personal_Stack_id")
+            .and_then(|v| v.as_str())
+            .or_else(|| nb.get("stack_Stack_id").and_then(|v| v.as_str()));
         let stack_id = normalize_stack_id(stack_raw).unwrap_or_else(|| "__unsorted__".to_string());
         let parent_id = stack_id_map.get(&stack_id).copied();
         let index = notebook_order.get(&stack_id).copied().unwrap_or(0);
-        let name = nb.get("label")
+        let name = nb
+            .get("label")
             .and_then(|v| v.as_str())
             .or_else(|| nb.get("name").and_then(|v| v.as_str()))
             .or_else(|| nb.get("title").and_then(|v| v.as_str()))
@@ -1817,21 +2226,40 @@ async fn import_evernote_from_json(json_path: String, assets_dir: String, state:
 
     let mut note_id_map = std::collections::HashMap::new();
     for note in &notes {
-        let title = note.get("title")
+        let title = note
+            .get("title")
             .and_then(|v| v.as_str())
             .unwrap_or("Untitled")
             .to_string();
-        let content = note.get("contentNormalized")
+        let content = note
+            .get("contentNormalized")
             .and_then(|v| v.as_str())
             .or_else(|| note.get("content").and_then(|v| v.as_str()))
             .unwrap_or("");
-        let created_at = note.get("createdAt").and_then(|v| v.as_i64()).unwrap_or(now);
-        let updated_at = note.get("updatedAt").and_then(|v| v.as_i64()).unwrap_or(created_at);
-        let notebook_external = note.get("notebookId")
+        let created_at = note
+            .get("createdAt")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(now);
+        let updated_at = note
+            .get("updatedAt")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(created_at);
+        let notebook_external = note
+            .get("notebookId")
             .and_then(value_to_string)
-            .or_else(|| note.get("noteFields").and_then(|v| v.get("parent_Notebook_id")).and_then(value_to_string));
-        let notebook_id = notebook_external.as_ref().and_then(|id| notebook_id_map.get(id)).copied();
-        let content_hash = note.get("contentHash").and_then(|v| v.as_str()).map(|s| s.to_string());
+            .or_else(|| {
+                note.get("noteFields")
+                    .and_then(|v| v.get("parent_Notebook_id"))
+                    .and_then(value_to_string)
+            });
+        let notebook_id = notebook_external
+            .as_ref()
+            .and_then(|id| notebook_id_map.get(id))
+            .copied();
+        let content_hash = note
+            .get("contentHash")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
         let content_size = note.get("contentSize").and_then(|v| v.as_i64());
         let meta = note.get("meta").map(|v| v.to_string());
         let external_id = note.get("id").and_then(value_to_string).unwrap_or_default();
@@ -1870,13 +2298,17 @@ async fn import_evernote_from_json(json_path: String, assets_dir: String, state:
     }
 
     let mut tag_id_map = std::collections::HashMap::new();
-    let roots: Vec<&Value> = tags.iter().filter(|tag| {
-        let parent_a = tag.get("parentId").and_then(|v| v.as_i64());
-        let parent_b = tag.get("parent_Tag_id").and_then(|v| v.as_i64());
-        parent_a.is_none() && parent_b.is_none()
-    }).collect();
+    let roots: Vec<&Value> = tags
+        .iter()
+        .filter(|tag| {
+            let parent_a = tag.get("parentId").and_then(|v| v.as_i64());
+            let parent_b = tag.get("parent_Tag_id").and_then(|v| v.as_i64());
+            parent_a.is_none() && parent_b.is_none()
+        })
+        .collect();
     for tag in roots {
-        let name = tag.get("name")
+        let name = tag
+            .get("name")
             .and_then(|v| v.as_str())
             .or_else(|| tag.get("label").and_then(|v| v.as_str()))
             .map(|value| value.to_string())
@@ -1901,16 +2333,25 @@ async fn import_evernote_from_json(json_path: String, assets_dir: String, state:
         tag_id_map.insert(external_id, row_id.0);
     }
 
-    let children: Vec<&Value> = tags.iter().filter(|tag| {
-        let parent_a = tag.get("parentId").and_then(|v| v.as_i64());
-        let parent_b = tag.get("parent_Tag_id").and_then(|v| v.as_i64());
-        parent_a.is_some() || parent_b.is_some()
-    }).collect();
+    let children: Vec<&Value> = tags
+        .iter()
+        .filter(|tag| {
+            let parent_a = tag.get("parentId").and_then(|v| v.as_i64());
+            let parent_b = tag.get("parent_Tag_id").and_then(|v| v.as_i64());
+            parent_a.is_some() || parent_b.is_some()
+        })
+        .collect();
     for tag in children {
-        let parent_key = tag.get("parentId").and_then(value_to_string)
+        let parent_key = tag
+            .get("parentId")
+            .and_then(value_to_string)
             .or_else(|| tag.get("parent_Tag_id").and_then(value_to_string));
-        let parent_id = parent_key.as_ref().and_then(|id| tag_id_map.get(id)).copied();
-        let name = tag.get("name")
+        let parent_id = parent_key
+            .as_ref()
+            .and_then(|id| tag_id_map.get(id))
+            .copied();
+        let name = tag
+            .get("name")
             .and_then(|v| v.as_str())
             .or_else(|| tag.get("label").and_then(|v| v.as_str()))
             .map(|value| value.to_string())
@@ -1937,16 +2378,24 @@ async fn import_evernote_from_json(json_path: String, assets_dir: String, state:
     }
 
     for nt in &note_tags {
-        let note_external = nt.get("note_id")
+        let note_external = nt
+            .get("note_id")
             .or_else(|| nt.get("noteId"))
             .or_else(|| nt.get("Note_id"))
             .and_then(value_to_string);
-        let tag_external = nt.get("tag_id")
+        let tag_external = nt
+            .get("tag_id")
             .or_else(|| nt.get("tagId"))
             .or_else(|| nt.get("Tag_id"))
             .and_then(value_to_string);
-        let note_id = note_external.as_ref().and_then(|id| note_id_map.get(id)).copied();
-        let tag_id = tag_external.as_ref().and_then(|id| tag_id_map.get(id)).copied();
+        let note_id = note_external
+            .as_ref()
+            .and_then(|id| note_id_map.get(id))
+            .copied();
+        let tag_id = tag_external
+            .as_ref()
+            .and_then(|id| tag_id_map.get(id))
+            .copied();
         if let (Some(note_id), Some(tag_id)) = (note_id, tag_id) {
             sqlx::query("INSERT OR IGNORE INTO note_tags (note_id, tag_id) VALUES (?, ?)")
                 .bind(note_id)
@@ -1959,33 +2408,73 @@ async fn import_evernote_from_json(json_path: String, assets_dir: String, state:
 
     for attachment in &attachments {
         let fields = attachment.get("attachmentFields").unwrap_or(attachment);
-        let note_external = attachment.get("noteId")
+        let note_external = attachment
+            .get("noteId")
             .or_else(|| fields.get("parent_Note_id"))
             .and_then(value_to_string);
-        let note_id = note_external.as_ref().and_then(|id| note_id_map.get(id)).copied();
+        let note_id = note_external
+            .as_ref()
+            .and_then(|id| note_id_map.get(id))
+            .copied();
         if note_id.is_none() {
             continue;
         }
-        let hash = attachment.get("dataHash").or_else(|| fields.get("dataHash")).and_then(value_to_string);
-        let filename = attachment.get("filename").or_else(|| fields.get("filename")).and_then(|v| v.as_str()).unwrap_or("");
-        let mime = attachment.get("mime").or_else(|| fields.get("mime")).and_then(|v| v.as_str()).unwrap_or("");
-        let size = attachment.get("dataSize").or_else(|| fields.get("dataSize")).and_then(|v| v.as_i64()).unwrap_or(0);
-        let width = fields.get("width").or_else(|| fields.get("imageWidth")).and_then(|v| v.as_i64());
-        let height = fields.get("height").or_else(|| fields.get("imageHeight")).and_then(|v| v.as_i64());
-        let rel_path = attachment.get("localFile")
+        let hash = attachment
+            .get("dataHash")
+            .or_else(|| fields.get("dataHash"))
+            .and_then(value_to_string);
+        let filename = attachment
+            .get("filename")
+            .or_else(|| fields.get("filename"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let mime = attachment
+            .get("mime")
+            .or_else(|| fields.get("mime"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let size = attachment
+            .get("dataSize")
+            .or_else(|| fields.get("dataSize"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        let width = fields
+            .get("width")
+            .or_else(|| fields.get("imageWidth"))
+            .and_then(|v| v.as_i64());
+        let height = fields
+            .get("height")
+            .or_else(|| fields.get("imageHeight"))
+            .and_then(|v| v.as_i64());
+        let rel_path = attachment
+            .get("localFile")
             .and_then(|v| v.get("relPath"))
             .and_then(|v| v.as_str())
             .map(|rel| format!("files/{}", rel));
-        let source_url = fields.get("sourceUrl")
+        let source_url = fields
+            .get("sourceUrl")
             .or_else(|| fields.get("sourceURL"))
             .or_else(|| fields.get("source_url"))
             .and_then(|v| v.as_str());
-        let is_attachment = fields.get("isAttachment")
-            .or_else(|| fields.get("is_attachment"))
+        let explicit_attachment = fields
+            .get("isAttachment")
             .and_then(|v| v.as_i64())
-            .unwrap_or(1);
-        let created_at = fields.get("created").or_else(|| fields.get("createdAt")).and_then(|v| v.as_i64()).unwrap_or(now);
-        let updated_at = fields.get("updated").or_else(|| fields.get("updatedAt")).and_then(|v| v.as_i64()).unwrap_or(created_at);
+            .or_else(|| fields.get("is_attachment").and_then(|v| v.as_i64()));
+        let mime_lc = mime.as_ref().map(|m| m.to_lowercase());
+        let is_attachment = explicit_attachment
+            .map(|value| value != 0)
+            .unwrap_or_else(|| mime_lc.map_or(false, |lower| !lower.starts_with("image/")));
+        let is_attachment_value = if is_attachment { 1 } else { 0 };
+        let created_at = fields
+            .get("created")
+            .or_else(|| fields.get("createdAt"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(now);
+        let updated_at = fields
+            .get("updated")
+            .or_else(|| fields.get("updatedAt"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(created_at);
 
         sqlx::query(
             "INSERT INTO attachments (note_id, external_id, hash, filename, mime, size, width, height, local_path, source_url, is_attachment, created_at, updated_at)
@@ -2001,7 +2490,7 @@ async fn import_evernote_from_json(json_path: String, assets_dir: String, state:
         .bind(height)
         .bind(rel_path.unwrap_or_default())
         .bind(source_url)
-        .bind(is_attachment)
+        .bind(is_attachment_value)
         .bind(created_at)
         .bind(updated_at)
         .execute(&mut *tx)
@@ -2021,7 +2510,9 @@ async fn import_evernote_from_json(json_path: String, assets_dir: String, state:
             copy_dir_recursive(&assets_path, &files_dir)?;
         }
     }
-    let repo = SqliteRepository { pool: state.pool.clone() };
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     let _ = repo.backfill_note_files_and_ocr(&state.data_dir).await;
     Ok(EvernoteImportResult {
         notes: note_id_map.len() as i64,
@@ -2042,9 +2533,9 @@ async fn select_obsidian_folder(app_handle: AppHandle) -> Result<Option<String>,
         .file()
         .set_title("Select Obsidian folder")
         .pick_folder(move |folder| {
-            let path = folder.and_then(|path| path.into_path().ok()).map(|path| {
-                path.to_string_lossy().to_string()
-            });
+            let path = folder
+                .and_then(|path| path.into_path().ok())
+                .map(|path| path.to_string_lossy().to_string());
             let _ = tx.send(path);
         });
     rx.await.map_err(|e| e.to_string())
@@ -2061,9 +2552,9 @@ async fn select_html_folder(app_handle: AppHandle) -> Result<Option<String>, Str
         .file()
         .set_title("Select HTML folder")
         .pick_folder(move |folder| {
-            let path = folder.and_then(|path| path.into_path().ok()).map(|path| {
-                path.to_string_lossy().to_string()
-            });
+            let path = folder
+                .and_then(|path| path.into_path().ok())
+                .map(|path| path.to_string_lossy().to_string());
             let _ = tx.send(path);
         });
     rx.await.map_err(|e| e.to_string())
@@ -2080,9 +2571,9 @@ async fn select_text_folder(app_handle: AppHandle) -> Result<Option<String>, Str
         .file()
         .set_title("Select text folder")
         .pick_folder(move |folder| {
-            let path = folder.and_then(|path| path.into_path().ok()).map(|path| {
-                path.to_string_lossy().to_string()
-            });
+            let path = folder
+                .and_then(|path| path.into_path().ok())
+                .map(|path| path.to_string_lossy().to_string());
             let _ = tx.send(path);
         });
     rx.await.map_err(|e| e.to_string())
@@ -2099,9 +2590,9 @@ async fn select_export_folder(app_handle: AppHandle) -> Result<Option<String>, S
         .file()
         .set_title("Select export folder")
         .pick_folder(move |folder| {
-            let path = folder.and_then(|path| path.into_path().ok()).map(|path| {
-                path.to_string_lossy().to_string()
-            });
+            let path = folder
+                .and_then(|path| path.into_path().ok())
+                .map(|path| path.to_string_lossy().to_string());
             let _ = tx.send(path);
         });
     rx.await.map_err(|e| e.to_string())
@@ -2281,7 +2772,10 @@ struct ExportReport {
 }
 
 #[tauri::command]
-async fn export_notes_classic(dest_dir: String, state: State<'_, AppState>) -> Result<ExportReport, String> {
+async fn export_notes_classic(
+    dest_dir: String,
+    state: State<'_, AppState>,
+) -> Result<ExportReport, String> {
     if dest_dir.trim().is_empty() {
         return Err("Export folder is empty".to_string());
     }
@@ -2316,12 +2810,11 @@ async fn export_notes_classic(dest_dir: String, state: State<'_, AppState>) -> R
         .await
         .map_err(|e| e.to_string())?;
 
-    let notes_text: Vec<ExportNoteText> = sqlx::query_as(
-        "SELECT note_id, title, plain_text FROM notes_text ORDER BY note_id ASC",
-    )
-    .fetch_all(&pool)
-    .await
-    .map_err(|e| e.to_string())?;
+    let notes_text: Vec<ExportNoteText> =
+        sqlx::query_as("SELECT note_id, title, plain_text FROM notes_text ORDER BY note_id ASC")
+            .fetch_all(&pool)
+            .await
+            .map_err(|e| e.to_string())?;
 
     let tags: Vec<ExportTag> = sqlx::query_as(
         "SELECT id, name, parent_id, created_at, updated_at, external_id FROM tags ORDER BY id ASC",
@@ -2330,12 +2823,11 @@ async fn export_notes_classic(dest_dir: String, state: State<'_, AppState>) -> R
     .await
     .map_err(|e| e.to_string())?;
 
-    let note_tags: Vec<ExportNoteTag> = sqlx::query_as(
-        "SELECT note_id, tag_id FROM note_tags ORDER BY note_id ASC, tag_id ASC",
-    )
-    .fetch_all(&pool)
-    .await
-    .map_err(|e| e.to_string())?;
+    let note_tags: Vec<ExportNoteTag> =
+        sqlx::query_as("SELECT note_id, tag_id FROM note_tags ORDER BY note_id ASC, tag_id ASC")
+            .fetch_all(&pool)
+            .await
+            .map_err(|e| e.to_string())?;
 
     let attachments_rows: Vec<(i64, i64, Option<String>, Option<String>, Option<String>, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<String>, Option<String>, Option<i64>, Option<i64>, Option<i64>)> =
         sqlx::query_as(
@@ -2353,12 +2845,11 @@ async fn export_notes_classic(dest_dir: String, state: State<'_, AppState>) -> R
     .await
     .map_err(|e| e.to_string())?;
 
-    let note_files: Vec<ExportNoteFile> = sqlx::query_as(
-        "SELECT note_id, file_id FROM note_files ORDER BY note_id ASC, file_id ASC",
-    )
-    .fetch_all(&pool)
-    .await
-    .map_err(|e| e.to_string())?;
+    let note_files: Vec<ExportNoteFile> =
+        sqlx::query_as("SELECT note_id, file_id FROM note_files ORDER BY note_id ASC, file_id ASC")
+            .fetch_all(&pool)
+            .await
+            .map_err(|e| e.to_string())?;
 
     let ocr_text: Vec<ExportOcrText> = sqlx::query_as(
         "SELECT file_id, lang, text, hash, updated_at FROM ocr_text ORDER BY file_id ASC",
@@ -2377,7 +2868,22 @@ async fn export_notes_classic(dest_dir: String, state: State<'_, AppState>) -> R
 
     let mut notes: Vec<ExportNote> = Vec::new();
     for row in notes_rows {
-        let (id, title, content, created_at, updated_at, sync_status, remote_id, notebook_id, external_id, meta, content_hash, content_size, deleted_at, deleted_from_notebook_id) = row;
+        let (
+            id,
+            title,
+            content,
+            created_at,
+            updated_at,
+            sync_status,
+            remote_id,
+            notebook_id,
+            external_id,
+            meta,
+            content_hash,
+            content_size,
+            deleted_at,
+            deleted_from_notebook_id,
+        ) = row;
         let content_path = format!("notes/{}.html", id);
         let meta_path = format!("notes/{}.meta.json", id);
         let note = ExportNote {
@@ -2411,7 +2917,22 @@ async fn export_notes_classic(dest_dir: String, state: State<'_, AppState>) -> R
 
     let mut attachments: Vec<ExportAttachment> = Vec::new();
     for row in attachments_rows {
-        let (id, note_id, external_id, hash, filename, mime, size, width, height, local_path, source_url, is_attachment, created_at, updated_at) = row;
+        let (
+            id,
+            note_id,
+            external_id,
+            hash,
+            filename,
+            mime,
+            size,
+            width,
+            height,
+            local_path,
+            source_url,
+            is_attachment,
+            created_at,
+            updated_at,
+        ) = row;
         let export_path = local_path.as_ref().map(|path| {
             let cleaned = path
                 .trim_start_matches("files/")
@@ -2505,7 +3026,10 @@ async fn export_notes_classic(dest_dir: String, state: State<'_, AppState>) -> R
     })
 }
 
-async fn update_sqlite_sequence(tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>, table: &str) -> Result<(), String> {
+async fn update_sqlite_sequence(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    table: &str,
+) -> Result<(), String> {
     let query = format!("SELECT MAX(id) FROM {}", table);
     let max_id: Option<i64> = sqlx::query_scalar(&query)
         .fetch_one(&mut **tx)
@@ -2802,7 +3326,10 @@ async fn import_notes_classic_from_manifest(
         .execute(&mut *tx)
         .await
         {
-            errors.push(format!("note_file {}-{}: {}", link.note_id, link.file_id, e));
+            errors.push(format!(
+                "note_file {}-{}: {}",
+                link.note_id, link.file_id, e
+            ));
         }
     }
 
@@ -2897,7 +3424,9 @@ async fn import_notes_classic_from_manifest(
 
 #[tauri::command]
 async fn run_note_files_backfill(state: State<'_, AppState>) -> Result<(), String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     match repo.needs_note_files_backfill().await {
         Ok(true) => repo
             .backfill_note_files_and_ocr(&state.data_dir)
@@ -2909,8 +3438,13 @@ async fn run_note_files_backfill(state: State<'_, AppState>) -> Result<(), Strin
 }
 
 #[tauri::command]
-async fn get_ocr_pending_files(limit: Option<i64>, state: State<'_, AppState>) -> Result<Vec<OcrFileItem>, String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
+async fn get_ocr_pending_files(
+    limit: Option<i64>,
+    state: State<'_, AppState>,
+) -> Result<Vec<OcrFileItem>, String> {
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     let limit = limit.unwrap_or(5).max(1);
     repo.get_ocr_pending_files(limit)
         .await
@@ -2919,8 +3453,16 @@ async fn get_ocr_pending_files(limit: Option<i64>, state: State<'_, AppState>) -
 
 #[allow(non_snake_case)]
 #[tauri::command]
-async fn upsert_ocr_text(fileId: i64, lang: String, text: String, hash: String, state: State<'_, AppState>) -> Result<(), String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
+async fn upsert_ocr_text(
+    fileId: i64,
+    lang: String,
+    text: String,
+    hash: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     repo.upsert_ocr_text(fileId, &lang, &text, &hash)
         .await
         .map_err(|e| e.to_string())
@@ -2928,8 +3470,14 @@ async fn upsert_ocr_text(fileId: i64, lang: String, text: String, hash: String, 
 
 #[allow(non_snake_case)]
 #[tauri::command]
-async fn mark_ocr_failed(fileId: i64, message: String, state: State<'_, AppState>) -> Result<(), String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
+async fn mark_ocr_failed(
+    fileId: i64,
+    message: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     repo.mark_ocr_failed(fileId, &message)
         .await
         .map_err(|e| e.to_string())
@@ -2937,58 +3485,89 @@ async fn mark_ocr_failed(fileId: i64, message: String, state: State<'_, AppState
 
 #[tauri::command]
 async fn get_ocr_stats(state: State<'_, AppState>) -> Result<OcrStats, String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
-    repo.get_ocr_stats()
-        .await
-        .map_err(|e| e.to_string())
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
+    repo.get_ocr_stats().await.map_err(|e| e.to_string())
 }
-
 
 #[tauri::command]
 async fn get_tags(state: State<'_, AppState>) -> Result<Vec<Tag>, String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     repo.get_tags().await.map_err(|e| e.to_string())
 }
 
 #[allow(non_snake_case)]
 #[tauri::command]
 async fn get_note_tags(noteId: i64, state: State<'_, AppState>) -> Result<Vec<Tag>, String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     repo.get_note_tags(noteId).await.map_err(|e| e.to_string())
 }
 
 #[allow(non_snake_case)]
 #[tauri::command]
-async fn create_tag(name: String, parentId: Option<i64>, state: State<'_, AppState>) -> Result<i64, String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
-    repo.create_tag(&name, parentId).await.map_err(|e| e.to_string())
+async fn create_tag(
+    name: String,
+    parentId: Option<i64>,
+    state: State<'_, AppState>,
+) -> Result<i64, String> {
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
+    repo.create_tag(&name, parentId)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[allow(non_snake_case)]
 #[tauri::command]
 async fn add_note_tag(noteId: i64, tagId: i64, state: State<'_, AppState>) -> Result<(), String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
-    repo.add_note_tag(noteId, tagId).await.map_err(|e| e.to_string())
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
+    repo.add_note_tag(noteId, tagId)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[allow(non_snake_case)]
 #[tauri::command]
-async fn remove_note_tag(noteId: i64, tagId: i64, state: State<'_, AppState>) -> Result<(), String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
-    repo.remove_note_tag(noteId, tagId).await.map_err(|e| e.to_string())
+async fn remove_note_tag(
+    noteId: i64,
+    tagId: i64,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
+    repo.remove_note_tag(noteId, tagId)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[allow(non_snake_case)]
 #[tauri::command]
 async fn delete_tag(tagId: i64, state: State<'_, AppState>) -> Result<(), String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     repo.delete_tag(tagId).await.map_err(|e| e.to_string())
 }
 
 #[allow(non_snake_case)]
 #[tauri::command]
-async fn update_tag_parent(tagId: i64, parentId: Option<i64>, state: State<'_, AppState>) -> Result<(), String> {
-    let repo = SqliteRepository { pool: state.pool.clone() };
+async fn update_tag_parent(
+    tagId: i64,
+    parentId: Option<i64>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
     repo.update_tag_parent(tagId, parentId)
         .await
         .map_err(|e| e.to_string())
@@ -3101,9 +3680,7 @@ fn main() {
                     return Err(err.into());
                 }
             };
-            let pool = tauri::async_runtime::block_on(async {
-                db::init_db(&data_dir).await
-            });
+            let pool = tauri::async_runtime::block_on(async { db::init_db(&data_dir).await });
             let pool = match pool {
                 Ok(pool) => pool,
                 Err(err) => {
@@ -3115,7 +3692,11 @@ fn main() {
                     return Err(err.into());
                 }
             };
-            app.manage(AppState { pool, settings_dir, data_dir });
+            app.manage(AppState {
+                pool,
+                settings_dir,
+                data_dir,
+            });
             let menu = build_menu(&app_handle)?;
             app.set_menu(menu)?;
             let pool = app.state::<AppState>().pool.clone();
@@ -3136,57 +3717,55 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .on_menu_event(|app_handle, event| {
-            match event.id().0.as_str() {
-                FILE_IMPORT_EVERNOTE => {
-                    let _ = app_handle.emit("import-evernote", ());
-                }
-                FILE_IMPORT_NOTES_CLASSIC => {
-                    let _ = app_handle.emit("import-notes-classic", ());
-                }
-                FILE_IMPORT_OBSIDIAN => {
-                    let _ = app_handle.emit("import-obsidian", ());
-                }
-                FILE_IMPORT_HTML => {
-                    let _ = app_handle.emit("import-html", ());
-                }
-                FILE_IMPORT_TEXT => {
-                    let _ = app_handle.emit("import-text", ());
-                }
-                FILE_EXPORT_NOTES_CLASSIC => {
-                    let _ = app_handle.emit("export-notes-classic", ());
-                }
-                MENU_NEW_NOTE => {
-                    let _ = app_handle.emit("menu-new-note", ());
-                }
-                MENU_NEW_NOTEBOOK => {
-                    let _ = app_handle.emit("menu-new-notebook", ());
-                }
-                MENU_NEW_STACK => {
-                    let _ = app_handle.emit("menu-new-stack", ());
-                }
-                MENU_DELETE_NOTE => {
-                    let _ = app_handle.emit("menu-delete-note", ());
-                }
-                MENU_SEARCH => {
-                    let _ = app_handle.emit("menu-search", ());
-                }
-                MENU_HISTORY => {
-                    let _ = app_handle.emit("menu-history", ());
-                }
-                MENU_SETTINGS => {
-                    let _ = app_handle.emit("menu-settings", ());
-                }
-                NOTES_VIEW_DETAILED => {
-                    update_notes_list_menu(app_handle, "detailed");
-                    let _ = app_handle.emit("notes-list-view", "detailed");
-                }
-                NOTES_VIEW_COMPACT => {
-                    update_notes_list_menu(app_handle, "compact");
-                    let _ = app_handle.emit("notes-list-view", "compact");
-                }
-                _ => {}
+        .on_menu_event(|app_handle, event| match event.id().0.as_str() {
+            FILE_IMPORT_EVERNOTE => {
+                let _ = app_handle.emit("import-evernote", ());
             }
+            FILE_IMPORT_NOTES_CLASSIC => {
+                let _ = app_handle.emit("import-notes-classic", ());
+            }
+            FILE_IMPORT_OBSIDIAN => {
+                let _ = app_handle.emit("import-obsidian", ());
+            }
+            FILE_IMPORT_HTML => {
+                let _ = app_handle.emit("import-html", ());
+            }
+            FILE_IMPORT_TEXT => {
+                let _ = app_handle.emit("import-text", ());
+            }
+            FILE_EXPORT_NOTES_CLASSIC => {
+                let _ = app_handle.emit("export-notes-classic", ());
+            }
+            MENU_NEW_NOTE => {
+                let _ = app_handle.emit("menu-new-note", ());
+            }
+            MENU_NEW_NOTEBOOK => {
+                let _ = app_handle.emit("menu-new-notebook", ());
+            }
+            MENU_NEW_STACK => {
+                let _ = app_handle.emit("menu-new-stack", ());
+            }
+            MENU_DELETE_NOTE => {
+                let _ = app_handle.emit("menu-delete-note", ());
+            }
+            MENU_SEARCH => {
+                let _ = app_handle.emit("menu-search", ());
+            }
+            MENU_HISTORY => {
+                let _ = app_handle.emit("menu-history", ());
+            }
+            MENU_SETTINGS => {
+                let _ = app_handle.emit("menu-settings", ());
+            }
+            NOTES_VIEW_DETAILED => {
+                update_notes_list_menu(app_handle, "detailed");
+                let _ = app_handle.emit("notes-list-view", "detailed");
+            }
+            NOTES_VIEW_COMPACT => {
+                update_notes_list_menu(app_handle, "compact");
+                let _ = app_handle.emit("notes-list-view", "compact");
+            }
+            _ => {}
         })
         .invoke_handler(tauri::generate_handler![
             get_notebooks,

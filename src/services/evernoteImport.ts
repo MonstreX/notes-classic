@@ -233,6 +233,18 @@ const sha256Hex = async (value: string) => {
   return bytes.map((b) => b.toString(16).padStart(2, "0")).join("");
 };
 
+const withTimeout = async <T>(promise: Promise<T>, ms: number, message: string): Promise<T> => {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), ms);
+  });
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+};
+
 const buildAssetPath = (assetsRoot: string, hash: string, ext: string | null) => {
   const prefix = hash.slice(0, 2);
   const filename = ext ? `${hash}.${ext}` : hash;
@@ -414,7 +426,19 @@ export const runEvernoteImport = async (
       const noteId = attachment.parent_Note_id || null;
       const hash = attachment.dataHash || null;
       if (!hash || !noteId) {
-        attachmentsOut.push({ attachmentFields: attachment, noteId, dataHash: hash });
+        const attachmentFields = {
+          id: attachment.id ?? null,
+          filename: attachment.filename ?? null,
+          mime: attachment.mime ?? null,
+          width: attachment.width ?? null,
+          height: attachment.height ?? null,
+          isActive: attachment.isActive ?? null,
+          dataHash: attachment.dataHash ?? null,
+          dataSize: attachment.dataSize ?? null,
+          parent_Note_id: attachment.parent_Note_id ?? null,
+          sourceUrl: attachment.sourceUrl ?? attachment.sourceURL ?? attachment.source_url ?? null,
+        };
+        attachmentsOut.push({ attachmentFields, noteId, dataHash: hash });
         if (attachmentIndex === attachmentTotal || attachmentIndex % 10 === 0) {
           onProgress?.({
             stage: "resources",
@@ -426,13 +450,53 @@ export const runEvernoteImport = async (
         }
         continue;
       }
-      const extFromName = sanitizeExt((attachment.filename || "").split(".").slice(-1)[0] || "");
+      const filenameRaw = attachment.filename || "";
+      const hasDot = filenameRaw.includes(".");
+      const extFromName = hasDot ? sanitizeExt(filenameRaw.split(".").slice(-1)[0] || "") : null;
       const ext = extFromName || extFromMime(attachment.mime || "");
       const { relPath, absPath } = buildAssetPath(assetsDir, hash, ext);
       const sourcePath = await findResourcePath(summary.resourceRoots, String(noteId), hash);
       if (!sourcePath || !(await pathExists(sourcePath))) {
         missingResources.push({ noteId: String(noteId), hash, sourcePath: sourcePath || "" });
-        attachmentsOut.push({ attachmentFields: attachment, noteId, dataHash: hash, localFile: null });
+        const attachmentFields = {
+          id: attachment.id ?? null,
+          filename: attachment.filename ?? null,
+          mime: attachment.mime ?? null,
+          width: attachment.width ?? null,
+          height: attachment.height ?? null,
+          isActive: attachment.isActive ?? null,
+          dataHash: attachment.dataHash ?? null,
+          dataSize: attachment.dataSize ?? null,
+          parent_Note_id: attachment.parent_Note_id ?? null,
+          sourceUrl: attachment.sourceUrl ?? attachment.sourceURL ?? attachment.source_url ?? null,
+        };
+        attachmentsOut.push({ attachmentFields, noteId, dataHash: hash, localFile: null });
+        if (attachmentIndex === attachmentTotal || attachmentIndex % 10 === 0) {
+          onProgress?.({
+            stage: "resources",
+            state: "running",
+            current: attachmentIndex,
+            total: attachmentTotal,
+            message: "Copying Evernote resources...",
+          });
+        }
+        continue;
+      }
+      const isActive = attachment.isActive;
+      if (isActive === 0) {
+        const attachmentFields = {
+          id: attachment.id ?? null,
+          filename: attachment.filename ?? null,
+          mime: attachment.mime ?? null,
+          width: attachment.width ?? null,
+          height: attachment.height ?? null,
+          isActive: attachment.isActive ?? null,
+          dataHash: attachment.dataHash ?? null,
+          dataSize: attachment.dataSize ?? null,
+          parent_Note_id: attachment.parent_Note_id ?? null,
+          sourceUrl: attachment.sourceUrl ?? attachment.sourceURL ?? attachment.source_url ?? null,
+        };
+        attachmentsOut.push({ attachmentFields, noteId, dataHash: hash, localFile: null });
         if (attachmentIndex === attachmentTotal || attachmentIndex % 10 === 0) {
           onProgress?.({
             stage: "resources",
@@ -448,8 +512,20 @@ export const runEvernoteImport = async (
         await ensureDir(absPath.split("/").slice(0, -1).join("/"));
         await copyFile(sourcePath, absPath);
         assetMap.set(hash, relPath);
+        const attachmentFields = {
+          id: attachment.id ?? null,
+          filename: attachment.filename ?? null,
+          mime: attachment.mime ?? null,
+          width: attachment.width ?? null,
+          height: attachment.height ?? null,
+          isActive: attachment.isActive ?? null,
+          dataHash: attachment.dataHash ?? null,
+          dataSize: attachment.dataSize ?? null,
+          parent_Note_id: attachment.parent_Note_id ?? null,
+          sourceUrl: attachment.sourceUrl ?? attachment.sourceURL ?? attachment.source_url ?? null,
+        };
         attachmentsOut.push({
-          attachmentFields: attachment,
+          attachmentFields,
           noteId,
           dataHash: hash,
           filename: attachment.filename || null,
@@ -486,45 +562,29 @@ export const runEvernoteImport = async (
     for (const note of notes) {
       noteIndex += 1;
       const noteId = String(note.id);
-      const rte = await readRteDoc(summary.rteRoot, noteId);
-      if (!rte.found) {
-        missingRte.push({ id: noteId, path: rte.path });
-      }
-      if (rte.error) {
-        decodeErrors.push({ id: noteId, path: rte.path, error: rte.error });
-      }
-      const enml = rte.enml ?? null;
-      const enmlResolved = enml ? rewriteEnml(enml, assetMap) : null;
-      const contentRaw = enmlResolved || enml || "";
-      const contentNormalized = normalizeEnmlToHtml(contentRaw);
-      const contentHash = await sha256Hex(contentNormalized);
-      const contentSize = new TextEncoder().encode(contentNormalized).length;
-      const createdAt = normalizeTimestamp(note.created ?? note.createdAt ?? note.creationDate, Math.floor(Date.now() / 1000));
-      const updatedAt = normalizeTimestamp(note.updated ?? note.updatedAt ?? note.updateDate ?? createdAt, createdAt);
-      const meta = {
-        evernote: {
-          noteFields: note,
-          customNoteStyles: rte.customNoteStyles ?? null,
-          rteMeta: rte.meta ?? null,
-          enml,
-          enmlResolved,
-          attachments: attachmentsOut.filter((att) => att.noteId === note.id).map((att) => ({
-            dataHash: att.dataHash,
-            filename: att.filename,
-            mime: att.mime,
-            dataSize: att.dataSize,
-            relPath: att.localFile?.relPath ?? null,
-          })),
-        },
-      };
+      try {
+        const rte = await withTimeout(
+          readRteDoc(summary.rteRoot, noteId),
+          10000,
+          `Decode timeout for note ${noteId}`
+        );
+        if (!rte.found) {
+          missingRte.push({ id: noteId, path: rte.path });
+        }
+        if (rte.error) {
+          decodeErrors.push({ id: noteId, path: rte.path, error: rte.error });
+        }
+        const enml = rte.enml ?? null;
+        const enmlResolved = enml ? rewriteEnml(enml, assetMap) : null;
+        const contentRaw = enmlResolved || enml || "";
+        const contentNormalized = normalizeEnmlToHtml(contentRaw);
+        const contentHash = await sha256Hex(contentNormalized);
+        const contentSize = new TextEncoder().encode(contentNormalized).length;
+        const createdAt = normalizeTimestamp(note.created ?? note.createdAt ?? note.creationDate, Math.floor(Date.now() / 1000));
+        const updatedAt = normalizeTimestamp(note.updated ?? note.updatedAt ?? note.updateDate ?? createdAt, createdAt);
       notesOut.push({
         id: noteId,
         title: rte.title ?? note.title ?? note.label ?? "Untitled",
-        enml,
-        enmlResolved,
-        customNoteStyles: rte.customNoteStyles ?? null,
-        meta,
-        noteFields: note,
         notebookId: note.parent_Notebook_id ?? null,
         contentNormalized,
         contentHash,
@@ -532,6 +592,9 @@ export const runEvernoteImport = async (
         createdAt,
         updatedAt,
       });
+      } catch (err) {
+        decodeErrors.push({ id: noteId, path: `${summary.rteRoot}/${noteId}`, error: String(err) });
+      }
       if (noteIndex === notesTotal || noteIndex % 10 === 0) {
         onProgress?.({
           stage: "decode",
@@ -549,6 +612,7 @@ export const runEvernoteImport = async (
       total: notesTotal,
       message: "Decoding note content...",
     });
+    onProgress?.({ stage: "database", state: "running", current: 0, total: 1, message: "Preparing import package..." });
 
     const exportData = {
       meta: {
@@ -578,6 +642,7 @@ export const runEvernoteImport = async (
     await saveBytesAs(jsonPath, Array.from(new TextEncoder().encode(JSON.stringify(exportData))));
 
     onProgress?.({ stage: "database", state: "running", current: 0, total: 1, message: "Writing notes database..." });
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const stats = await importFromJson(jsonPath, assetsDir);
     try {
       await runNoteFilesBackfill();
