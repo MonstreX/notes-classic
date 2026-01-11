@@ -2476,6 +2476,10 @@ async fn import_evernote_from_json(
             .and_then(|v| v.as_i64())
             .unwrap_or(created_at);
 
+        if rel_path.is_none() {
+            continue;
+        }
+
         sqlx::query(
             "INSERT INTO attachments (note_id, external_id, hash, filename, mime, size, width, height, local_path, source_url, is_attachment, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -3232,6 +3236,20 @@ async fn import_notes_classic_from_manifest(
     let mut attachments_done = 0i64;
     for att in &manifest.attachments {
         let export_path = att.export_path.as_ref().map(|p| p.replace('\\', "/"));
+        if export_path.is_none() {
+            errors.push(format!("attachment {} missing export path", att.id));
+            attachments_done += 1;
+            let _ = app_handle.emit(
+                "import-notes-classic-progress",
+                NotesClassicImportProgress {
+                    stage: "attachments".to_string(),
+                    current: attachments_done,
+                    total: total_attachments,
+                    state: "running".to_string(),
+                },
+            );
+            continue;
+        }
         let storage_path = export_path
             .as_ref()
             .map(|path| attachment_export_to_storage_path(path));
