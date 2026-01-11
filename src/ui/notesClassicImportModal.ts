@@ -267,11 +267,14 @@ export const mountNotesClassicImportModal = (
       initStages({
         notes: summary.noteCount,
         attachments: summary.attachmentCount + summary.imageCount,
-        database: 1,
+        database: 4,
       });
       const report = await runNotesClassicImport(
         summary.sourceRoot,
         (progress) => {
+          if (progress.message) {
+            setStatus(t(progress.message), "muted", true);
+          }
           setStageProgress(progress.stage, progress.current, progress.total, progress.state ?? "running");
         },
         (message) => {

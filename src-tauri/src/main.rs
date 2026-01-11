@@ -2761,6 +2761,7 @@ struct NotesClassicImportProgress {
     current: i64,
     total: i64,
     state: String,
+    message: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -3086,10 +3087,9 @@ async fn import_notes_classic_from_manifest(
     let raw = fs::read_to_string(&manifest_path).map_err(|e| e.to_string())?;
     let manifest: ExportManifest = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
 
-    clear_storage_for_import(state.clone()).await?;
-
     let total_notes = manifest.notes.len() as i64;
     let total_attachments = manifest.attachments.len() as i64 + manifest.ocr_files.len() as i64;
+    let total_database_steps = 4;
     let _ = app_handle.emit(
         "import-notes-classic-progress",
         NotesClassicImportProgress {
@@ -3097,6 +3097,7 @@ async fn import_notes_classic_from_manifest(
             current: 0,
             total: total_notes,
             state: "running".to_string(),
+            message: None,
         },
     );
     let _ = app_handle.emit(
@@ -3106,6 +3107,7 @@ async fn import_notes_classic_from_manifest(
             current: 0,
             total: total_attachments,
             state: "running".to_string(),
+            message: None,
         },
     );
     let _ = app_handle.emit(
@@ -3113,18 +3115,62 @@ async fn import_notes_classic_from_manifest(
         NotesClassicImportProgress {
             stage: "database".to_string(),
             current: 0,
-            total: 1,
+            total: total_database_steps,
             state: "running".to_string(),
+            message: Some("import_notes_classic.step.preparing".to_string()),
         },
     );
+
+    let _ = app_handle.emit(
+        "import-notes-classic-progress",
+        NotesClassicImportProgress {
+            stage: "database".to_string(),
+            current: 1,
+            total: total_database_steps,
+            state: "running".to_string(),
+            message: Some("import_notes_classic.step.read_manifest".to_string()),
+        },
+    );
+
+    let _ = app_handle.emit(
+        "import-notes-classic-progress",
+        NotesClassicImportProgress {
+            stage: "database".to_string(),
+            current: 2,
+            total: total_database_steps,
+            state: "running".to_string(),
+            message: Some("import_notes_classic.step.clear_storage".to_string()),
+        },
+    );
+    clear_storage_for_import(state.clone()).await?;
 
     let data_dir = state.data_dir.clone();
     let files_dir = data_dir.join("files");
     fs::create_dir_all(&files_dir).map_err(|e| e.to_string())?;
+    let _ = app_handle.emit(
+        "import-notes-classic-progress",
+        NotesClassicImportProgress {
+            stage: "database".to_string(),
+            current: 3,
+            total: total_database_steps,
+            state: "running".to_string(),
+            message: Some("import_notes_classic.step.prepare_files".to_string()),
+        },
+    );
 
     let pool = state.pool.clone();
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     let mut errors: Vec<String> = Vec::new();
+    let _ = app_handle.emit(
+        "import-notes-classic-progress",
+        NotesClassicImportProgress {
+            stage: "database".to_string(),
+            current: 4,
+            total: total_database_steps,
+            state: "running".to_string(),
+            message: Some("import_notes_classic.step.importing_content".to_string()),
+        },
+    );
 
     for nb in &manifest.notebooks {
         if let Err(e) = sqlx::query(
@@ -3197,6 +3243,7 @@ async fn import_notes_classic_from_manifest(
                 current: notes_done,
                 total: total_notes,
                 state: "running".to_string(),
+                message: None,
             },
         );
     }
@@ -3245,6 +3292,7 @@ async fn import_notes_classic_from_manifest(
                     current: attachments_done,
                     total: total_attachments,
                     state: "running".to_string(),
+                    message: None,
                 },
             );
             continue;
@@ -3293,6 +3341,7 @@ async fn import_notes_classic_from_manifest(
                 current: attachments_done,
                 total: total_attachments,
                 state: "running".to_string(),
+                message: None,
             },
         );
     }
@@ -3328,6 +3377,7 @@ async fn import_notes_classic_from_manifest(
                 current: attachments_done,
                 total: total_attachments,
                 state: "running".to_string(),
+                message: None,
             },
         );
     }
@@ -3402,6 +3452,7 @@ async fn import_notes_classic_from_manifest(
             current: total_notes,
             total: total_notes,
             state: "done".to_string(),
+            message: None,
         },
     );
     let _ = app_handle.emit(
@@ -3411,15 +3462,17 @@ async fn import_notes_classic_from_manifest(
             current: total_attachments,
             total: total_attachments,
             state: "done".to_string(),
+            message: None,
         },
     );
     let _ = app_handle.emit(
         "import-notes-classic-progress",
         NotesClassicImportProgress {
             stage: "database".to_string(),
-            current: 1,
-            total: 1,
+            current: total_database_steps,
+            total: total_database_steps,
             state: "done".to_string(),
+            message: None,
         },
     );
 
