@@ -2933,7 +2933,7 @@ async fn export_notes_classic(
             created_at,
             updated_at,
         ) = row;
-        let export_path = local_path.as_ref().map(|path| {
+        let mut export_path = local_path.as_ref().map(|path| {
             let cleaned = path
                 .trim_start_matches("files/")
                 .trim_start_matches("files\\")
@@ -2953,6 +2953,7 @@ async fn export_notes_classic(
                 }
                 if let Err(e) = fs::copy(&source, &target) {
                     errors.push(format!("attachment {} copy: {}", id, e));
+                    export_path = None;
                 }
             }
         }
@@ -3154,7 +3155,7 @@ async fn import_notes_classic_from_manifest(
         )
         .bind(note.id)
         .bind(&note.title)
-        .bind(content)
+        .bind(&content)
         .bind(note.created_at)
         .bind(note.updated_at)
         .bind(note.sync_status)
@@ -3171,6 +3172,19 @@ async fn import_notes_classic_from_manifest(
         {
             errors.push(format!("note {}: {}", note.id, e));
         }
+        let plain = strip_html(&content);
+        if let Err(e) = sqlx::query(
+            "INSERT INTO notes_text (note_id, title, plain_text)
+             VALUES (?, ?, ?)",
+        )
+        .bind(note.id)
+        .bind(&note.title)
+        .bind(plain)
+        .execute(&mut *tx)
+        .await
+        {
+            errors.push(format!("notes_text {}: {}", note.id, e));
+        }
         notes_done += 1;
         let _ = app_handle.emit(
             "import-notes-classic-progress",
@@ -3181,21 +3195,6 @@ async fn import_notes_classic_from_manifest(
                 state: "running".to_string(),
             },
         );
-    }
-
-    for row in &manifest.notes_text {
-        if let Err(e) = sqlx::query(
-            "INSERT INTO notes_text (note_id, title, plain_text)
-             VALUES (?, ?, ?)",
-        )
-        .bind(row.note_id)
-        .bind(&row.title)
-        .bind(&row.plain_text)
-        .execute(&mut *tx)
-        .await
-        {
-            errors.push(format!("notes_text {}: {}", row.note_id, e));
-        }
     }
 
     for tag in &manifest.tags {

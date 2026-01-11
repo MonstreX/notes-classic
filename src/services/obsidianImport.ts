@@ -98,6 +98,27 @@ const escapeAttr = (value: string) =>
 const normalizeKey = (value: string) =>
   value.trim().replace(/\\/g, "/").replace(/\/{2,}/g, "/").toLowerCase();
 
+const guessMime = (filename: string) => {
+  const lower = filename.trim().toLowerCase();
+  const ext = lower.includes(".") ? lower.split(".").pop() || "" : "";
+  const map: Record<string, string> = {
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    webp: "image/webp",
+    bmp: "image/bmp",
+    svg: "image/svg+xml",
+    jfif: "image/jpeg",
+    pdf: "application/pdf",
+    txt: "text/plain",
+    md: "text/markdown",
+    json: "application/json",
+    csv: "text/csv",
+  };
+  return map[ext] || "";
+};
+
 const splitWikiTarget = (raw: string) => {
   const cleaned = raw.trim().replace(/^\s*:/, "");
   const [target, alias] = cleaned.split("|");
@@ -707,7 +728,7 @@ export const runObsidianImport = async (
             const attachmentInfo = await importAttachmentBytes(
               noteId,
               attachment.name,
-              "",
+              guessMime(attachment.name || attachment.path),
               bytesValue,
             );
             updated = updated.replace(attachment.token, buildAttachmentHtml(attachmentInfo));
@@ -721,6 +742,14 @@ export const runObsidianImport = async (
             });
           } catch (e) {
             report.errors.push(String(e));
+            updated = updated.replace(attachment.token, escapeHtml(attachment.name));
+            filesDone += 1;
+            onProgress?.({
+              stage: "attachments",
+              current: filesDone,
+              total: attachmentTotal.value,
+              state: "running",
+            });
           }
         }
         await updateNote(noteId, meta.title || t("notes.untitled"), updated, notebookId);
@@ -733,7 +762,7 @@ export const runObsidianImport = async (
     onProgress?.({ stage: "notes", current: noteEntries.length, total: noteEntries.length, state: "done" });
     onProgress?.({
       stage: "attachments",
-      current: report.stats.attachments,
+      current: filesDone,
       total: attachmentTotal.value,
       state: "done",
     });
