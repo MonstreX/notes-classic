@@ -28,6 +28,8 @@ let dataDirPromise: Promise<string> | null = null;
 let resourceDirPromise: Promise<string> | null = null;
 let runtimeStatus: OcrRuntimeStatus = "running";
 let workerBlobUrl: string | null = null;
+let workerReject: ((error: Error) => void) | null = null;
+let currentFetchAbort: AbortController | null = null;
 
 const logOcr = async (_message: string) => {};
 
@@ -165,6 +167,7 @@ export const startOcrQueue = () => {
     }
     worker = null;
     workerPromise = null;
+    workerReject = null;
     if (workerBlobUrl) {
       URL.revokeObjectURL(workerBlobUrl);
       workerBlobUrl = null;
@@ -193,15 +196,23 @@ export const startOcrQueue = () => {
 
   const getWorker = async () => {
     if (!workerPromise) {
-      workerPromise = withTimeout(buildWorker(), WORKER_START_TIMEOUT_MS, "worker-start")
-        .then((instance) => {
-          worker = instance;
-          return instance;
-        })
-        .catch((err) => {
-          workerPromise = null;
-          throw err;
-        });
+      workerPromise = new Promise<OcrWorker>((resolve, reject) => {
+        workerReject = reject;
+        withTimeout(buildWorker(), WORKER_START_TIMEOUT_MS, "worker-start")
+          .then((instance) => {
+            worker = instance;
+            resolve(instance);
+          })
+          .catch((err) => {
+            reject(err);
+          })
+          .finally(() => {
+            workerReject = null;
+            if (!worker) {
+              workerPromise = null;
+            }
+          });
+      });
     }
     return workerPromise;
   };
@@ -227,7 +238,9 @@ export const startOcrQueue = () => {
           continue;
         }
         const url = await getFileUrl(file.filePath);
-        const response = await fetch(url);
+        currentFetchAbort = new AbortController();
+        const response = await fetch(url, { signal: currentFetchAbort.signal });
+        currentFetchAbort = null;
         if (!response.ok) {
           console.warn("[ocr] fetch failed", file.filePath, response.status);
           if (cancelled) return;
@@ -274,6 +287,14 @@ export const startOcrQueue = () => {
       if (timer !== null) {
         window.clearTimeout(timer);
         timer = null;
+      }
+      if (currentFetchAbort) {
+        currentFetchAbort.abort();
+        currentFetchAbort = null;
+      }
+      if (workerReject) {
+        workerReject(new Error("ocr stopped"));
+        workerReject = null;
       }
       await resetWorker();
       while (isRunning) {
