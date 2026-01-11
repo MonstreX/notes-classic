@@ -267,6 +267,9 @@ export const mountNotesClassicImportModal = (
         attachments: summary.attachmentCount + summary.imageCount,
         database: 4,
       });
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      });
       if (handlers?.onImportStart) {
         await handlers.onImportStart();
       }
