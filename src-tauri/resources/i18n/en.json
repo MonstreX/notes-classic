@@ -317,6 +317,7 @@
   "import_notes_classic.preparing_import": "Starting import...",
   "import_notes_classic.step.preparing": "Preparing import package...",
   "import_notes_classic.step.read_manifest": "Reading manifest...",
+  "import_notes_classic.step.parse_manifest": "Parsing manifest...",
   "import_notes_classic.step.clear_storage": "Clearing current data...",
   "import_notes_classic.step.prepare_files": "Preparing storage...",
   "import_notes_classic.step.importing_content": "Importing data...",

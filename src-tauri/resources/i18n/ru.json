@@ -311,6 +311,7 @@
   "import_notes_classic.preparing_import": "Запуск импорта...",
   "import_notes_classic.step.preparing": "Подготовка пакета импорта...",
   "import_notes_classic.step.read_manifest": "Чтение manifest.json...",
+  "import_notes_classic.step.parse_manifest": "Разбор manifest.json...",
   "import_notes_classic.step.clear_storage": "Очистка текущих данных...",
   "import_notes_classic.step.prepare_files": "Подготовка хранилища...",
   "import_notes_classic.step.importing_content": "Импорт данных...",

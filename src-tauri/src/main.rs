@@ -3119,6 +3119,16 @@ async fn import_notes_classic_from_manifest(
             },
         );
     }
+    let _ = app_handle.emit(
+        "import-notes-classic-progress",
+        NotesClassicImportProgress {
+            stage: "package".to_string(),
+            current: total_bytes,
+            total: total_bytes,
+            state: "running".to_string(),
+            message: Some("import_notes_classic.step.parse_manifest".to_string()),
+        },
+    );
     let manifest: ExportManifest = serde_json::from_slice(&buffer).map_err(|e| e.to_string())?;
 
     let total_notes = manifest.notes.len() as i64;
