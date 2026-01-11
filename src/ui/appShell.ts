@@ -69,12 +69,7 @@ export const mountApp = (root: HTMLElement) => {
     if (!cleanupOcr) return;
     const stop = cleanupOcr();
     cleanupOcr = undefined;
-    await Promise.race([
-      stop,
-      new Promise<void>((resolve) => {
-        setTimeout(resolve, 3000);
-      }),
-    ]);
+    await stop;
   };
 
   listen("menu-search", () => openSearchModal());
