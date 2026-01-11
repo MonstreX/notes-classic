@@ -3237,7 +3237,6 @@ async fn import_notes_classic_from_manifest(
     for att in &manifest.attachments {
         let export_path = att.export_path.as_ref().map(|p| p.replace('\\', "/"));
         if export_path.is_none() {
-            errors.push(format!("attachment {} missing export path", att.id));
             attachments_done += 1;
             let _ = app_handle.emit(
                 "import-notes-classic-progress",
