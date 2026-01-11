@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import { openConfirmDialog } from "./dialogs";
 import { runNotesClassicImport, scanNotesClassicSource } from "../services/notesClassicImport";
 import { logError } from "../services/logger";
 import { t } from "../services/i18n";
+import { confirmReplaceIfNeeded, handleImportResult } from "./importFlow";
 
 type NotesClassicImportModal = {
   open: () => void;
@@ -169,33 +169,6 @@ export const mountNotesClassicImportModal = (
     stage.root.classList.toggle("is-error", state === "error");
   };
 
-  const openRestartDialog = () => {
-    const dialog = document.createElement("div");
-    dialog.className = "dialog-overlay";
-    dialog.dataset.dialogOverlay = "1";
-    dialog.innerHTML = `
-      <div class="dialog storage-dialog">
-        <div class="dialog__header">
-          <h3 class="dialog__title">${t("storage.restart_title")}</h3>
-        </div>
-        <div class="dialog__body">
-          <p>${t("import_notes_classic.restart")}</p>
-        </div>
-        <div class="dialog__footer">
-          <button class="dialog__button" data-restart-now="1">${t("storage.restart_now")}</button>
-          <button class="dialog__button dialog__button--danger" data-exit-now="1">${t("storage.exit_now")}</button>
-        </div>
-      </div>
-    `;
-    dialog.querySelector("[data-restart-now]")?.addEventListener("click", () => {
-      invoke("restart_app");
-    });
-    dialog.querySelector("[data-exit-now]")?.addEventListener("click", () => {
-      invoke("exit_app");
-    });
-    document.body.appendChild(dialog);
-  };
-
   const reset = () => {
     if (pathEl) pathEl.textContent = t("import_notes_classic.path_empty");
     setStatus("", "muted");
@@ -247,20 +220,16 @@ export const mountNotesClassicImportModal = (
     if (runBtn) runBtn.disabled = true;
     if (selectBtn) selectBtn.disabled = true;
     try {
-      const dataDir = await invoke<string>("get_data_dir");
-      const info = await invoke<{ hasData: boolean }>("get_storage_info", { path: dataDir });
-      if (info?.hasData) {
-        const shouldReplace = await openConfirmDialog({
-          title: t("import_notes_classic.replace_title"),
-          message: t("import_notes_classic.replace_message"),
-          confirmLabel: t("import_notes_classic.replace_confirm"),
-        });
-        if (!shouldReplace) {
-          setStatus(t("import_notes_classic.ready"), "ok");
-          if (runBtn) runBtn.disabled = false;
-          if (selectBtn) selectBtn.disabled = false;
-          return;
-        }
+      const shouldReplace = await confirmReplaceIfNeeded({
+        title: t("import_notes_classic.replace_title"),
+        message: t("import_notes_classic.replace_message"),
+        confirmLabel: t("import_notes_classic.replace_confirm"),
+      });
+      if (!shouldReplace) {
+        setStatus(t("import_notes_classic.ready"), "ok");
+        if (runBtn) runBtn.disabled = false;
+        if (selectBtn) selectBtn.disabled = false;
+        return;
       }
       setStatus(t("import_notes_classic.preparing_ocr"), "muted", true);
       await new Promise<void>((resolve) => {
@@ -290,30 +259,24 @@ export const mountNotesClassicImportModal = (
         summary
       );
       reportPath = `${report.backupDir}/import_report.json`;
-      const hasErrors = report.errors.length > 0;
-      const isFailed = report.failed === true;
-      setStatus(
-        isFailed ? t("import_notes_classic.failed") : hasErrors ? t("import_notes_classic.finished_errors") : t("import_notes_classic.finished"),
-        isFailed || hasErrors ? "error" : "ok"
-      );
-      setReport(t("import_notes_classic.report_saved", { path: reportPath }));
-      if (hasErrors || isFailed) {
-        const rollback = await openConfirmDialog({
-          title: t("import.rollback_title"),
-          message: t("import.rollback_message", { count: report.errors.length }),
-          confirmLabel: t("import.rollback_confirm"),
-          cancelLabel: t("import.rollback_continue"),
-          danger: true,
-        });
-        if (rollback) {
-          try {
-            await invoke("restore_import_backup", { backupDir: report.backupDir });
-          } catch (e) {
-            setStatus(t("import.rollback_failed", { message: String(e) }), "error");
-          }
-        }
-      }
-      openRestartDialog();
+      await handleImportResult({
+        report,
+        reportPath,
+        setStatus,
+        setReport,
+        texts: {
+          finished: t("import_notes_classic.finished"),
+          finishedErrors: t("import_notes_classic.finished_errors"),
+          failed: t("import_notes_classic.failed"),
+          reportSavedKey: "import_notes_classic.report_saved",
+          rollbackTitle: t("import.rollback_title"),
+          rollbackMessageKey: "import.rollback_message",
+          rollbackConfirm: t("import.rollback_confirm"),
+          rollbackContinue: t("import.rollback_continue"),
+          rollbackFailedKey: "import.rollback_failed",
+          restartMessage: t("import_notes_classic.restart"),
+        },
+      });
     } catch (err) {
       logError("[import] notes-classic failed", err);
       setStatus(t("import_notes_classic.failed"), "error");

@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import { openConfirmDialog } from "./dialogs";
 import { runTextImport, scanTextSource } from "../services/textImport";
 import { logError } from "../services/logger";
 import { t } from "../services/i18n";
+import { confirmReplaceIfNeeded, handleImportResult } from "./importFlow";
 
 type TextImportModal = {
   open: () => void;
@@ -160,33 +160,6 @@ export const mountTextImportModal = (
     stage.root.classList.toggle("is-error", state === "error");
   };
 
-  const openRestartDialog = () => {
-    const dialog = document.createElement("div");
-    dialog.className = "dialog-overlay";
-    dialog.dataset.dialogOverlay = "1";
-    dialog.innerHTML = `
-      <div class="dialog storage-dialog">
-        <div class="dialog__header">
-          <h3 class="dialog__title">${t("storage.restart_title")}</h3>
-        </div>
-        <div class="dialog__body">
-          <p>${t("import_text.restart")}</p>
-        </div>
-        <div class="dialog__footer">
-          <button class="dialog__button" data-restart-now="1">${t("storage.restart_now")}</button>
-          <button class="dialog__button dialog__button--danger" data-exit-now="1">${t("storage.exit_now")}</button>
-        </div>
-      </div>
-    `;
-    dialog.querySelector("[data-restart-now]")?.addEventListener("click", () => {
-      invoke("restart_app");
-    });
-    dialog.querySelector("[data-exit-now]")?.addEventListener("click", () => {
-      invoke("exit_app");
-    });
-    document.body.appendChild(dialog);
-  };
-
   const reset = () => {
     if (pathEl) pathEl.textContent = t("import_text.path_empty");
     setStatus("", "muted");
@@ -255,19 +228,15 @@ export const mountTextImportModal = (
         return;
       }
     }
-    if (handlers?.onImportStart) {
-      await handlers.onImportStart();
-    }
     try {
-      const dataDir = await invoke<string>("get_data_dir");
-      const info = await invoke<{ hasData: boolean }>("get_storage_info", { path: dataDir });
-      if (info?.hasData) {
-        const shouldReplace = await openConfirmDialog({
-          title: t("import_text.replace_title"),
-          message: t("import_text.replace_message"),
-          confirmLabel: t("import_text.replace_confirm"),
-        });
-        if (!shouldReplace) return;
+      const shouldReplace = await confirmReplaceIfNeeded({
+        title: t("import_text.replace_title"),
+        message: t("import_text.replace_message"),
+        confirmLabel: t("import_text.replace_confirm"),
+      });
+      if (!shouldReplace) return;
+      if (handlers?.onImportStart) {
+        await handlers.onImportStart();
       }
       setStatus(t("import_text.preparing"), "muted", true);
       initStages({
@@ -279,30 +248,24 @@ export const mountTextImportModal = (
         setStageProgress(progress.stage, progress.current, progress.total, progress.state ?? "running");
       });
       reportPath = `${report.backupDir}/import_report.json`;
-      const hasErrors = report.errors.length > 0;
-      const isFailed = report.failed === true;
-      setStatus(
-        isFailed ? t("import_text.failed") : hasErrors ? t("import_text.finished_errors") : t("import_text.finished"),
-        isFailed || hasErrors ? "error" : "ok"
-      );
-      setReport(t("import_text.report_saved", { path: reportPath }));
-      if (hasErrors || isFailed) {
-        const rollback = await openConfirmDialog({
-          title: t("import.rollback_title"),
-          message: t("import.rollback_message", { count: report.errors.length }),
-          confirmLabel: t("import.rollback_confirm"),
-          cancelLabel: t("import.rollback_continue"),
-          danger: true,
-        });
-        if (rollback) {
-          try {
-            await invoke("restore_import_backup", { backupDir: report.backupDir });
-          } catch (e) {
-            setStatus(t("import.rollback_failed", { message: String(e) }), "error");
-          }
-        }
-      }
-      openRestartDialog();
+      await handleImportResult({
+        report,
+        reportPath,
+        setStatus,
+        setReport,
+        texts: {
+          finished: t("import_text.finished"),
+          finishedErrors: t("import_text.finished_errors"),
+          failed: t("import_text.failed"),
+          reportSavedKey: "import_text.report_saved",
+          rollbackTitle: t("import.rollback_title"),
+          rollbackMessageKey: "import.rollback_message",
+          rollbackConfirm: t("import.rollback_confirm"),
+          rollbackContinue: t("import.rollback_continue"),
+          rollbackFailedKey: "import.rollback_failed",
+          restartMessage: t("import_text.restart"),
+        },
+      });
     } catch (err) {
       logError("[import] text failed", err);
       setStatus(t("import_text.failed"), "error");
