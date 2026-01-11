@@ -149,12 +149,13 @@ export const mountNotesClassicImportModal = (
     id: string,
     current = 0,
     total = 0,
-    state: "running" | "done" | "error" = "running"
+    state: "running" | "done" | "error" = "running",
+    message?: string
   ) => {
     const stage = stageElements[id];
     if (!stage) return;
     if (state === "running") {
-      setStatus(stageTitles[id] ?? "", "muted", true);
+      setStatus(message ?? stageTitles[id] ?? "", "muted", true);
     }
     const safeTotal = Number.isFinite(total) && total >= 0 ? total : 0;
     const safeCurrent = Number.isFinite(current) && current >= 0 ? current : 0;
@@ -254,16 +255,16 @@ export const mountNotesClassicImportModal = (
           message: t("import_notes_classic.replace_message"),
           confirmLabel: t("import_notes_classic.replace_confirm"),
         });
-        if (!shouldReplace) {
-          setStatus(t("import_notes_classic.ready"), "ok");
-          if (runBtn) runBtn.disabled = false;
-          if (selectBtn) selectBtn.disabled = false;
-          return;
-        }
+      if (!shouldReplace) {
+        setStatus(t("import_notes_classic.ready"), "ok");
+        if (runBtn) runBtn.disabled = false;
+        if (selectBtn) selectBtn.disabled = false;
+        return;
       }
       if (handlers?.onImportStart) {
         await handlers.onImportStart();
       }
+      setStatus(t("import_notes_classic.preparing"), "muted", true);
       initStages({
         notes: summary.noteCount,
         attachments: summary.attachmentCount + summary.imageCount,
@@ -272,10 +273,8 @@ export const mountNotesClassicImportModal = (
       const report = await runNotesClassicImport(
         summary.sourceRoot,
         (progress) => {
-          if (progress.message) {
-            setStatus(t(progress.message), "muted", true);
-          }
-          setStageProgress(progress.stage, progress.current, progress.total, progress.state ?? "running");
+          const message = progress.message ? t(progress.message) : undefined;
+          setStageProgress(progress.stage, progress.current, progress.total, progress.state ?? "running", message);
         },
         (message) => {
           if (message) {
