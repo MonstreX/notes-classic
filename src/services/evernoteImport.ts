@@ -270,6 +270,13 @@ const normalizeEvernoteRoot = (value: string) => {
   return root;
 };
 
+const isDeletedNote = (note: any) => {
+  const raw = note?.deleted;
+  if (raw === null || raw === undefined) return false;
+  const num = Number(raw);
+  return Number.isFinite(num) && num > 0;
+};
+
 export const scanEvernoteSource = async (sourceRoot: string): Promise<EvernoteScanSummary> => {
   const cleanRoot = normalizeEvernoteRoot(sourceRoot);
   const errors: string[] = [];
@@ -295,7 +302,11 @@ export const scanEvernoteSource = async (sourceRoot: string): Promise<EvernoteSc
   const db = hasDb ? new SQL.Database(new Uint8Array(dbBytes)) : null;
   const tables = db ? listTables(db) : [];
 
-  const noteCount = db ? Number(selectAll(db, "SELECT COUNT(*) AS c FROM Nodes_Note")[0]?.c || 0) : 0;
+  const noteCount = db
+    ? Number(
+        selectAll(db, "SELECT COUNT(*) AS c FROM Nodes_Note WHERE deleted IS NULL OR deleted = 0")[0]?.c || 0
+      )
+    : 0;
   const notebookCount = db ? Number(selectAll(db, "SELECT COUNT(*) AS c FROM Nodes_Notebook")[0]?.c || 0) : 0;
   const tagCount = db && tables.includes("Nodes_Tag")
     ? Number(selectAll(db, "SELECT COUNT(*) AS c FROM Nodes_Tag")[0]?.c || 0)
@@ -304,20 +315,35 @@ export const scanEvernoteSource = async (sourceRoot: string): Promise<EvernoteSc
     ? Number(selectAll(db, "SELECT COUNT(*) AS c FROM NoteTag")[0]?.c || 0)
     : 0;
   const attachmentCount = db && tables.includes("Attachment")
-    ? Number(selectAll(db, "SELECT COUNT(*) AS c FROM Attachment")[0]?.c || 0)
+    ? Number(
+        selectAll(
+          db,
+          "SELECT COUNT(*) AS c FROM Attachment WHERE parent_Note_id IN (SELECT id FROM Nodes_Note WHERE deleted IS NULL OR deleted = 0)"
+        )[0]?.c || 0
+      )
     : 0;
   const attachmentBytes = db && attachmentCount
-    ? Number(selectAll(db, "SELECT SUM(dataSize) AS s FROM Attachment")[0]?.s || 0)
+    ? Number(
+        selectAll(
+          db,
+          "SELECT SUM(dataSize) AS s FROM Attachment WHERE parent_Note_id IN (SELECT id FROM Nodes_Note WHERE deleted IS NULL OR deleted = 0)"
+        )[0]?.s || 0
+      )
     : 0;
   const imageCount = db && attachmentCount
-    ? Number(selectAll(db, "SELECT COUNT(*) AS c FROM Attachment WHERE mime LIKE 'image/%'")[0]?.c || 0)
+    ? Number(
+        selectAll(
+          db,
+          "SELECT COUNT(*) AS c FROM Attachment WHERE mime LIKE 'image/%' AND parent_Note_id IN (SELECT id FROM Nodes_Note WHERE deleted IS NULL OR deleted = 0)"
+        )[0]?.c || 0
+      )
     : 0;
 
   const stackIds = new Set<string>();
   if (db && notebookCount) {
-    const notebooks = selectAll(db, "SELECT personal_Stack_id FROM Nodes_Notebook");
+    const notebooks = selectAll(db, "SELECT personal_Stack_id, stack_Stack_id FROM Nodes_Notebook");
     notebooks.forEach((row: any) => {
-      const raw = row.personal_Stack_id;
+      const raw = row.personal_Stack_id || row.stack_Stack_id;
       const normalized = normalizeStackId(raw);
       if (normalized) stackIds.add(normalized);
     });
@@ -329,7 +355,7 @@ export const scanEvernoteSource = async (sourceRoot: string): Promise<EvernoteSc
 
   let missingRteCount = 0;
   if (db && hasRte) {
-    const ids = selectAll(db, "SELECT id FROM Nodes_Note");
+    const ids = selectAll(db, "SELECT id FROM Nodes_Note WHERE deleted IS NULL OR deleted = 0");
     if (ids.length) {
       const idList = ids.map((row: any) => String(row.id));
       missingRteCount = Number(await invoke<number>("count_missing_rte", { rteRoot, noteIds: idList }));
@@ -410,6 +436,8 @@ export const runEvernoteImport = async (
     onProgress?.({ stage: "tables", state: "running", current: 0, total: 1, message: "Reading Evernote tables..." });
     const notebooks = selectAll(db, "SELECT * FROM Nodes_Notebook");
     const notes = selectAll(db, "SELECT * FROM Nodes_Note");
+    const activeNotes = notes.filter((note: any) => !isDeletedNote(note));
+    const activeNoteIds = new Set(activeNotes.map((note: any) => String(note.id)));
     const tags = tables.includes("Nodes_Tag") ? selectAll(db, "SELECT * FROM Nodes_Tag") : [];
     const noteTags = tables.includes("NoteTag") ? selectAll(db, "SELECT * FROM NoteTag") : [];
     const attachments = tables.includes("Attachment") ? selectAll(db, "SELECT * FROM Attachment") : [];
@@ -424,6 +452,18 @@ export const runEvernoteImport = async (
     for (const attachment of attachments) {
       attachmentIndex += 1;
       const noteId = attachment.parent_Note_id || null;
+      if (noteId && !activeNoteIds.has(String(noteId))) {
+        if (attachmentIndex === attachmentTotal || attachmentIndex % 10 === 0) {
+          onProgress?.({
+            stage: "resources",
+            state: "running",
+            current: attachmentIndex,
+            total: attachmentTotal,
+            message: "Copying Evernote resources...",
+          });
+        }
+        continue;
+      }
       const hash = attachment.dataHash || null;
       if (!hash || !noteId) {
         const attachmentFields = {
@@ -531,7 +571,7 @@ export const runEvernoteImport = async (
           filename: attachment.filename || null,
           mime: attachment.mime || null,
           dataSize: attachment.dataSize || null,
-          localFile: { exists: true, sourcePath, relPath, absPath },
+          localFile: { relPath },
         });
       } catch (err) {
         assetCopyErrors.push({ sourcePath, destPath: absPath, error: String(err) });
@@ -556,10 +596,10 @@ export const runEvernoteImport = async (
     });
 
     const notesOut: any[] = [];
-    const notesTotal = notes.length;
+    const notesTotal = activeNotes.length;
     onProgress?.({ stage: "decode", state: "running", current: 0, total: notesTotal, message: "Decoding note content..." });
     let noteIndex = 0;
-    for (const note of notes) {
+    for (const note of activeNotes) {
       noteIndex += 1;
       const noteId = String(note.id);
       try {
