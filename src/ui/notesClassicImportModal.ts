@@ -262,6 +262,13 @@ export const mountNotesClassicImportModal = (
           return;
         }
       }
+      setStatus(t("import_notes_classic.preparing_ocr"), "muted", true);
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      });
+      if (handlers?.onImportStart) {
+        await handlers.onImportStart();
+      }
       setStatus(t("import_notes_classic.preparing_manifest"), "muted", true);
       initStages({
         package: summary.manifestBytes,
@@ -269,12 +276,6 @@ export const mountNotesClassicImportModal = (
         attachments: summary.attachmentCount + summary.imageCount,
         database: 4,
       });
-      await new Promise<void>((resolve) => {
-        requestAnimationFrame(() => resolve());
-      });
-      if (handlers?.onImportStart) {
-        await handlers.onImportStart();
-      }
       const report = await runNotesClassicImport(
         summary.sourceRoot,
         (progress) => {

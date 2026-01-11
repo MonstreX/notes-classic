@@ -315,6 +315,7 @@
   "import_notes_classic.preparing_backup": "Creating backup...",
   "import_notes_classic.preparing_manifest": "Reading export package...",
   "import_notes_classic.preparing_import": "Starting import...",
+  "import_notes_classic.preparing_ocr": "Stopping OCR...",
   "import_notes_classic.step.preparing": "Preparing import package...",
   "import_notes_classic.step.read_manifest": "Reading manifest...",
   "import_notes_classic.step.parse_manifest": "Parsing manifest...",

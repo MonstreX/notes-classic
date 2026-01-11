@@ -309,6 +309,7 @@
   "import_notes_classic.preparing_backup": "Создание резервной копии...",
   "import_notes_classic.preparing_manifest": "Чтение пакета экспорта...",
   "import_notes_classic.preparing_import": "Запуск импорта...",
+  "import_notes_classic.preparing_ocr": "Остановка OCR...",
   "import_notes_classic.step.preparing": "Подготовка пакета импорта...",
   "import_notes_classic.step.read_manifest": "Чтение manifest.json...",
   "import_notes_classic.step.parse_manifest": "Разбор manifest.json...",
