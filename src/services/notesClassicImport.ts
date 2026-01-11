@@ -152,7 +152,8 @@ export const scanNotesClassicSource = async (root: string): Promise<NotesClassic
 export const runNotesClassicImport = async (
   root: string,
   onProgress?: (update: StageUpdate) => void,
-  onStatus?: (message: string) => void
+  onStatus?: (message: string) => void,
+  summaryOverride?: NotesClassicScanSummary
 ) => {
   const report: NotesClassicImportReport = {
     startedAt: new Date().toISOString(),
@@ -191,7 +192,8 @@ export const runNotesClassicImport = async (
 
   let unlisten: (() => void) | undefined;
   try {
-    const summary = await scanNotesClassicSource(root);
+    onStatus?.(t("import_notes_classic.preparing_manifest"));
+    const summary = summaryOverride ?? (await scanNotesClassicSource(root));
     report.summary = summary;
     if (!summary.valid) {
       throw new Error(t("import_notes_classic.scan_failed_generic"));

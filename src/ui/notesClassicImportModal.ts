@@ -281,7 +281,8 @@ export const mountNotesClassicImportModal = (
           if (message) {
             setStatus(message, "muted", true);
           }
-        }
+        },
+        summary
       );
       reportPath = `${report.backupDir}/import_report.json`;
       const hasErrors = report.errors.length > 0;
