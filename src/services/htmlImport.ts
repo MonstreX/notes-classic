@@ -167,16 +167,29 @@ const resolveAssetPath = (
   if (isAbs) {
     return { url: null, localPath: trimmed };
   }
-  const resolved = normalizeRelPath(noteDir ? `${noteDir}/${target}` : target);
-  const normalized = normalizeKey(resolved);
-  const direct = fileIndex.get(normalized);
+  const directNormalized = normalizeKey(normalizeRelPath(trimmed));
+  const direct = fileIndex.get(directNormalized);
   if (direct) {
     return { url: null, localPath: direct };
+  }
+  const resolved = normalizeRelPath(noteDir ? `${noteDir}/${trimmed}` : trimmed);
+  const normalized = normalizeKey(resolved);
+  const scoped = fileIndex.get(normalized);
+  if (scoped) {
+    return { url: null, localPath: scoped };
   }
   if (normalized.startsWith("attachments/") || normalized.startsWith("images/")) {
     const suffix = `/${normalized}`;
     for (const [key, value] of fileIndex.entries()) {
       if (key.endsWith(suffix) || key.endsWith(normalized)) {
+        return { url: null, localPath: value };
+      }
+    }
+  }
+  if (directNormalized.startsWith("attachments/") || directNormalized.startsWith("images/")) {
+    const suffix = `/${directNormalized}`;
+    for (const [key, value] of fileIndex.entries()) {
+      if (key.endsWith(suffix) || key.endsWith(directNormalized)) {
         return { url: null, localPath: value };
       }
     }
