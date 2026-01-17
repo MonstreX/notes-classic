@@ -101,8 +101,6 @@ export const mountHtmlImportModal = (
 
   const stageOrder = [
     { id: "notes", title: t("import_html.progress.notes") },
-    { id: "attachments", title: t("import_html.progress.attachments") },
-    { id: "database", title: t("import_html.progress.database") },
   ] as const;
 
   type StageElements = {
@@ -221,8 +219,6 @@ export const mountHtmlImportModal = (
       setStatus(t("import_html.preparing"), "muted", true);
       initStages({
         notes: summary.noteCount,
-        attachments: summary.attachmentCount,
-        database: 1,
       });
       const report = await runHtmlImport(summary.sourceRoot, (progress) => {
         setStageProgress(progress.stage, progress.current, progress.total, progress.state ?? "running");

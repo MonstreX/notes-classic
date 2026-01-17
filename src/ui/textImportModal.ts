@@ -101,8 +101,6 @@ export const mountTextImportModal = (
 
   const stageOrder = [
     { id: "notes", title: t("import_text.progress.notes") },
-    { id: "attachments", title: t("import_text.progress.attachments") },
-    { id: "database", title: t("import_text.progress.database") },
   ] as const;
 
   type StageElements = {
@@ -241,8 +239,6 @@ export const mountTextImportModal = (
       setStatus(t("import_text.preparing"), "muted", true);
       initStages({
         notes: summary.noteCount,
-        attachments: summary.attachmentCount,
-        database: 1,
       });
       const report = await runTextImport(summary.sourceRoot, (progress) => {
         setStageProgress(progress.stage, progress.current, progress.total, progress.state ?? "running");

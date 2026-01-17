@@ -100,10 +100,7 @@ export const mountNotesClassicImportModal = (
   };
 
   const stageOrder = [
-    { id: "package", title: t("import_notes_classic.progress.package") },
     { id: "notes", title: t("import_notes_classic.progress.notes") },
-    { id: "attachments", title: t("import_notes_classic.progress.attachments") },
-    { id: "database", title: t("import_notes_classic.progress.database") },
   ] as const;
 
   type StageElements = {
@@ -239,12 +236,9 @@ export const mountNotesClassicImportModal = (
         await handlers.onImportStart();
       }
       setStatus(t("import_notes_classic.preparing_manifest"), "muted", true);
-      initStages({
-        package: summary.manifestBytes,
-        notes: summary.noteCount,
-        attachments: summary.attachmentCount + summary.imageCount,
-        database: 4,
-      });
+        initStages({
+          notes: summary.noteCount,
+        });
       const report = await runNotesClassicImport(
         summary.sourceRoot,
         (progress) => {

@@ -227,6 +227,7 @@
   "import.progress.resources": "Копирование ресурсов",
   "import.progress.decode": "Декодирование заметок",
   "import.progress.database": "Запись базы данных",
+  "import.progress.notes": "Импорт заметок",
   "import.finished": "Импорт завершен.",
   "import.finished_errors": "Импорт завершен с ошибками.",
   "import.failed": "Импорт не удался. См. отчет.",

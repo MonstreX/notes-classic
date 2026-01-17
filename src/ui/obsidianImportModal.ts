@@ -101,8 +101,6 @@ export const mountObsidianImportModal = (
 
   const stageOrder = [
     { id: "notes", title: t("import_obsidian.progress.notes") },
-    { id: "attachments", title: t("import_obsidian.progress.attachments") },
-    { id: "database", title: t("import_obsidian.progress.database") },
   ] as const;
 
   type StageElements = {
@@ -221,8 +219,6 @@ export const mountObsidianImportModal = (
       setStatus(t("import_obsidian.preparing"), "muted", true);
       initStages({
         notes: summary.noteCount,
-        attachments: summary.attachmentCount,
-        database: 1,
       });
       const report = await runObsidianImport(summary.sourceRoot, (progress) => {
         setStageProgress(progress.stage, progress.current, progress.total, progress.state ?? "running");

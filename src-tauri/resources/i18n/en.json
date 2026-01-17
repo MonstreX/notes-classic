@@ -226,6 +226,7 @@
   "import.progress.resources": "Copy resources",
   "import.progress.decode": "Decode notes",
   "import.progress.database": "Write database",
+  "import.progress.notes": "Import notes",
   "import.finished": "Import finished.",
   "import.finished_errors": "Import finished with errors.",
   "import.failed": "Import failed. See report for details.",
