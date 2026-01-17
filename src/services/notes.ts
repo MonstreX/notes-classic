@@ -50,5 +50,8 @@ export const createNotebook = (name: string, parentId: number | null) =>
 
 export const deleteNotebook = (id: number) => invoke("delete_notebook", { id });
 
+export const renameNotebook = (id: number, name: string) =>
+  invoke("rename_notebook", { id, name });
+
 export const moveNotebook = (notebookId: number, parentId: number | null, index: number) =>
   invoke("move_notebook", { notebookId, parentId, index });

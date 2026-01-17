@@ -44,6 +44,7 @@ type NotebookMenuOptions = {
   x: number;
   y: number;
   notebookId: number;
+  onRename: (id: number) => void;
   onDelete: (id: number) => void;
 };
 
@@ -397,12 +398,14 @@ export const openTrashNotesContextMenu = ({ x, y, noteIds, onRestore, onDelete }
     if (activeMenu) activeMenu.remove();
   };
 };
-export const openNotebookContextMenu = ({ x, y, notebookId, onDelete }: NotebookMenuOptions) => {
+export const openNotebookContextMenu = ({ x, y, notebookId, onRename, onDelete }: NotebookMenuOptions) => {
   closeMenu();
 
   const menu = document.createElement("div");
   menu.className = "context-menu";
 
+  menu.appendChild(createItem(t("menu.rename_notebook"), () => onRename(notebookId)));
+  menu.appendChild(createSeparator());
   menu.appendChild(createItem(t("menu.delete_notebook"), () => onDelete(notebookId), "is-danger"));
 
   document.body.appendChild(menu);

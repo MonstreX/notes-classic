@@ -969,6 +969,15 @@ impl SqliteRepository {
         Ok(res.last_insert_rowid())
     }
 
+    pub async fn rename_notebook(&self, id: i64, name: &str) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE notebooks SET name = ? WHERE id = ?")
+            .bind(name)
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
     pub async fn delete_notebook(&self, id: i64) -> Result<(), sqlx::Error> {
         sqlx::query("DELETE FROM notebooks WHERE id = ?")
             .bind(id)

@@ -1,7 +1,7 @@
 import type { Notebook } from "../state/types";
 import { appStore } from "../state/store";
-import { openConfirmDialog, openNotebookDialog } from "../ui/dialogs";
-import { createNotebook, deleteNotebook, moveNotebook } from "../services/notes";
+import { openConfirmDialog, openNotebookDialog, openRenameNotebookDialog } from "../ui/dialogs";
+import { createNotebook, deleteNotebook, moveNotebook, renameNotebook } from "../services/notes";
 import { t } from "../services/i18n";
 
 const getOrderedChildren = (notebooks: Notebook[], parentId: number | null) => {
@@ -28,6 +28,18 @@ export const createNotebookActions = (fetchData: () => Promise<void>) => ({
     const name = await openNotebookDialog({ parentId });
     if (!name) return;
     await createNotebook(name, parentId);
+    fetchData();
+  },
+  renameNotebook: async (id: number) => {
+    const state = appStore.getState();
+    const notebook = state.notebooks.find((nb) => nb.id === id);
+    if (!notebook) return;
+    const name = await openRenameNotebookDialog({
+      notebookType: notebook.notebookType,
+      name: notebook.name,
+    });
+    if (!name || name === notebook.name) return;
+    await renameNotebook(id, name);
     fetchData();
   },
   deleteNotebook: async (id: number) => {

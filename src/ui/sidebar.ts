@@ -37,6 +37,7 @@ export interface SidebarHandlers {
   onCreateTag: (parentId: number | null) => void;
   onToggleTagsSection: () => void;
   onCreateNoteInNotebook: (id: number) => void;
+  onRenameNotebook: (id: number) => void;
   onDeleteNotebook: (id: number) => void;
   onTagContextMenu: (event: MouseEvent, id: number) => void;
   onNotebookContextMenu: (event: MouseEvent, id: number) => void;
@@ -786,10 +787,29 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
     cleanupDrag();
   };
 
+  const isEditableTarget = (target: EventTarget | null) => {
+    if (!(target instanceof HTMLElement)) return false;
+    if (target.isContentEditable) return true;
+    const tag = target.tagName;
+    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+  };
+
+  const handleRenameKey = (event: KeyboardEvent) => {
+    if (event.key !== "F2") return;
+    if (isEditableTarget(event.target)) return;
+    const state = currentState;
+    if (!state) return;
+    if (state.selectedNotebookId === null) return;
+    if (state.selectedTagId !== null || state.selectedTrash) return;
+    event.preventDefault();
+    handlers.onRenameNotebook(state.selectedNotebookId);
+  };
+
   root.addEventListener("pointerdown", handlePointerDown);
   window.addEventListener("pointermove", handlePointerMove);
   window.addEventListener("pointerup", handlePointerUp);
   window.addEventListener("pointercancel", handlePointerCancel);
+  window.addEventListener("keydown", handleRenameKey);
 
   const findSelectionEl = (id: number | null, allowAll: boolean) => {
     if (id === null) {
@@ -1016,6 +1036,7 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);
       window.removeEventListener("pointercancel", handlePointerCancel);
+      window.removeEventListener("keydown", handleRenameKey);
       cleanupDrag();
       root.innerHTML = "";
     },

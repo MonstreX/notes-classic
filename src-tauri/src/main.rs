@@ -1161,6 +1161,16 @@ async fn create_notebook(
 }
 
 #[tauri::command]
+async fn rename_notebook(id: i64, name: String, state: State<'_, AppState>) -> Result<(), String> {
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
+    repo.rename_notebook(id, &name)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn delete_notebook(id: i64, state: State<'_, AppState>) -> Result<(), String> {
     let repo = SqliteRepository {
         pool: state.pool.clone(),
@@ -3894,6 +3904,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             get_notebooks,
             create_notebook,
+            rename_notebook,
             delete_notebook,
             move_notebook,
             move_note,

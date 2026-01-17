@@ -140,6 +140,7 @@ export const mountApp = (root: HTMLElement) => {
     onCreateTag: (parentId) => actions.createTag(parentId),
     onToggleTagsSection: () => actions.toggleTagsSection(),
     onCreateNoteInNotebook: (id) => actions.createNoteInNotebook(id),
+    onRenameNotebook: (id) => actions.renameNotebook(id),
     onDeleteNotebook: (id) => actions.deleteNotebook(id),
     onTagContextMenu: (event, id) => {
       event.preventDefault();
@@ -156,6 +157,7 @@ export const mountApp = (root: HTMLElement) => {
         x: event.clientX,
         y: event.clientY,
         notebookId: id,
+        onRename: actions.renameNotebook,
         onDelete: actions.deleteNotebook,
       });
     },
