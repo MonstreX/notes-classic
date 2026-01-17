@@ -43,6 +43,11 @@ type StoredNoteFile = {
   mime: string;
 };
 
+type NoteMeta = {
+  link_id?: string;
+  external_id?: string | null;
+};
+
 type AttachmentInfo = {
   id: number;
   note_id: number;
@@ -120,6 +125,9 @@ const guessMime = (filename: string) => {
 
 const splitWikiTarget = (raw: string) => {
   const cleaned = raw.trim().replace(/^\s*:/, "");
+  if (cleaned.toLowerCase().startsWith("note://")) {
+    return { target: cleaned, label: cleaned };
+  }
   const [target, alias] = cleaned.split("|");
   const withoutAnchor = target.split("#")[0].trim();
   const lower = withoutAnchor.toLowerCase();
@@ -256,7 +264,7 @@ const renderInline = async (
           output += `<img data-en-hash="${stored.hash}" src="files/${stored.rel_path}">`;
           imageCount += 1;
         } catch {
-          output += escapeHtml(embed);
+          output += `<img data-en-external="1" src="${escapeAttr(resolved.url)}">`;
         }
       } else if (resolved.localPath) {
         const filename = target.split("/").pop() || "file";
@@ -276,6 +284,18 @@ const renderInline = async (
       }
     } else if (wiki) {
       const parsed = splitWikiTarget(wiki);
+      if (parsed.target.toLowerCase().startsWith("note://")) {
+        const key = normalizeKey(parsed.target);
+        const external = linkMap.get(key);
+        if (external) {
+          const label = escapeHtml(parsed.label || parsed.target);
+          output += `<a href="note://${escapeAttr(external)}" data-note-link="1">${label}</a>`;
+        } else {
+          output += escapeHtml(parsed.label || parsed.target);
+        }
+        cursor = regex.lastIndex;
+        continue;
+      }
       const targetLower = parsed.target.toLowerCase();
       const extMatch = targetLower.includes(".") ? targetLower.split(".").pop() || "" : "";
       const looksLikeFile =
@@ -284,7 +304,10 @@ const renderInline = async (
         (extMatch && extMatch !== "txt" && extMatch !== "md");
       if (looksLikeFile) {
         const resolved = resolveAttachmentPath(noteDir, parsed.target, fileIndex);
-        if (resolved.localPath) {
+        if (resolved.url) {
+          const label = escapeHtml(parsed.label || parsed.target);
+          output += `<a href="${escapeAttr(resolved.url)}" data-en-external="1">${label}</a>`;
+        } else if (resolved.localPath) {
           if (isImagePath(parsed.target)) {
             try {
               const stored = await storeNoteFileFromPath(resolved.localPath);
@@ -316,7 +339,15 @@ const renderInline = async (
     } else if (mdImage) {
       const cleaned = mdImage.trim();
       const resolved = resolveAttachmentPath(noteDir, cleaned, fileIndex);
-      if (resolved.localPath) {
+      if (resolved.url) {
+        try {
+          const stored = await downloadNoteFile(resolved.url);
+          output += `<img data-en-hash="${stored.hash}" src="files/${stored.rel_path}">`;
+          imageCount += 1;
+        } catch {
+          output += `<img data-en-external="1" src="${escapeAttr(resolved.url)}">`;
+        }
+      } else if (resolved.localPath) {
         if (isImagePath(cleaned)) {
           try {
             const stored = await storeNoteFileFromPath(resolved.localPath);
@@ -339,7 +370,10 @@ const renderInline = async (
       const cleaned = rawPath.replace(/[),.;]+$/u, "");
       const tail = rawPath.slice(cleaned.length);
       const resolved = resolveAttachmentPath(noteDir, cleaned, fileIndex);
-      if (resolved.localPath) {
+      if (resolved.url) {
+        const label = escapeHtml(cleaned);
+        output += `<a href="${escapeAttr(resolved.url)}" data-en-external="1">${label}</a>`;
+      } else if (resolved.localPath) {
         if (isImagePath(cleaned)) {
           try {
             const stored = await storeNoteFileFromPath(resolved.localPath);
@@ -368,7 +402,13 @@ const renderInline = async (
   output = output.replace(/\*([^*]+)\*/g, "<em>$1</em>");
   output = output.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, text, url) => {
     const safeText = escapeHtml(text);
-    const safeUrl = escapeAttr(url);
+    const trimmedUrl = String(url || "").trim();
+    if (trimmedUrl.toLowerCase().startsWith("note://")) {
+      const mapped = linkMap.get(normalizeKey(trimmedUrl));
+      const href = mapped ? `note://${escapeAttr(mapped)}` : escapeAttr(trimmedUrl);
+      return `<a href="${href}" data-note-link="1">${safeText}</a>`;
+    }
+    const safeUrl = escapeAttr(trimmedUrl);
     return `<a href="${safeUrl}">${safeText}</a>`;
   });
 
@@ -682,6 +722,7 @@ export const runTextImport = async (
       fileIndex.set(normalizeKey(entry.relPath), entry.path);
     }
     const linkMap = new Map<string, string>();
+    const metaLinkMap = new Map<string, string>();
     const baseNameCounts = new Map<string, number>();
     for (const entry of noteEntries) {
       const relNoExt = entry.relPath.replace(/\.txt$/i, "");
@@ -698,7 +739,21 @@ export const runTextImport = async (
       if ((baseNameCounts.get(baseKey) ?? 0) === 1 && !linkMap.has(baseKey)) {
         linkMap.set(normalizeKey(baseName), externalId);
       }
+      const metaPath = `${entry.path}.meta.json`;
+      if (await pathExists(metaPath)) {
+        try {
+          const metaBytes = await readFileBytes(metaPath);
+          const meta = JSON.parse(new TextDecoder("utf-8").decode(Uint8Array.from(metaBytes))) as NoteMeta;
+          const linkId = meta.link_id || meta.external_id;
+          if (linkId) {
+            metaLinkMap.set(normalizeKey(`note://${linkId}`), externalId);
+          }
+        } catch {
+          // ignore invalid meta
+        }
+      }
     }
+    metaLinkMap.forEach((value, key) => linkMap.set(key, value));
     const ambiguous = Array.from(baseNameCounts.entries())
       .filter(([, count]) => count > 1)
       .map(([name]) => name);

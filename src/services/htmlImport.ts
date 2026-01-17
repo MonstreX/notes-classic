@@ -292,7 +292,7 @@ const renderHtml = async (
         img.setAttribute("data-en-hash", stored.hash);
         imageCount += 1;
       } catch {
-        // keep original
+        img.setAttribute("data-en-external", "1");
       }
     } else if (resolved.localPath) {
       if (!isImagePath(resolved.localPath)) continue;
@@ -312,6 +312,10 @@ const renderHtml = async (
     const href = link.getAttribute("href") || "";
     if (!href) continue;
     const resolved = resolveAssetPath(noteDir, href, fileIndex);
+    if (resolved.url) {
+      link.setAttribute("data-en-external", "1");
+      continue;
+    }
     if (!resolved.localPath) continue;
     if (isImagePath(resolved.localPath)) continue;
     const filename = href.split("/").pop() || "file";

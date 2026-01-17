@@ -27,6 +27,7 @@ type ExportNoteResult = {
   content: string;
   attachments: ExportAsset[];
   images: ExportAsset[];
+  errors: string[];
 };
 
 const getExtensionFromMime = (mime: string) => {
@@ -161,11 +162,19 @@ const htmlToMarkdown = (html: string) => {
   return raw.replace(/\n{3,}/g, "\n\n").trim() + "\n";
 };
 
-const replaceNoteLinks = (node: HTMLElement, idToTitle: Map<number, string>) => {
+type NoteLinkInfo = {
+  title: string;
+  linkId: string;
+};
+
+const replaceNoteLinks = (node: HTMLElement, linkMap: Map<number, NoteLinkInfo>) => {
   node.querySelectorAll("a[href^=\"note://\"]").forEach((link) => {
     const href = link.getAttribute("href") || "";
     const id = href.replace("note://", "");
-    const title = idToTitle.get(Number(id)) || link.textContent || href;
+    const info = linkMap.get(Number(id));
+    const title = info?.title || link.textContent || href;
+    const linkId = info?.linkId || id;
+    link.setAttribute("href", `note://${linkId}`);
     link.textContent = title;
   });
 };
@@ -175,6 +184,7 @@ const exportAttachments = async (
   doc: Document,
   exportRoot: string,
   attachments: ExportAsset[],
+  errors: string[],
   mode: "html" | "text",
 ) => {
   const nodes = Array.from(doc.querySelectorAll(".note-attachment")) as HTMLElement[];
@@ -211,6 +221,7 @@ const exportAttachments = async (
         node.replaceWith(doc.createTextNode(`\n${relPath}\n`));
       }
     } else {
+      errors.push(`note ${note.id}: attachment ${filename} missing bytes`);
       node.replaceWith(doc.createTextNode(filename));
     }
   }
@@ -236,6 +247,7 @@ const exportImages = async (
   exportRoot: string,
   images: ExportAsset[],
   attachments: ExportAsset[],
+  errors: string[],
   mode: "html" | "text",
 ) => {
   const dataDir = await getDataDir();
@@ -259,7 +271,10 @@ const exportImages = async (
         filename = sanitizeFilename(rel.split("/").pop() || "image.bin");
       }
     }
-    if (!bytes) continue;
+    if (!bytes) {
+      errors.push(`note ${note.id}: image ${filename} missing bytes`);
+      continue;
+    }
     const extIdx = filename.lastIndexOf(".");
     const base = extIdx > 0 ? filename.slice(0, extIdx) : filename;
     const ext = extIdx > 0 ? filename.slice(extIdx) : "";
@@ -298,7 +313,7 @@ const normalizeNoteHtml = (html: string) => {
 export const buildExportNoteHtml = async (
   note: NoteDetail,
   exportRoot: string,
-  idToTitle: Map<number, string>,
+  linkMap: Map<number, NoteLinkInfo>,
 ) => {
   const doc = normalizeNoteHtml(note.content || "");
   doc.body.querySelectorAll("div.note-code").forEach((node) => {
@@ -330,27 +345,29 @@ export const buildExportNoteHtml = async (
       item.appendChild(wrapper);
     });
   });
-  replaceNoteLinks(doc.body, idToTitle);
+  replaceNoteLinks(doc.body, linkMap);
   const attachments: ExportAsset[] = [];
   const images: ExportAsset[] = [];
-  await exportAttachments(note, doc, exportRoot, attachments, "html");
-  await exportImages(note, doc, exportRoot, images, attachments, "html");
-  return { content: doc.body.innerHTML, attachments, images };
+  const errors: string[] = [];
+  await exportAttachments(note, doc, exportRoot, attachments, errors, "html");
+  await exportImages(note, doc, exportRoot, images, attachments, errors, "html");
+  return { content: doc.body.innerHTML, attachments, images, errors };
 };
 
 export const buildExportNoteMarkdown = async (
   note: NoteDetail,
   exportRoot: string,
-  idToTitle: Map<number, string>,
+  linkMap: Map<number, NoteLinkInfo>,
 ) => {
   const doc = normalizeNoteHtml(note.content || "");
-  replaceNoteLinks(doc.body, idToTitle);
+  replaceNoteLinks(doc.body, linkMap);
   const attachments: ExportAsset[] = [];
   const images: ExportAsset[] = [];
-  await exportAttachments(note, doc, exportRoot, attachments, "text");
-  await exportImages(note, doc, exportRoot, images, attachments, "text");
+  const errors: string[] = [];
+  await exportAttachments(note, doc, exportRoot, attachments, errors, "text");
+  await exportImages(note, doc, exportRoot, images, attachments, errors, "text");
   const markdown = htmlToMarkdown(doc.body.innerHTML);
-  return { content: markdown, attachments, images };
+  return { content: markdown, attachments, images, errors };
 };
 
 export const prepareExportRoot = async (destDir: string, prefix: string) => {
