@@ -97,7 +97,7 @@ const nodeToMarkdown = (node: Node): string => {
   }
   if (tag === "img") {
     const src = el.getAttribute("src") || "";
-    return src ? `![](${src})` : "";
+    return src ? `![](${src})\n` : "";
   }
   if (tag === "hr") {
     return "---\n\n";
@@ -208,7 +208,7 @@ const exportAttachments = async (
         link.textContent = uniqueName;
         node.replaceWith(link);
       } else {
-        node.replaceWith(doc.createTextNode(relPath));
+        node.replaceWith(doc.createTextNode(`\n${relPath}\n`));
       }
     } else {
       node.replaceWith(doc.createTextNode(filename));
@@ -275,7 +275,7 @@ const exportImages = async (
         link.textContent = uniqueName;
         img.replaceWith(link);
       } else {
-        img.replaceWith(doc.createTextNode(relPath));
+        img.replaceWith(doc.createTextNode(`\n${relPath}\n`));
       }
       continue;
     }
