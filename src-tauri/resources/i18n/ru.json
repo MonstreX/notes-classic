@@ -104,7 +104,11 @@
   "dialog.tag_nested_title": "Создать вложенный тег",
   "dialog.tag_subtitle": "Теги могут быть вложенными.",
   "dialog.tag_nested_subtitle": "Вложенные теги остаются под родительским тегом.",
+  "dialog.tag_rename_title": "Переименовать тег",
+  "dialog.tag_rename_subtitle": "Измените название тега.",
   "dialog.tag_placeholder": "Новый тег",
+  "dialog.note_rename_title": "Переименовать заметку",
+  "dialog.note_rename_subtitle": "Измените название заметки.",
   "dialog.password_prompt": "Введите пароль",
   "dialog.password_placeholder": "Пароль",
   "dialog.password_error": "Введите пароль",
@@ -155,6 +159,10 @@
   "menu.delete_notebook": "Удалить блокнот",
   "menu.rename_notebook": "Переименовать",
   "menu.delete_tag": "Удалить тег",
+  "menu.rename_tag": "Переименовать",
+  "menu.rename_note": "Переименовать",
+  "menu.duplicate_note": "Дублировать",
+  "menu.empty_trash": "Очистить корзину",
   "meta.last_edited": "Изменено {date}",
   "history.back": "Назад",
   "history.forward": "Вперед",
@@ -185,6 +193,7 @@
   "note_link.insert": "Вставить ссылку",
   "note_link.empty": "Заметки не найдены",
   "note_link.tooltip": "Ссылка на заметку",
+  "note.duplicate_suffix": "Копия",
   "import.title": "Импорт из Evernote",
   "import.hint": "Выберите папку, содержащую RemoteGraph.sql, internal_rteDoc и resource-cache.",
   "import.path_empty": "Не выбрано",
@@ -362,5 +371,7 @@
   "import.rollback_failed": "Откат не удался: {message}",
   "import_html.finished_errors": "Импорт завершен с ошибками.",
   "import_text.finished_errors": "Импорт завершен с ошибками.",
-  "import_notes_classic.finished_errors": "Импорт завершен с ошибками."
+  "import_notes_classic.finished_errors": "Импорт завершен с ошибками.",
+  "trash.empty_title": "Очистить корзину",
+  "trash.empty_message": "Удалить {label} из корзины безвозвратно?"
 }

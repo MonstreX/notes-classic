@@ -42,6 +42,8 @@ export const restoreNote = (id: number) => invoke("restore_note", { id });
 
 export const restoreAllNotes = () => invoke("restore_all_notes");
 
+export const deleteAllTrashedNotes = () => invoke("delete_all_trashed_notes");
+
 export const moveNote = (noteId: number, notebookId: number | null) =>
   invoke("move_note", { noteId, notebookId });
 

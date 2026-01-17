@@ -13,7 +13,9 @@ type NoteMenuOptions = {
   noteId: number;
   nodes: ContextMenuNode[];
   onDelete: (id: number) => void;
+  onDuplicate: (id: number) => void;
   onMove: (noteId: number, notebookId: number | null) => void;
+  onRename: (id: number) => void;
 };
 
 type NotesMenuOptions = {
@@ -52,6 +54,7 @@ type TagMenuOptions = {
   x: number;
   y: number;
   tagId: number;
+  onRename: (id: number) => void;
   onDelete: (id: number) => void;
 };
 
@@ -59,6 +62,7 @@ type TrashMenuOptions = {
   x: number;
   y: number;
   onRestoreAll: () => void;
+  onEmptyTrash: () => void;
 };
 
 let activeMenu: HTMLDivElement | null = null;
@@ -142,12 +146,15 @@ const buildMoveNodesForGroup = (
   });
 };
 
-export const openNoteContextMenu = ({ x, y, noteId, nodes, onDelete, onMove }: NoteMenuOptions) => {
+export const openNoteContextMenu = ({ x, y, noteId, nodes, onDelete, onDuplicate, onMove, onRename }: NoteMenuOptions) => {
   closeMenu();
 
   const menu = document.createElement("div");
   menu.className = "context-menu";
 
+  menu.appendChild(createItem(t("menu.rename_note"), () => onRename(noteId)));
+  menu.appendChild(createItem(t("menu.duplicate_note"), () => onDuplicate(noteId)));
+  menu.appendChild(createSeparator());
   menu.appendChild(createItem(t("menu.delete_note"), () => onDelete(noteId), "is-danger"));
   menu.appendChild(createSeparator());
 
@@ -459,12 +466,14 @@ export const openNotebookContextMenu = ({ x, y, notebookId, onRename, onDelete }
   };
 };
 
-export const openTagContextMenu = ({ x, y, tagId, onDelete }: TagMenuOptions) => {
+export const openTagContextMenu = ({ x, y, tagId, onRename, onDelete }: TagMenuOptions) => {
   closeMenu();
 
   const menu = document.createElement("div");
   menu.className = "context-menu";
 
+  menu.appendChild(createItem(t("menu.rename_tag"), () => onRename(tagId)));
+  menu.appendChild(createSeparator());
   menu.appendChild(createItem(t("menu.delete_tag"), () => onDelete(tagId), "is-danger"));
 
   document.body.appendChild(menu);
@@ -518,13 +527,15 @@ export const openTagContextMenu = ({ x, y, tagId, onDelete }: TagMenuOptions) =>
   };
 };
 
-export const openTrashContextMenu = ({ x, y, onRestoreAll }: TrashMenuOptions) => {
+export const openTrashContextMenu = ({ x, y, onRestoreAll, onEmptyTrash }: TrashMenuOptions) => {
   closeMenu();
 
   const menu = document.createElement("div");
   menu.className = "context-menu";
 
   menu.appendChild(createItem(t("menu.restore_all"), () => onRestoreAll()));
+  menu.appendChild(createSeparator());
+  menu.appendChild(createItem(t("menu.empty_trash"), () => onEmptyTrash(), "is-danger"));
 
   document.body.appendChild(menu);
   activeMenu = menu;

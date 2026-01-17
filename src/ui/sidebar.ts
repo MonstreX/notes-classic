@@ -39,6 +39,7 @@ export interface SidebarHandlers {
   onCreateNoteInNotebook: (id: number) => void;
   onRenameNotebook: (id: number) => void;
   onDeleteNotebook: (id: number) => void;
+  onRenameTag: (id: number) => void;
   onTagContextMenu: (event: MouseEvent, id: number) => void;
   onNotebookContextMenu: (event: MouseEvent, id: number) => void;
   onTrashContextMenu: (event: MouseEvent) => void;
@@ -799,8 +800,13 @@ export const mountSidebar = (root: HTMLElement, handlers: SidebarHandlers): Side
     if (isEditableTarget(event.target)) return;
     const state = currentState;
     if (!state) return;
+    if (state.selectedTrash) return;
+    if (state.selectedTagId !== null) {
+      event.preventDefault();
+      handlers.onRenameTag(state.selectedTagId);
+      return;
+    }
     if (state.selectedNotebookId === null) return;
-    if (state.selectedTagId !== null || state.selectedTrash) return;
     event.preventDefault();
     handlers.onRenameNotebook(state.selectedNotebookId);
   };

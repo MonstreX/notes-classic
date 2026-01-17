@@ -142,12 +142,14 @@ export const mountApp = (root: HTMLElement) => {
     onCreateNoteInNotebook: (id) => actions.createNoteInNotebook(id),
     onRenameNotebook: (id) => actions.renameNotebook(id),
     onDeleteNotebook: (id) => actions.deleteNotebook(id),
+    onRenameTag: (id) => actions.renameTag(id),
     onTagContextMenu: (event, id) => {
       event.preventDefault();
       openTagContextMenu({
         x: event.clientX,
         y: event.clientY,
         tagId: id,
+        onRename: actions.renameTag,
         onDelete: actions.deleteTag,
       });
     },
@@ -167,6 +169,7 @@ export const mountApp = (root: HTMLElement) => {
         x: event.clientX,
         y: event.clientY,
         onRestoreAll: actions.restoreAllTrash,
+        onEmptyTrash: actions.emptyTrash,
       });
     },
     onMoveTag: (tagId, parentId) => actions.moveTag(tagId, parentId),
@@ -177,6 +180,7 @@ export const mountApp = (root: HTMLElement) => {
     onSelectNote: (id) => actions.openNote(id),
     onSelectNotes: (ids, primaryId) => actions.setNoteSelectionWithHistory(ids, primaryId),
     onDeleteNote: (id) => actions.deleteNote(id),
+    onRenameNote: (id) => actions.renameNote(id),
     onSelectSort: (sortBy, sortDir) => actions.setNotesSort(sortBy, sortDir),
     onToggleView: () => {
       const state = appStore.getState();
@@ -227,7 +231,9 @@ export const mountApp = (root: HTMLElement) => {
         noteId: id,
         nodes,
         onDelete: actions.deleteNote,
+        onDuplicate: actions.duplicateNote,
         onMove: actions.moveNoteToNotebook,
+        onRename: actions.renameNote,
       });
     },
     onMoveNotes: (noteIds, notebookId) => {

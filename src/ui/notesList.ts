@@ -37,6 +37,7 @@ export interface NotesListHandlers {
   onSelectNote: (id: number) => void;
   onSelectNotes: (ids: number[], primaryId: number) => void;
   onDeleteNote: (id: number) => void;
+  onRenameNote: (id: number) => void;
   onSelectSort: (sortBy: "updated" | "title", sortDir: "asc" | "desc") => void;
   onToggleView: () => void;
   onFilterClick: () => void;
@@ -554,7 +555,6 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
   };
 
   const handleKeyDown = (event: KeyboardEvent) => {
-    if (event.key !== "Delete") return;
     const target = event.target as HTMLElement | null;
     if (target) {
       const tag = target.tagName?.toLowerCase();
@@ -562,11 +562,18 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
     }
     const selectedIds = currentState?.selectedNoteIds ?? new Set<number>();
     if (selectedIds.size === 0) return;
-    event.preventDefault();
-    if (selectedIds.size === 1) {
-      handlers.onDeleteNote(Array.from(selectedIds)[0]);
-    } else {
-      handlers.onDropToTrash(Array.from(selectedIds));
+    if (event.key === "Delete") {
+      event.preventDefault();
+      if (selectedIds.size === 1) {
+        handlers.onDeleteNote(Array.from(selectedIds)[0]);
+      } else {
+        handlers.onDropToTrash(Array.from(selectedIds));
+      }
+      return;
+    }
+    if (event.key === "F2" && selectedIds.size === 1) {
+      event.preventDefault();
+      handlers.onRenameNote(Array.from(selectedIds)[0]);
     }
   };
 

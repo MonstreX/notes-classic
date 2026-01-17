@@ -1383,6 +1383,16 @@ async fn restore_all_notes(state: State<'_, AppState>) -> Result<(), String> {
     };
     repo.restore_all_notes().await.map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+async fn delete_all_trashed_notes(state: State<'_, AppState>) -> Result<i64, String> {
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
+    repo.delete_all_trashed_notes(&state.data_dir)
+        .await
+        .map_err(|e| e.to_string())
+}
 #[allow(non_snake_case)]
 #[tauri::command]
 async fn import_attachment(
@@ -3707,6 +3717,17 @@ async fn update_tag_parent(
         .map_err(|e| e.to_string())
 }
 
+#[allow(non_snake_case)]
+#[tauri::command]
+async fn rename_tag(tagId: i64, name: String, state: State<'_, AppState>) -> Result<(), String> {
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
+    repo.rename_tag(tagId, &name)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn get_settings(state: State<'_, AppState>) -> Result<Option<Value>, String> {
     let settings_path = state.settings_dir.join(SETTINGS_FILE_NAME);
@@ -3923,6 +3944,7 @@ fn main() {
             trash_note,
             restore_note,
             restore_all_notes,
+            delete_all_trashed_notes,
             import_attachment,
             import_attachment_bytes,
             store_note_file_bytes,
@@ -3973,6 +3995,7 @@ fn main() {
             remove_note_tag,
             delete_tag,
             update_tag_parent,
+            rename_tag,
             set_notes_list_view,
             get_settings,
             set_settings,

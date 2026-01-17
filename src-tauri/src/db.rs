@@ -1530,6 +1530,19 @@ impl SqliteRepository {
         Ok(())
     }
 
+    pub async fn delete_all_trashed_notes(&self, data_dir: &Path) -> Result<i64, sqlx::Error> {
+        let ids: Vec<(i64,)> =
+            sqlx::query_as("SELECT id FROM notes WHERE deleted_at IS NOT NULL")
+                .fetch_all(&self.pool)
+                .await?;
+        let mut deleted = 0;
+        for (id,) in ids {
+            self.delete_note(id, data_dir).await?;
+            deleted += 1;
+        }
+        Ok(deleted)
+    }
+
     pub async fn create_attachment(
         &self,
         note_id: i64,
@@ -1954,6 +1967,17 @@ impl SqliteRepository {
         let now = chrono::Utc::now().timestamp();
         sqlx::query("UPDATE tags SET parent_id = ?, updated_at = ? WHERE id = ?")
             .bind(parent_id)
+            .bind(now)
+            .bind(tag_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn rename_tag(&self, tag_id: i64, name: &str) -> Result<(), sqlx::Error> {
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query("UPDATE tags SET name = ?, updated_at = ? WHERE id = ?")
+            .bind(name)
             .bind(now)
             .bind(tag_id)
             .execute(&self.pool)

@@ -1,8 +1,8 @@
 import type { Tag } from "../state/types";
 import { appStore } from "../state/store";
 import { logError } from "../services/logger";
-import { addNoteTag, createTag as createTagService, deleteTag as deleteTagService, getNoteTags, getTags, removeNoteTag, updateTagParent } from "../services/tags";
-import { openConfirmDialog, openTagDialog } from "../ui/dialogs";
+import { addNoteTag, createTag as createTagService, deleteTag as deleteTagService, getNoteTags, getTags, removeNoteTag, renameTag as renameTagService, updateTagParent } from "../services/tags";
+import { openConfirmDialog, openRenameTagDialog, openTagDialog } from "../ui/dialogs";
 import { t } from "../services/i18n";
 
 const normalizeTagName = (value: string) => value.trim();
@@ -89,6 +89,26 @@ export const createTagActions = (fetchData: () => Promise<void>) => ({
       }
     } catch (e) {
       logError("[tag] delete failed", e);
+    }
+  },
+  renameTag: async (id: number) => {
+    const state = appStore.getState();
+    const tag = state.tags.find((entry) => entry.id === id);
+    if (!tag) return;
+    const name = await openRenameTagDialog({ name: tag.name });
+    if (!name) return;
+    const normalized = normalizeTagName(name);
+    if (!normalized || normalized === tag.name) return;
+    try {
+      await renameTagService(id, normalized);
+      const tags = await getTags();
+      appStore.setState({ tags });
+      const selected = appStore.getState().selectedTagId;
+      if (selected === id) {
+        fetchData();
+      }
+    } catch (e) {
+      logError("[tag] rename failed", e);
     }
   },
   moveTag: async (tagId: number, parentId: number | null) => {
