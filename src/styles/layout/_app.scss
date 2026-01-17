@@ -926,13 +926,42 @@
   }
 }
 
-.import-modal__summary {
-  border: 1px solid #e5e7eb;
-  border-radius: 4px;
-  padding: 12px;
-  display: grid;
-  gap: 8px;
-}
+  .import-modal__summary {
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+    padding: 12px;
+    display: grid;
+    gap: 8px;
+  }
+
+  .import-modal__progress {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .import-modal__progress-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--color-text-muted);
+  }
+
+  .import-modal__progress-bar {
+    height: 4px;
+    border-radius: 999px;
+    background: #e5e7eb;
+    overflow: hidden;
+  }
+
+  .import-modal__progress-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--color-accent);
+    transition: width 0.2s ease;
+  }
 
 .import-modal__stages {
   display: flex;

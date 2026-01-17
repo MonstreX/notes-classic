@@ -20,7 +20,7 @@ type ExportReport = {
   report_path?: string;
 };
 
-type ExportRunner = (destDir: string) => Promise<ExportReport>;
+type ExportRunner = (destDir: string, onProgress?: (current: number, total: number) => void) => Promise<ExportReport>;
 
 type ExportModalOptions = {
   titleKey: string;
@@ -60,6 +60,15 @@ const mountExportModalWith = (root: HTMLElement, options: ExportModalOptions): E
           <span class="import-modal__spinner" data-export-spinner></span>
           <span class="import-modal__status-text" data-export-status-text></span>
         </div>
+        <div class="import-modal__progress is-hidden" data-export-progress>
+          <div class="import-modal__progress-row">
+            <span data-export-progress-text></span>
+            <span data-export-progress-count></span>
+          </div>
+          <div class="import-modal__progress-bar">
+            <div class="import-modal__progress-fill" data-export-progress-fill></div>
+          </div>
+        </div>
         <div class="import-modal__summary is-hidden" data-export-summary></div>
         <div class="import-modal__report is-hidden" data-export-report></div>
       </div>
@@ -83,6 +92,10 @@ const mountExportModalWith = (root: HTMLElement, options: ExportModalOptions): E
   const spinnerEl = overlay.querySelector<HTMLElement>("[data-export-spinner]");
   const summaryEl = overlay.querySelector<HTMLElement>("[data-export-summary]");
   const reportEl = overlay.querySelector<HTMLElement>("[data-export-report]");
+  const progressEl = overlay.querySelector<HTMLElement>("[data-export-progress]");
+  const progressTextEl = overlay.querySelector<HTMLElement>("[data-export-progress-text]");
+  const progressCountEl = overlay.querySelector<HTMLElement>("[data-export-progress-count]");
+  const progressFillEl = overlay.querySelector<HTMLElement>("[data-export-progress-fill]");
 
   const setStatus = (message: string, tone: "ok" | "error" | "muted" = "muted", loading = false) => {
     if (!statusEl) return;
@@ -119,9 +132,19 @@ const mountExportModalWith = (root: HTMLElement, options: ExportModalOptions): E
     selectedPath = "";
     if (pathEl) pathEl.textContent = t("export.path_empty");
     setStatus("", "muted");
+    progressEl?.classList.add("is-hidden");
     summaryEl?.classList.add("is-hidden");
     reportEl?.classList.add("is-hidden");
     if (runBtn) runBtn.disabled = true;
+  };
+
+  const setProgress = (current: number, total: number) => {
+    if (!progressEl || !progressTextEl || !progressCountEl || !progressFillEl) return;
+    progressEl.classList.remove("is-hidden");
+    progressTextEl.textContent = t("export.summary.notes");
+    progressCountEl.textContent = `${current}/${total}`;
+    const percent = total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0;
+    progressFillEl.style.width = `${percent}%`;
   };
 
   const openModal = () => {
@@ -153,7 +176,7 @@ const mountExportModalWith = (root: HTMLElement, options: ExportModalOptions): E
     setStatus(t(options.runningKey), "muted", true);
     setReport("");
     try {
-      const report = await options.runExport(selectedPath);
+      const report = await options.runExport(selectedPath, setProgress);
       setStatus(t(options.finishedKey), "ok");
       setSummary(report);
       setReport(t(options.reportKey, { path: report.manifest_path || report.report_path || "" }));

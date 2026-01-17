@@ -216,11 +216,27 @@ const exportAttachments = async (
   }
 };
 
+const isImageFilename = (filename: string) => {
+  const lower = filename.toLowerCase();
+  return (
+    lower.endsWith(".png") ||
+    lower.endsWith(".jpg") ||
+    lower.endsWith(".jpeg") ||
+    lower.endsWith(".gif") ||
+    lower.endsWith(".webp") ||
+    lower.endsWith(".bmp") ||
+    lower.endsWith(".svg") ||
+    lower.endsWith(".jfif")
+  );
+};
+
 const exportImages = async (
   note: NoteDetail,
   doc: Document,
   exportRoot: string,
   images: ExportAsset[],
+  attachments: ExportAsset[],
+  mode: "html" | "text",
 ) => {
   const dataDir = await getDataDir();
   const usedNames = new Map<string, number>();
@@ -247,6 +263,22 @@ const exportImages = async (
     const extIdx = filename.lastIndexOf(".");
     const base = extIdx > 0 ? filename.slice(0, extIdx) : filename;
     const ext = extIdx > 0 ? filename.slice(extIdx) : "";
+    if (!isImageFilename(filename)) {
+      const uniqueName = ensureUniqueName(base, usedNames, ext || ".bin");
+      const relPath = `attachments/${note.id}/${uniqueName}`;
+      const dest = await ensureDirForFile(exportRoot, relPath);
+      await saveBytesAs(dest, bytes);
+      attachments.push({ relPath, filename: uniqueName });
+      if (mode === "html") {
+        const link = doc.createElement("a");
+        link.setAttribute("href", relPath);
+        link.textContent = uniqueName;
+        img.replaceWith(link);
+      } else {
+        img.replaceWith(doc.createTextNode(relPath));
+      }
+      continue;
+    }
     const uniqueName = ensureUniqueName(base, usedNames, ext);
     const relPath = `images/${note.id}/${uniqueName}`;
     const dest = await ensureDirForFile(exportRoot, relPath);
@@ -302,7 +334,7 @@ export const buildExportNoteHtml = async (
   const attachments: ExportAsset[] = [];
   const images: ExportAsset[] = [];
   await exportAttachments(note, doc, exportRoot, attachments, "html");
-  await exportImages(note, doc, exportRoot, images);
+  await exportImages(note, doc, exportRoot, images, attachments, "html");
   return { content: doc.body.innerHTML, attachments, images };
 };
 
@@ -316,7 +348,7 @@ export const buildExportNoteMarkdown = async (
   const attachments: ExportAsset[] = [];
   const images: ExportAsset[] = [];
   await exportAttachments(note, doc, exportRoot, attachments, "text");
-  await exportImages(note, doc, exportRoot, images);
+  await exportImages(note, doc, exportRoot, images, attachments, "text");
   const markdown = htmlToMarkdown(doc.body.innerHTML);
   return { content: markdown, attachments, images };
 };

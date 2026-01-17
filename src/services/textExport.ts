@@ -15,7 +15,10 @@ type ExportReport = ExportSummary & {
   report_path: string;
 };
 
-export const runTextExport = async (destDir: string): Promise<ExportReport> => {
+export const runTextExport = async (
+  destDir: string,
+  onProgress?: (current: number, total: number) => void,
+): Promise<ExportReport> => {
   const errors: string[] = [];
   const exportRoot = await prepareExportRoot(destDir, "text");
   const notebooks = await getNotebooks();
@@ -36,6 +39,8 @@ export const runTextExport = async (destDir: string): Promise<ExportReport> => {
   let attachments = 0;
   let images = 0;
 
+  let processed = 0;
+  onProgress?.(0, notesList.length);
   for (const item of notesList) {
     const note = await getNote(item.id);
     if (!note) continue;
@@ -50,6 +55,8 @@ export const runTextExport = async (destDir: string): Promise<ExportReport> => {
     } catch (e) {
       errors.push(`note ${note.id}: ${String(e)}`);
     }
+    processed += 1;
+    onProgress?.(processed, notesList.length);
   }
 
   const report: ExportReport = {
