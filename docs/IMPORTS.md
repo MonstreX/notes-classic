@@ -1,6 +1,6 @@
 # Import Pipelines
 
-This document describes the **in-app** import flows for Notes Classic exports, Obsidian (Markdown), HTML, and Text datasets, plus the common pitfalls and guardrails used to keep imports stable.
+This document describes the **in-app** import flows for Notes Classic exports, Markdown (.md), HTML, and Text datasets, plus the common pitfalls and guardrails used to keep imports stable.
 
 Evernote import is documented separately: `docs/EVERNOTE-IMPORT.md`.
 
@@ -37,7 +37,7 @@ Evernote import is documented separately: `docs/EVERNOTE-IMPORT.md`.
 - Import requires a full replace (current storage is cleared).
 - A backup is created under `data/backups/notes-classic-YYYYMMDD-HHMMSS`.
 
-## Obsidian (Markdown) Import
+## Markdown (.md) Import
 
 **Input:**
 - Folder with `.md` files and an `attachments/` folder with images + files.
@@ -75,25 +75,25 @@ Evernote import is documented separately: `docs/EVERNOTE-IMPORT.md`.
 - Folder with `.txt` files and `attachments/` folder.
 
 **Assumptions:**
-- Text content is **Markdown-like** (same syntax as Obsidian demo).
+- Text content is **Markdown-like** (same syntax as Markdown demo).
 
 **Transformations:**
-- Same Markdown conversions as Obsidian import.
+- Same Markdown conversions as Markdown import.
 - `[[attachments/...]]` and `![[attachments/...]]` are resolved to attachments/images.
 - `external_id` for notes is `text:<rel/path>`.
 
 ## Demo Datasets
 
 Demo sources live outside the repo:
-`E:\dev\notes-import-examples\obsidian`, `.../html`, `.../text`
+`E:\dev\notes-import-examples\obsidian` (Markdown), `.../html`, `.../text`
 
-They share the same structure and attachments; HTML/Text are regenerated from the Obsidian set.
+They share the same structure and attachments; HTML/Text are regenerated from the Markdown set.
 
 ## Verification Scripts
 
 Use these scripts to avoid manual checks after generating example data or export packages.
 
-### Import examples (Obsidian/HTML/Text)
+### Import examples (Markdown/HTML/Text)
 
 ```bash
 node scripts/verify_import_examples.cjs "E:\\dev\\notes-import-examples"

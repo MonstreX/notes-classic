@@ -2582,7 +2582,7 @@ async fn select_obsidian_folder(app_handle: AppHandle) -> Result<Option<String>,
     app_handle
         .dialog()
         .file()
-        .set_title("Select Obsidian folder")
+        .set_title("Select Markdown folder")
         .pick_folder(move |folder| {
             let path = folder
                 .and_then(|path| path.into_path().ok())

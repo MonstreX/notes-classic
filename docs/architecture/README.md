@@ -27,4 +27,4 @@ Each subsystem is documented in its own file under docs/architecture/.
 17. [File-by-file notes (exhaustive)](file-by-file.md)
 18. [Timing constants and retries](timing-and-retries.md)
 19. [Localization (i18n)](localization.md)
-20. [Import pipelines (Evernote / Obsidian / HTML / Text)](../IMPORTS.md)
+20. [Import pipelines (Evernote / Markdown (.md) / HTML / Text)](../IMPORTS.md)
