@@ -135,7 +135,7 @@ const resolveStackNotebook = (relPath: string) => {
   const filename = parts.pop() || "";
   const folders = parts;
   if (folders.length === 0) {
-    return { stack: "Obsidian", notebook: "General", title: stripExt(filename) };
+    return { stack: "Markdown", notebook: "General", title: stripExt(filename) };
   }
   if (folders.length === 1) {
     return { stack: folders[0], notebook: "General", title: stripExt(filename) };
