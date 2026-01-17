@@ -14,7 +14,10 @@ import { mountNotesClassicImportModal } from "./notesClassicImportModal";
 import { mountHistoryModal } from "./historyModal";
 import { mountSidebar, type SidebarHandlers, type SidebarInstance } from "./sidebar";
 import { mountTagsBar } from "./tagsBar";
-import { mountExportModal } from "./exportModal";
+import { mountExportModal, mountExportModalWith } from "./exportModal";
+import { runObsidianExport } from "../services/obsidianExport";
+import { runHtmlExport } from "../services/htmlExport";
+import { runTextExport } from "../services/textExport";
 import { createEditorScheduler } from "./editorScheduler";
 import { createAppLayout } from "./appLayout";
 import { createAppRenderer } from "./appRenderer";
@@ -127,7 +130,49 @@ export const mountApp = (root: HTMLElement) => {
   });
   openHistoryModal = () => historyModal.open();
   const exportModal = mountExportModal(layout.editorPane);
+  const exportObsidianModal = mountExportModalWith(layout.editorPane, {
+    titleKey: "export_obsidian.title",
+    hintKey: "export_obsidian.hint",
+    selectKey: "export.select_folder",
+    exportKey: "export.export",
+    readyKey: "export.ready",
+    runningKey: "export.running",
+    finishedKey: "export.finished",
+    failedKey: "export.failed",
+    doneTitleKey: "export_obsidian.done_title",
+    reportKey: "export.report_saved",
+    runExport: runObsidianExport,
+  });
+  const exportHtmlModal = mountExportModalWith(layout.editorPane, {
+    titleKey: "export_html.title",
+    hintKey: "export_html.hint",
+    selectKey: "export.select_folder",
+    exportKey: "export.export",
+    readyKey: "export.ready",
+    runningKey: "export.running",
+    finishedKey: "export.finished",
+    failedKey: "export.failed",
+    doneTitleKey: "export_html.done_title",
+    reportKey: "export.report_saved",
+    runExport: runHtmlExport,
+  });
+  const exportTextModal = mountExportModalWith(layout.editorPane, {
+    titleKey: "export_text.title",
+    hintKey: "export_text.hint",
+    selectKey: "export.select_folder",
+    exportKey: "export.export",
+    readyKey: "export.ready",
+    runningKey: "export.running",
+    finishedKey: "export.finished",
+    failedKey: "export.failed",
+    doneTitleKey: "export_text.done_title",
+    reportKey: "export.report_saved",
+    runExport: runTextExport,
+  });
   listen("export-notes-classic", () => exportModal.open());
+  listen("export-obsidian", () => exportObsidianModal.open());
+  listen("export-html", () => exportHtmlModal.open());
+  listen("export-text", () => exportTextModal.open());
 
   const sidebarHandlers: SidebarHandlers = {
     onSelectNotebook: (id) => actions.selectNotebook(id),

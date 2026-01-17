@@ -31,6 +31,9 @@ const FILE_IMPORT_HTML: &str = "file_import_html";
 const FILE_IMPORT_TEXT: &str = "file_import_text";
 const FILE_IMPORT_NOTES_CLASSIC: &str = "file_import_notes_classic";
 const FILE_EXPORT_NOTES_CLASSIC: &str = "file_export_notes_classic";
+const FILE_EXPORT_OBSIDIAN: &str = "file_export_obsidian";
+const FILE_EXPORT_HTML: &str = "file_export_html";
+const FILE_EXPORT_TEXT: &str = "file_export_text";
 const MENU_NEW_NOTE: &str = "menu_new_note";
 const MENU_NEW_NOTEBOOK: &str = "menu_new_notebook";
 const MENU_NEW_STACK: &str = "menu_new_stack";
@@ -1035,8 +1038,32 @@ fn build_menu<R: Runtime>(app_handle: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         true,
         None::<&str>,
     )?;
+    let export_obsidian = MenuItem::with_id(
+        app_handle,
+        FILE_EXPORT_OBSIDIAN,
+        label("menu.export_obsidian"),
+        true,
+        None::<&str>,
+    )?;
+    let export_html = MenuItem::with_id(
+        app_handle,
+        FILE_EXPORT_HTML,
+        label("menu.export_html"),
+        true,
+        None::<&str>,
+    )?;
+    let export_text = MenuItem::with_id(
+        app_handle,
+        FILE_EXPORT_TEXT,
+        label("menu.export_text"),
+        true,
+        None::<&str>,
+    )?;
     let export_submenu = SubmenuBuilder::new(app_handle, label("menu.export"))
         .item(&export_notes_classic)
+        .item(&export_obsidian)
+        .item(&export_html)
+        .item(&export_text)
         .build()?;
 
     let file_menu = SubmenuBuilder::new(app_handle, label("menu.file"))
@@ -3890,6 +3917,15 @@ fn main() {
             }
             FILE_EXPORT_NOTES_CLASSIC => {
                 let _ = app_handle.emit("export-notes-classic", ());
+            }
+            FILE_EXPORT_OBSIDIAN => {
+                let _ = app_handle.emit("export-obsidian", ());
+            }
+            FILE_EXPORT_HTML => {
+                let _ = app_handle.emit("export-html", ());
+            }
+            FILE_EXPORT_TEXT => {
+                let _ = app_handle.emit("export-text", ());
             }
             MENU_NEW_NOTE => {
                 let _ = app_handle.emit("menu-new-note", ());
