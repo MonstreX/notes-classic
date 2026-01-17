@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { runEvernoteImport, scanEvernoteSource } from "../services/evernoteImport";
 import { logError } from "../services/logger";
 import { t } from "../services/i18n";
-import { confirmReplaceIfNeeded, handleImportResult } from "./importFlow";
+import { beginImport, confirmReplaceIfNeeded, endImport, handleImportResult } from "./importFlow";
 
 type EvernoteImportModal = {
   open: () => void;
@@ -241,6 +241,11 @@ export const mountEvernoteImportModal = (root: HTMLElement): EvernoteImportModal
     }
     runBtn.disabled = true;
     selectBtn?.setAttribute("disabled", "disabled");
+    if (!beginImport()) {
+      runBtn.disabled = false;
+      selectBtn?.removeAttribute("disabled");
+      return;
+    }
     summaryEl?.classList.add("is-hidden");
     reportEl?.classList.add("is-hidden");
     initStages({
@@ -280,6 +285,7 @@ export const mountEvernoteImportModal = (root: HTMLElement): EvernoteImportModal
       setStatus(t("import.failed"), "error");
     } finally {
       selectBtn?.removeAttribute("disabled");
+      endImport();
     }
   });
 

@@ -34,6 +34,18 @@ type ImportResultHandlerOptions = {
   };
 };
 
+let importInProgress = false;
+
+export const beginImport = () => {
+  if (importInProgress) return false;
+  importInProgress = true;
+  return true;
+};
+
+export const endImport = () => {
+  importInProgress = false;
+};
+
 export const confirmReplaceIfNeeded = async (prompt: ReplacePrompt) => {
   const dataDir = await invoke<string>("get_data_dir");
   const info = await invoke<{ hasData: boolean }>("get_storage_info", { path: dataDir });

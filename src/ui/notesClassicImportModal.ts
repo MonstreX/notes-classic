@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { runNotesClassicImport, scanNotesClassicSource } from "../services/notesClassicImport";
 import { logError } from "../services/logger";
 import { t } from "../services/i18n";
-import { confirmReplaceIfNeeded, handleImportResult } from "./importFlow";
+import { beginImport, confirmReplaceIfNeeded, endImport, handleImportResult } from "./importFlow";
 
 type NotesClassicImportModal = {
   open: () => void;
@@ -222,13 +222,18 @@ export const mountNotesClassicImportModal = (
         message: t("import_notes_classic.replace_message"),
         confirmLabel: t("import_notes_classic.replace_confirm"),
       });
-      if (!shouldReplace) {
-        setStatus(t("import_notes_classic.ready"), "ok");
-        if (runBtn) runBtn.disabled = false;
-        if (selectBtn) selectBtn.disabled = false;
-        return;
-      }
-      setStatus(t("import_notes_classic.preparing_ocr"), "muted", true);
+        if (!shouldReplace) {
+          setStatus(t("import_notes_classic.ready"), "ok");
+          if (runBtn) runBtn.disabled = false;
+          if (selectBtn) selectBtn.disabled = false;
+          return;
+        }
+        if (!beginImport()) {
+          if (runBtn) runBtn.disabled = false;
+          if (selectBtn) selectBtn.disabled = false;
+          return;
+        }
+        setStatus(t("import_notes_classic.preparing_ocr"), "muted", true);
       await new Promise<void>((resolve) => {
         requestAnimationFrame(() => resolve());
       });
@@ -271,19 +276,20 @@ export const mountNotesClassicImportModal = (
           restartMessage: t("import_notes_classic.restart"),
         },
       });
-    } catch (err) {
-      logError("[import] notes-classic failed", err);
-      setStatus(t("import_notes_classic.failed"), "error");
-      setReport(String(err));
-      if (statusEl && reportEl && statusEl.nextSibling !== reportEl) {
-        statusEl.insertAdjacentElement("afterend", reportEl);
+      } catch (err) {
+        logError("[import] notes-classic failed", err);
+        setStatus(t("import_notes_classic.failed"), "error");
+        setReport(String(err));
+        if (statusEl && reportEl && statusEl.nextSibling !== reportEl) {
+          statusEl.insertAdjacentElement("afterend", reportEl);
+        }
+      } finally {
+        handlers?.onImportEnd?.();
+        endImport();
+        if (runBtn) runBtn.disabled = false;
+        if (selectBtn) selectBtn.disabled = false;
       }
-    } finally {
-      handlers?.onImportEnd?.();
-      if (runBtn) runBtn.disabled = false;
-      if (selectBtn) selectBtn.disabled = false;
-    }
-  };
+    };
 
   closeBtn?.addEventListener("click", closeModal);
   cancelBtn?.addEventListener("click", closeModal);

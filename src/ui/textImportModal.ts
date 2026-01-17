@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { runTextImport, scanTextSource } from "../services/textImport";
 import { logError } from "../services/logger";
 import { t } from "../services/i18n";
-import { confirmReplaceIfNeeded, handleImportResult } from "./importFlow";
+import { beginImport, confirmReplaceIfNeeded, endImport, handleImportResult } from "./importFlow";
 
 type TextImportModal = {
   open: () => void;
@@ -66,6 +66,11 @@ export const mountTextImportModal = (
   const summaryEl = overlay.querySelector<HTMLElement>("[data-import-summary]");
   const stagesEl = overlay.querySelector<HTMLElement>("[data-import-stages]");
   const reportEl = overlay.querySelector<HTMLElement>("[data-import-report]");
+
+  const setControlsDisabled = (disabled: boolean) => {
+    if (runBtn) runBtn.disabled = disabled;
+    if (selectBtn) selectBtn.disabled = disabled;
+  };
 
   const setStatus = (message: string, tone: "ok" | "error" | "muted" = "muted", loading = false) => {
     if (!statusEl) return;
@@ -165,6 +170,7 @@ export const mountTextImportModal = (
     stagesEl?.classList.add("is-hidden");
     reportEl?.classList.add("is-hidden");
     if (runBtn) runBtn.disabled = true;
+    if (selectBtn) selectBtn.disabled = false;
     summary = null;
     reportPath = "";
   };
@@ -233,6 +239,10 @@ export const mountTextImportModal = (
         confirmLabel: t("import_text.replace_confirm"),
       });
       if (!shouldReplace) return;
+      if (!beginImport()) {
+        return;
+      }
+      setControlsDisabled(true);
       if (handlers?.onImportStart) {
         await handlers.onImportStart();
       }
@@ -271,6 +281,8 @@ export const mountTextImportModal = (
       }
     } finally {
       handlers?.onImportEnd?.();
+      endImport();
+      setControlsDisabled(false);
     }
   };
 
