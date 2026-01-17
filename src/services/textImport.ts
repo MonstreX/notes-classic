@@ -234,7 +234,7 @@ const renderInline = async (
   attachments: Array<{ token: string; name: string; path: string }>,
   fileIndex: Map<string, string>,
 ) => {
-  const regex = /!\[\[([^\]]+)\]\]|\[\[([^\]]+)\]\]|(attachments\/[^\s)\]]+)|(\S+\.(?:png|jpe?g|gif|webp|bmp|svg|jfif))/gi;
+  const regex = /!\[\[([^\]]+)\]\]|\[\[([^\]]+)\]\]|!\[[^\]]*\]\(([^)]+)\)|(attachments\/[^\s)\]]+)|(\S+\.(?:png|jpe?g|gif|webp|bmp|svg|jfif))/gi;
   let cursor = 0;
   let output = "";
   let imageCount = 0;
@@ -243,8 +243,9 @@ const renderInline = async (
     output += escapeHtml(raw.slice(cursor, match.index));
     const embed = match[1];
     const wiki = match[2];
-    const bareAttachment = match[3];
-    const bareImage = match[4];
+    const mdImage = match[3];
+    const bareAttachment = match[4];
+    const bareImage = match[5];
     if (embed) {
       const parsed = splitWikiTarget(embed);
       const target = parsed.target;
@@ -311,6 +312,27 @@ const renderInline = async (
         } else {
           output += escapeHtml(parsed.label || parsed.target);
         }
+      }
+    } else if (mdImage) {
+      const cleaned = mdImage.trim();
+      const resolved = resolveAttachmentPath(noteDir, cleaned, fileIndex);
+      if (resolved.localPath) {
+        if (isImagePath(cleaned)) {
+          try {
+            const stored = await storeNoteFileFromPath(resolved.localPath);
+            output += `<img data-en-hash="${stored.hash}" src="files/${stored.rel_path}">`;
+            imageCount += 1;
+          } catch {
+            output += escapeHtml(cleaned);
+          }
+        } else {
+          const filename = cleaned.split("/").pop() || "file";
+          const token = `__ATTACHMENT_${attachments.length}__`;
+          attachments.push({ token, name: filename, path: resolved.localPath });
+          output += token;
+        }
+      } else {
+        output += escapeHtml(cleaned);
       }
     } else if (bareAttachment || bareImage) {
       const rawPath = (bareAttachment || bareImage || "").trim();
