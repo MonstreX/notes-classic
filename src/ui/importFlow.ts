@@ -68,8 +68,15 @@ export const handleImportResult = async (options: ImportResultHandlerOptions) =>
   setStatus(isFailed ? texts.failed : hasErrors ? texts.finishedErrors : texts.finished, isFailed || hasErrors ? "error" : "ok");
   setReport(t(texts.reportSavedKey, { path: reportPath }));
   if (hasErrors || isFailed) {
-    const errorDetails = report.errors.join("\n");
-    const message = `${t(texts.rollbackMessageKey, { count: report.errors.length })}\n\n${errorDetails}`;
+    const escapeHtml = (value: string) =>
+      value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const errorItems = report.errors
+      .map((err) => `<div class="import-error-list__item">${escapeHtml(err)}</div>`)
+      .join("");
+    const message = `
+      <div class="import-error-summary">${escapeHtml(t(texts.rollbackMessageKey, { count: report.errors.length }))}</div>
+      <div class="import-error-list">${errorItems}</div>
+    `;
     const rollback = await openConfirmDialog({
       title: texts.rollbackTitle,
       message,

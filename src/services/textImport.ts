@@ -122,6 +122,33 @@ const fallbackHtmlFromText = (raw: string) => {
   return `<p>${safe}</p>`;
 };
 
+const isLikelyEncoded = (raw: string) => {
+  const sample = raw.slice(0, 50000);
+  let maxLine = 0;
+  let currentLine = 0;
+  let totalChars = 0;
+  let base64Chars = 0;
+  for (let i = 0; i < sample.length; i += 1) {
+    const ch = sample[i];
+    if (ch === "\n" || ch === "\r") {
+      if (currentLine > maxLine) maxLine = currentLine;
+      currentLine = 0;
+      continue;
+    }
+    currentLine += 1;
+    if (ch.trim()) {
+      totalChars += 1;
+      if (/[A-Za-z0-9+/=]/.test(ch)) {
+        base64Chars += 1;
+      }
+    }
+  }
+  if (currentLine > maxLine) maxLine = currentLine;
+  if (totalChars < 1000) return false;
+  const ratio = base64Chars / totalChars;
+  return maxLine > 3000 || ratio > 0.92;
+};
+
 const guessMime = (filename: string) => {
   const lower = filename.trim().toLowerCase();
   const ext = lower.includes(".") ? lower.split(".").pop() || "" : "";
@@ -819,10 +846,14 @@ export const runTextImport = async (
       const bytes = await readFileBytes(entry.path);
       const raw = new TextDecoder("utf-8").decode(Uint8Array.from(bytes));
       let rendered = { html: fallbackHtmlFromText(raw), attachments: [], imageCount: 0 };
-      try {
-        rendered = await withTimeout(renderMarkdown(raw, noteDir, linkMap, fileIndex), 5000);
-      } catch (err) {
-        report.errors.push(`note ${noteTitle}: markdown parse timeout`);
+      if (isLikelyEncoded(raw)) {
+        report.errors.push(`note ${noteTitle}: content looks encoded, skipped markdown parsing`);
+      } else {
+        try {
+          rendered = await withTimeout(renderMarkdown(raw, noteDir, linkMap, fileIndex), 5000);
+        } catch (err) {
+          report.errors.push(`note ${noteTitle}: markdown parse timeout`);
+        }
       }
       attachmentTotal.value += rendered.attachments.length + rendered.imageCount;
       report.stats.images += rendered.imageCount;

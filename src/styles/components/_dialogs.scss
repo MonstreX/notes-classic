@@ -64,6 +64,25 @@
   color: #374151;
 }
 
+.import-error-summary {
+  margin-bottom: 8px;
+}
+
+.import-error-list {
+  max-height: 220px;
+  overflow-y: auto;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 8px;
+}
+
+.import-error-list__item {
+  color: #b91c1c;
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 2px 0;
+  white-space: pre-wrap;
+}
+
 .dialog__label {
   display: block;
   font-size: 11px;
