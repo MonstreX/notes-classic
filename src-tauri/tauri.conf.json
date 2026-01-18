@@ -64,7 +64,12 @@
       "resources/ocr/tessdata/rus.traineddata.gz",
       "resources/i18n/en.json",
       "resources/i18n/ru.json",
-      "resources/fonts/NotoSans-Regular.ttf"
+      "resources/fonts/NotoSans-Regular.ttf",
+      "resources/pdf/win/wkhtmltopdf.exe",
+      "resources/pdf/win/wkhtmltox.dll",
+      "resources/pdf/linux/wkhtmltopdf",
+      "resources/pdf/linux/libwkhtmltox.so.0.12.6",
+      "resources/pdf/mac/wkhtmltopdf.pkg"
     ]
   },
   "plugins": {}
