@@ -81,7 +81,7 @@ const importAttachmentBytes = (noteId: number, filename: string, mime: string, b
 const setNoteExternalId = (noteId: number, externalId: string) =>
   invoke<void>("set_note_external_id", { noteId, externalId });
 const getDataDir = () => invoke<string>("get_data_dir");
-const createBackup = () => invoke<string>("create_import_backup", { kind: "obsidian" });
+const createBackup = () => invoke<string>("create_import_backup", { kind: "markdown" });
 const clearStorageForImport = () => invoke<void>("clear_storage_for_import");
 const saveBytesAs = (destPath: string, bytes: number[]) =>
   invoke<void>("save_bytes_as", { destPath, bytes });
