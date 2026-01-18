@@ -7,6 +7,7 @@ use db::{
     SqliteRepository, Tag,
 };
 use http::{Request, Response, StatusCode, Uri};
+use regex::Regex;
 use reqwest;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -113,6 +114,88 @@ fn strip_html(input: &str) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn path_to_file_url(path: &Path) -> String {
+    let raw = path.to_string_lossy().replace('\\', "/");
+    format!("file:///{}", urlencoding::encode(&raw))
+}
+
+fn rewrite_pdf_asset_sources(content: &str, data_dir: &Path) -> String {
+    let re = match Regex::new(r#"src=(["'])([^"']+)["']"#) {
+        Ok(value) => value,
+        Err(_) => return content.to_string(),
+    };
+    re.replace_all(content, |caps: &regex::Captures| {
+        let original = &caps[2];
+        let updated = if original.starts_with("http://asset.localhost/") {
+            let encoded = original.trim_start_matches("http://asset.localhost/");
+            urlencoding::decode(encoded)
+                .ok()
+                .map(|value| path_to_file_url(&PathBuf::from(value.into_owned())))
+                .unwrap_or_else(|| original.to_string())
+        } else if original.starts_with("notes-file://files/") {
+            let rel = original.trim_start_matches("notes-file://files/");
+            path_to_file_url(&data_dir.join("files").join(rel))
+        } else if original.starts_with("files/") {
+            let rel = original.trim_start_matches("files/");
+            path_to_file_url(&data_dir.join("files").join(rel))
+        } else {
+            original.to_string()
+        };
+        format!("src=\"{}\"", updated)
+    })
+    .to_string()
+}
+
+fn resolve_wkhtmltopdf_path(app_handle: &AppHandle) -> Result<PathBuf, String> {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    let resource_dir = app_handle.path().resource_dir().ok();
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(dir) = resource_dir.as_ref() {
+            candidates.push(dir.join("pdf").join("win").join("wkhtmltopdf.exe"));
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        if let Some(dir) = resource_dir.as_ref() {
+            candidates.push(dir.join("pdf").join("linux").join("wkhtmltopdf"));
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(dir) = resource_dir.as_ref() {
+            candidates.push(dir.join("pdf").join("mac").join("wkhtmltopdf"));
+            let pkg = dir.join("pdf").join("mac").join("wkhtmltopdf.pkg");
+            if pkg.exists() {
+                return Err("wkhtmltopdf.pkg is present but not extracted".to_string());
+            }
+        }
+    }
+    if let Ok(current) = std::env::current_dir() {
+        #[cfg(target_os = "windows")]
+        {
+            candidates.push(current.join("src-tauri").join("resources").join("pdf").join("win").join("wkhtmltopdf.exe"));
+            candidates.push(current.join("resources").join("pdf").join("win").join("wkhtmltopdf.exe"));
+        }
+        #[cfg(target_os = "linux")]
+        {
+            candidates.push(current.join("src-tauri").join("resources").join("pdf").join("linux").join("wkhtmltopdf"));
+            candidates.push(current.join("resources").join("pdf").join("linux").join("wkhtmltopdf"));
+        }
+        #[cfg(target_os = "macos")]
+        {
+            candidates.push(current.join("src-tauri").join("resources").join("pdf").join("mac").join("wkhtmltopdf"));
+            candidates.push(current.join("resources").join("pdf").join("mac").join("wkhtmltopdf"));
+        }
+    }
+    for path in candidates {
+        if path.exists() {
+            return Ok(path);
+        }
+    }
+    Err("wkhtmltopdf binary not found".to_string())
 }
 
 fn normalize_stack_id(value: Option<&str>) -> Option<String> {
@@ -2669,6 +2752,101 @@ async fn select_notes_classic_folder(app_handle: AppHandle) -> Result<Option<Str
     rx.await.map_err(|e| e.to_string())
 }
 
+#[allow(non_snake_case)]
+#[tauri::command]
+async fn export_note_pdf_native(
+    noteId: i64,
+    destPath: String,
+    app_handle: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let repo = SqliteRepository {
+        pool: state.pool.clone(),
+    };
+    let note = repo
+        .get_note(noteId)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Note not found".to_string())?;
+    let mut dest = PathBuf::from(destPath.trim());
+    if dest.as_os_str().is_empty() {
+        return Err("Destination path is empty".to_string());
+    }
+    if !dest
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.eq_ignore_ascii_case("pdf"))
+        .unwrap_or(false)
+    {
+        dest.set_extension("pdf");
+    }
+    let title = note.title.trim();
+    let title = if title.is_empty() { "Untitled" } else { title };
+    let rewritten = rewrite_pdf_asset_sources(&note.content, &state.data_dir);
+    let html = format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\" /><style>body{{font-family:Arial,sans-serif;margin:0;padding:0;background:#fff;color:#111;}} .pdf-note{{padding:24px 28px;}} .pdf-note h1{{font-size:22px;font-weight:500;margin:0 0 16px;}} .note-content img{{max-width:100%;height:auto;}}</style></head><body><article class=\"pdf-note\"><h1>{}</h1><div class=\"note-content\">{}</div></article></body></html>",
+        title,
+        rewritten
+    );
+
+    let temp_dir = state.data_dir.join("pdf-export");
+    if !temp_dir.exists() {
+        fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
+    }
+    let temp_file = temp_dir.join(format!("note-{}.html", noteId));
+    fs::write(&temp_file, html).map_err(|e| e.to_string())?;
+    let tool = resolve_wkhtmltopdf_path(&app_handle)?;
+    let tool_dir = tool
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    let mut command = std::process::Command::new(tool);
+    command.current_dir(&tool_dir);
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(path) = std::env::var("PATH") {
+            let joined = format!("{};{}", tool_dir.to_string_lossy(), path);
+            command.env("PATH", joined);
+        } else {
+            command.env("PATH", tool_dir.to_string_lossy().to_string());
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(path) = std::env::var("LD_LIBRARY_PATH") {
+            let joined = format!("{}:{}", tool_dir.to_string_lossy(), path);
+            command.env("LD_LIBRARY_PATH", joined);
+        } else {
+            command.env("LD_LIBRARY_PATH", tool_dir.to_string_lossy().to_string());
+        }
+    }
+    let status = command
+        .arg("--enable-local-file-access")
+        .arg("--encoding")
+        .arg("utf-8")
+        .arg("--page-size")
+        .arg("A4")
+        .arg("--margin-top")
+        .arg("15mm")
+        .arg("--margin-bottom")
+        .arg("15mm")
+        .arg("--margin-left")
+        .arg("15mm")
+        .arg("--margin-right")
+        .arg("15mm")
+        .arg(temp_file.to_string_lossy().to_string())
+        .arg(dest.to_string_lossy().to_string())
+        .status()
+        .map_err(|e| e.to_string())?;
+
+    let _ = fs::remove_file(&temp_file);
+    if !status.success() {
+        return Err("wkhtmltopdf failed".to_string());
+    }
+    Ok(())
+}
+
 #[derive(serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 struct ExportNotebook {
     id: i64,
@@ -4025,6 +4203,7 @@ fn main() {
             upsert_ocr_text,
             mark_ocr_failed,
             get_ocr_stats,
+            export_note_pdf_native,
             get_tags,
             get_note_tags,
             create_tag,
