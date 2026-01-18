@@ -118,6 +118,11 @@ const escapeAttr = (value: string) =>
 const normalizeKey = (value: string) =>
   value.trim().replace(/\\/g, "/").replace(/\/{2,}/g, "/").toLowerCase();
 
+const fallbackHtmlFromText = (raw: string) => {
+  const safe = escapeHtml(raw).replace(/\n/g, "<br>");
+  return `<p>${safe}</p>`;
+};
+
 const guessMime = (filename: string) => {
   const lower = filename.trim().toLowerCase();
   const ext = lower.includes(".") ? lower.split(".").pop() || "" : "";
@@ -807,7 +812,12 @@ export const runObsidianImport = async (
       const noteDir = entry.relPath.split("/").slice(0, -1).join("/");
       const bytes = await readFileBytes(entry.path);
       const raw = new TextDecoder("utf-8").decode(Uint8Array.from(bytes));
-      const rendered = await renderMarkdown(raw, root, noteDir, linkMap, fileIndex);
+      let rendered = { html: fallbackHtmlFromText(raw), attachments: [], imageCount: 0 };
+      try {
+        rendered = await withTimeout(renderMarkdown(raw, root, noteDir, linkMap, fileIndex), 5000);
+      } catch (err) {
+        report.errors.push(`note ${noteTitle}: markdown parse timeout`);
+      }
       attachmentTotal.value += rendered.attachments.length + rendered.imageCount;
       report.stats.images += rendered.imageCount;
       filesDone += rendered.imageCount;
