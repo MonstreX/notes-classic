@@ -614,6 +614,14 @@ export const runEvernoteImport = async (
         if (rte.error) {
           decodeErrors.push({ id: noteId, path: rte.path, error: rte.error });
         }
+        const title = rte.title ?? note.title ?? note.label ?? "Untitled";
+        onProgress?.({
+          stage: "decode",
+          state: "running",
+          current: noteIndex,
+          total: notesTotal,
+          message: `Decoding note content: ${title}`,
+        });
         const enml = rte.enml ?? null;
         const enmlResolved = enml ? rewriteEnml(enml, assetMap) : null;
         const contentRaw = enmlResolved || enml || "";
@@ -624,7 +632,7 @@ export const runEvernoteImport = async (
         const updatedAt = normalizeTimestamp(note.updated ?? note.updatedAt ?? note.updateDate ?? createdAt, createdAt);
       notesOut.push({
         id: noteId,
-        title: rte.title ?? note.title ?? note.label ?? "Untitled",
+        title,
         notebookId: note.parent_Notebook_id ?? null,
         contentNormalized,
         contentHash,

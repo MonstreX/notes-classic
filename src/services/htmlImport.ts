@@ -78,6 +78,21 @@ const clearStorageForImport = () => invoke<void>("clear_storage_for_import");
 const saveBytesAs = (destPath: string, bytes: number[]) =>
   invoke<void>("save_bytes_as", { destPath, bytes });
 
+const withTimeout = async <T>(promise: Promise<T>, ms: number) => {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error("timeout")), ms);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+};
+
+const downloadNoteFileWithTimeout = (url: string, ms = 10000) =>
+  withTimeout(downloadNoteFile(url), ms);
+
 const imageExts = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg", ".jfif", ".tif", ".tiff"];
 
 const isImagePath = (path: string) =>
@@ -287,7 +302,7 @@ const renderHtml = async (
     const resolved = resolveAssetPath(noteDir, src, fileIndex);
     if (resolved.url) {
       try {
-        const stored = await downloadNoteFile(resolved.url);
+        const stored = await downloadNoteFileWithTimeout(resolved.url);
         img.setAttribute("src", `files/${stored.rel_path}`);
         img.setAttribute("data-en-hash", stored.hash);
         imageCount += 1;
@@ -464,6 +479,14 @@ export const runHtmlImport = async (
     let noteIndex = 0;
     for (const entry of noteEntries) {
       const meta = resolveStackNotebook(entry.relPath);
+      const noteTitle = meta.title || t("notes.untitled");
+      onProgress?.({
+        stage: "notes",
+        current: noteIndex,
+        total: noteEntries.length,
+        state: "running",
+        message: noteTitle,
+      });
       const notebookId = await ensureNotebook(meta.stack, meta.notebook);
       const noteDir = entry.relPath.split("/").slice(0, -1).join("/");
       const bytes = await readFileBytes(entry.path);
@@ -479,7 +502,7 @@ export const runHtmlImport = async (
         total: attachmentTotal.value,
         state: "running",
       });
-      const noteId = await createNote(meta.title || t("notes.untitled"), rendered.html, notebookId);
+      const noteId = await createNote(noteTitle, rendered.html, notebookId);
       await setNoteExternalId(noteId, buildExternalId(entry.relPath));
 
       if (attachments.length > 0) {
@@ -514,7 +537,7 @@ export const runHtmlImport = async (
             });
           }
         }
-        await updateNote(noteId, meta.title || t("notes.untitled"), updated, notebookId);
+        await updateNote(noteId, noteTitle, updated, notebookId);
       }
 
       noteIndex += 1;

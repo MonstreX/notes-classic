@@ -148,10 +148,15 @@ export const mountTextImportModal = (
     id: string,
     current = 0,
     total = 0,
-    state: "running" | "done" | "error" = "running"
+    state: "running" | "done" | "error" = "running",
+    message?: string
   ) => {
     const stage = stageElements[id];
     if (!stage) return;
+    if (state === "running") {
+      const title = t("import_text.running");
+      setStatus(message ? `${title} • ${message}` : title, "muted", true);
+    }
     const safeTotal = Number.isFinite(total) && total >= 0 ? total : 0;
     const safeCurrent = Number.isFinite(current) && current >= 0 ? current : 0;
     const percent =
@@ -251,7 +256,13 @@ export const mountTextImportModal = (
         notes: summary.noteCount,
       });
       const report = await runTextImport(summary.sourceRoot, (progress) => {
-        setStageProgress(progress.stage, progress.current, progress.total, progress.state ?? "running");
+        setStageProgress(
+          progress.stage,
+          progress.current,
+          progress.total,
+          progress.state ?? "running",
+          progress.message,
+        );
       });
       reportPath = `${report.backupDir}/import_report.json`;
       await handleImportResult({

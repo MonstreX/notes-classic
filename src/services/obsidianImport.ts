@@ -84,6 +84,21 @@ const clearStorageForImport = () => invoke<void>("clear_storage_for_import");
 const saveBytesAs = (destPath: string, bytes: number[]) =>
   invoke<void>("save_bytes_as", { destPath, bytes });
 
+const withTimeout = async <T>(promise: Promise<T>, ms: number) => {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error("timeout")), ms);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+};
+
+const downloadNoteFileWithTimeout = (url: string, ms = 10000) =>
+  withTimeout(downloadNoteFile(url), ms);
+
 const imageExts = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg", ".jfif"];
 
 const isImagePath = (path: string) =>
@@ -223,7 +238,7 @@ const renderInline = async (
       const resolved = resolveAttachmentPath(root, noteDir, target, fileIndex);
       if (resolved.url) {
         try {
-          const stored = await downloadNoteFile(resolved.url);
+          const stored = await downloadNoteFileWithTimeout(resolved.url);
           output += `<img data-en-hash="${stored.hash}" src="files/${stored.rel_path}">`;
           imageCount += 1;
         } catch (e) {
@@ -304,7 +319,7 @@ const renderInline = async (
       const resolved = resolveAttachmentPath(root, noteDir, cleaned, fileIndex);
       if (resolved.url) {
         try {
-          const stored = await downloadNoteFile(resolved.url);
+          const stored = await downloadNoteFileWithTimeout(resolved.url);
           output += `<img data-en-hash="${stored.hash}" src="files/${stored.rel_path}">`;
           imageCount += 1;
         } catch {
@@ -780,6 +795,14 @@ export const runObsidianImport = async (
     let noteIndex = 0;
     for (const entry of noteEntries) {
       const meta = resolveStackNotebook(entry.relPath);
+      const noteTitle = meta.title || t("notes.untitled");
+      onProgress?.({
+        stage: "notes",
+        current: noteIndex,
+        total: noteEntries.length,
+        state: "running",
+        message: noteTitle,
+      });
       const notebookId = await ensureNotebook(meta.stack, meta.notebook);
       const noteDir = entry.relPath.split("/").slice(0, -1).join("/");
       const bytes = await readFileBytes(entry.path);
@@ -794,7 +817,7 @@ export const runObsidianImport = async (
         total: attachmentTotal.value,
         state: "running",
       });
-      const noteId = await createNote(meta.title || t("notes.untitled"), rendered.html, notebookId);
+      const noteId = await createNote(noteTitle, rendered.html, notebookId);
       await setNoteExternalId(noteId, buildExternalId(entry.relPath));
 
       if (rendered.attachments.length > 0) {
@@ -829,7 +852,7 @@ export const runObsidianImport = async (
             });
           }
         }
-        await updateNote(noteId, meta.title || t("notes.untitled"), updated, notebookId);
+        await updateNote(noteId, noteTitle, updated, notebookId);
       }
 
       noteIndex += 1;
