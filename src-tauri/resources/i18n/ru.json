@@ -165,7 +165,6 @@
   "menu.rename_tag": "Переименовать",
   "menu.rename_note": "Переименовать",
   "menu.duplicate_note": "Дублировать",
-  "menu.export_pdf": "Экспорт в PDF",
   "menu.export_pdf_native": "Экспорт в PDF (нативный)",
   "menu.export_html_one": "Экспорт в HTML (одним файлом)",
   "menu.note_actions": "Действия заметки",
