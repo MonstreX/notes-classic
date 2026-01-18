@@ -112,6 +112,37 @@ const escapeAttr = (value: string) =>
 const normalizeKey = (value: string) =>
   value.trim().replace(/\\/g, "/").replace(/\/{2,}/g, "/").toLowerCase();
 
+const fallbackHtmlFromText = (raw: string) => {
+  const safe = escapeHtml(raw).replace(/\n/g, "<br>");
+  return `<p>${safe}</p>`;
+};
+
+const isLikelyEncoded = (raw: string) => {
+  const sample = raw.slice(0, 120000);
+  let totalChars = 0;
+  let base64Chars = 0;
+  let longestBase64Run = 0;
+  let currentRun = 0;
+  for (let i = 0; i < sample.length; i += 1) {
+    const ch = sample[i];
+    if (ch.trim()) {
+      totalChars += 1;
+    }
+    if (/[A-Za-z0-9+/=]/.test(ch)) {
+      base64Chars += 1;
+      currentRun += 1;
+      if (currentRun > longestBase64Run) longestBase64Run = currentRun;
+    } else if (ch === "\n" || ch === "\r" || ch === " " || ch === "\t") {
+      currentRun = 0;
+    } else {
+      currentRun = 0;
+    }
+  }
+  if (totalChars < 20000) return false;
+  const ratio = base64Chars / totalChars;
+  return longestBase64Run >= 5000 && ratio >= 0.97;
+};
+
 const guessMime = (filename: string) => {
   const lower = filename.trim().toLowerCase();
   const ext = lower.includes(".") ? lower.split(".").pop() || "" : "";
@@ -492,7 +523,12 @@ export const runHtmlImport = async (
       const bytes = await readFileBytes(entry.path);
       const raw = new TextDecoder("utf-8").decode(Uint8Array.from(bytes));
       const attachments: Array<{ token: string; name: string; path: string }> = [];
-      const rendered = await renderHtml(raw, noteDir, fileIndex, attachments);
+      let rendered = { html: fallbackHtmlFromText(raw), imageCount: 0 };
+      if (isLikelyEncoded(raw)) {
+        report.errors.push(`note ${noteTitle}: content looks encoded, skipped html parsing`);
+      } else {
+        rendered = await renderHtml(raw, noteDir, fileIndex, attachments);
+      }
       attachmentTotal.value += attachments.length + rendered.imageCount;
       report.stats.images += rendered.imageCount;
       filesDone += rendered.imageCount;
