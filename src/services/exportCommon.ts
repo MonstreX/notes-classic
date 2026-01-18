@@ -63,6 +63,12 @@ const formatStackNotebookPath = (note: NoteDetail, map: NotebookMap) => {
 const escapeMarkdownText = (value: string) =>
   value.replace(/\uFEFF/g, "").replace(/\r\n/g, "\n");
 
+const escapeTableCell = (value: string) =>
+  escapeMarkdownText(value)
+    .replace(/\|/g, "\\|")
+    .replace(/\n+/g, " ")
+    .trim();
+
 const nodeToMarkdown = (node: Node): string => {
   if (node.nodeType === Node.TEXT_NODE) {
     return escapeMarkdownText(node.textContent || "");
@@ -127,6 +133,29 @@ const nodeToMarkdown = (node: Node): string => {
       return `- ${itemText}`;
     });
     return lines.join("\n") + "\n\n";
+  }
+  if (tag === "table") {
+    const rows = Array.from(el.querySelectorAll("tr"));
+    if (rows.length === 0) return "";
+    const rowCells = rows.map((row) =>
+      Array.from(row.querySelectorAll("th,td")).map((cell) =>
+        escapeTableCell(cell.textContent || "")
+      )
+    );
+    const maxCols = rowCells.reduce((max, cells) => Math.max(max, cells.length), 0);
+    if (maxCols === 0) return "";
+    const normalized = rowCells.map((cells) => {
+      const padded = cells.slice(0, maxCols);
+      while (padded.length < maxCols) padded.push("");
+      return padded;
+    });
+    const header = normalized.length === 1
+      ? new Array(maxCols).fill("")
+      : normalized[0];
+    const bodyRows = normalized.length === 1 ? [normalized[0]] : normalized.slice(1);
+    const renderRow = (cells: string[]) => `| ${cells.join(" | ")} |`;
+    const separator = `| ${new Array(maxCols).fill("---").join(" | ")} |`;
+    return [renderRow(header), separator, ...bodyRows.map(renderRow)].join("\n") + "\n\n";
   }
   if (tag.startsWith("h")) {
     const level = Number(tag.slice(1));
