@@ -50,6 +50,15 @@ export const ensureUniqueName = (
   return `${base}-${count}${suffix}`;
 };
 
+export type ExportResult = {
+  total: number;
+  success: number;
+  failed: number;
+  path?: string;
+  folder?: string;
+  errors: string[];
+};
+
 export const normalizePathPart = (value: string) =>
   sanitizeFilename(value).replace(/\.+$/g, "");
 

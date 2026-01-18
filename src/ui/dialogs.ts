@@ -671,3 +671,47 @@ export const openConfirmDialog = ({
     document.body.appendChild(overlay);
   });
 };
+
+export const openExportResultDialog = ({
+  title,
+  message,
+}: {
+  title: string;
+  message: string;
+}) => {
+  const overlay = document.createElement("div");
+  overlay.className = "dialog-overlay";
+  overlay.dataset.dialogOverlay = "1";
+
+  overlay.innerHTML = `
+    <div class="dialog">
+      <div class="dialog__header">
+        <h3 class="dialog__title">${title}</h3>
+        <button class="dialog__close" type="button" data-dialog-close="1" aria-label="${t("settings.close")}">
+          <svg class="dialog__close-icon" aria-hidden="true">
+            <use href="#icon-close"></use>
+          </svg>
+        </button>
+      </div>
+      <div class="dialog__body dialog__body--message">
+        ${message}
+      </div>
+      <div class="dialog__footer">
+        <button class="dialog__button dialog__button--primary" data-dialog-close="1">${t("settings.close")}</button>
+      </div>
+    </div>
+  `;
+
+  const cleanup = () => overlay.remove();
+  overlay.querySelectorAll("[data-dialog-close]").forEach((btn) =>
+    btn.addEventListener("click", cleanup)
+  );
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) cleanup();
+  });
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") cleanup();
+  }, { once: true });
+
+  document.body.appendChild(overlay);
+};

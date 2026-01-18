@@ -11,6 +11,7 @@ import {
   ensureUniqueName,
   sanitizeFilename,
   toUtf8Bytes,
+  type ExportResult,
 } from "./exportUtils";
 
 const stripSelectionMarkers = (html: string) => {
@@ -162,40 +163,76 @@ const exportNoteHtmlOneFileToPath = async (
   await saveBytesAs(finalPath, toUtf8Bytes(html));
 };
 
-export const exportNoteHtmlOneFile = async (noteId: number, title: string) => {
+export const exportNoteHtmlOneFile = async (
+  noteId: number,
+  title: string
+): Promise<ExportResult | null> => {
   const suggestedName = sanitizeFilename(title?.trim() || "Note");
   try {
     const destPath = await save({
       defaultPath: `${suggestedName}.html`,
       filters: [{ name: "HTML", extensions: ["html"] }],
     });
-    if (!destPath) return;
+    if (!destPath) return null;
     await exportNoteHtmlOneFileToPath(noteId, destPath, suggestedName);
+    return {
+      total: 1,
+      success: 1,
+      failed: 0,
+      path: destPath,
+      errors: [],
+    };
   } catch (error) {
     logError("[export] html-one-file failed", error);
+    return {
+      total: 1,
+      success: 0,
+      failed: 1,
+      errors: [error instanceof Error ? error.message : String(error)],
+    };
   }
 };
 
 export const exportNotesHtmlOneFile = async (
   noteIds: number[],
   titleById: Map<number, string>
-) => {
+): Promise<ExportResult | null> => {
   if (!noteIds.length) return;
   try {
     const folder = await open({
       directory: true,
       multiple: false,
     });
-    if (!folder || typeof folder !== "string") return;
+    if (!folder || typeof folder !== "string") return null;
     const used = new Map<string, number>();
+    const errors: string[] = [];
+    let success = 0;
     for (const id of noteIds) {
       const title = titleById.get(id) || `Note-${id}`;
       const base = sanitizeFilename(title.trim() || `Note-${id}`);
       const filename = ensureUniqueName(base, used, ".html");
       const destPath = await join(folder, filename);
-      await exportNoteHtmlOneFileToPath(id, destPath, base);
+      try {
+        await exportNoteHtmlOneFileToPath(id, destPath, base);
+        success += 1;
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : String(error));
+      }
     }
+    return {
+      total: noteIds.length,
+      success,
+      failed: noteIds.length - success,
+      folder,
+      errors,
+    };
   } catch (error) {
     logError("[export] html-one-file bulk failed", error);
+    return {
+      total: noteIds.length,
+      success: 0,
+      failed: noteIds.length,
+      errors: [error instanceof Error ? error.message : String(error)],
+    };
   }
 };

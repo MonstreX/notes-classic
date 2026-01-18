@@ -26,8 +26,47 @@ import { createAppRenderer } from "./appRenderer";
 import { actions, initApp } from "../controllers/appController";
 import { startOcrQueue } from "../services/ocr";
 import { appStore } from "../state/store";
+import { openExportResultDialog } from "./dialogs";
+import { t } from "../services/i18n";
+import type { ExportResult } from "../services/exportUtils";
 
 export const mountApp = (root: HTMLElement) => {
+  const escapeHtml = (value: string) =>
+    value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+
+  const showExportResult = (result: ExportResult | null) => {
+    if (!result) return;
+    const rows = [
+      `<div class="import-summary__row"><span>${t("export_result.total")}</span><span>${result.total}</span></div>`,
+      `<div class="import-summary__row"><span>${t("export_result.success")}</span><span>${result.success}</span></div>`,
+      `<div class="import-summary__row"><span>${t("export_result.failed")}</span><span>${result.failed}</span></div>`,
+    ];
+    if (result.path) {
+      rows.push(`<div class="import-summary__row"><span>${t("export_result.path")}</span><span>${escapeHtml(result.path)}</span></div>`);
+    } else if (result.folder) {
+      rows.push(`<div class="import-summary__row"><span>${t("export_result.folder")}</span><span>${escapeHtml(result.folder)}</span></div>`);
+    }
+    let message = rows.join("");
+    if (result.errors.length) {
+      const errors = result.errors.map((err) =>
+        `<div class="import-error-list__item">${escapeHtml(err)}</div>`
+      ).join("");
+      message += `
+        <div class="import-error-summary">${t("export_result.errors")}</div>
+        <div class="import-error-list">${errors}</div>
+      `;
+    }
+    openExportResultDialog({
+      title: result.failed > 0 ? t("export_result.title_error") : t("export_result.title_success"),
+      message,
+    });
+  };
+
   let openSearchModal = () => {};
   let openHistoryModal = () => {};
   let openSettingsModal = () => {};
@@ -51,8 +90,8 @@ export const mountApp = (root: HTMLElement) => {
         x,
         y,
         noteId,
-        onExportPdfNative: (id) => exportNotePdfNative(id, title),
-        onExportHtml: (id) => exportNoteHtmlOneFile(id, title),
+        onExportPdfNative: async (id) => showExportResult(await exportNotePdfNative(id, title)),
+        onExportHtml: async (id) => showExportResult(await exportNoteHtmlOneFile(id, title)),
       });
     },
   });
@@ -281,8 +320,8 @@ export const mountApp = (root: HTMLElement) => {
           nodes,
           onDelete: actions.deleteNotes,
           onMove: actions.moveNotesToNotebook,
-          onExportPdf: (ids) => exportNotesPdfNative(ids, exportTitleMap),
-          onExportHtml: (ids) => exportNotesHtmlOneFile(ids, exportTitleMap),
+          onExportPdf: async (ids) => showExportResult(await exportNotesPdfNative(ids, exportTitleMap)),
+          onExportHtml: async (ids) => showExportResult(await exportNotesHtmlOneFile(ids, exportTitleMap)),
         });
         return;
       }
@@ -296,8 +335,8 @@ export const mountApp = (root: HTMLElement) => {
         onDuplicate: actions.duplicateNote,
         onMove: actions.moveNoteToNotebook,
         onRename: actions.renameNote,
-        onExportPdf: (noteId) => exportNotesPdfNative([noteId], exportTitleMap),
-        onExportHtml: (noteId) => exportNotesHtmlOneFile([noteId], exportTitleMap),
+        onExportPdf: async (noteId) => showExportResult(await exportNotesPdfNative([noteId], exportTitleMap)),
+        onExportHtml: async (noteId) => showExportResult(await exportNotesHtmlOneFile([noteId], exportTitleMap)),
       });
     },
     onMoveNotes: (noteIds, notebookId) => {
