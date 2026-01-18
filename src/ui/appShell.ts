@@ -18,8 +18,8 @@ import { mountExportModal, mountExportModalWith } from "./exportModal";
 import { runObsidianExport } from "../services/obsidianExport";
 import { runHtmlExport } from "../services/htmlExport";
 import { runTextExport } from "../services/textExport";
-import { exportNoteHtmlOneFile } from "../services/noteHtmlExport";
-import { exportNotePdfNative } from "../services/pdfNativeExport";
+import { exportNoteHtmlOneFile, exportNotesHtmlOneFile } from "../services/noteHtmlExport";
+import { exportNotePdfNative, exportNotesPdfNative } from "../services/pdfNativeExport";
 import { createEditorScheduler } from "./editorScheduler";
 import { createAppLayout } from "./appLayout";
 import { createAppRenderer } from "./appRenderer";
@@ -248,6 +248,9 @@ export const mountApp = (root: HTMLElement) => {
     onNoteContextMenu: (event, id) => {
       event.preventDefault();
       const state = appStore.getState();
+      const exportTitleMap = new Map(
+        state.notes.map((note) => [note.id, note.title || "Note"])
+      );
       const selectedIds = state.selectedNoteIds;
       if (state.selectedTrash) {
         if (selectedIds.size > 1) {
@@ -278,6 +281,8 @@ export const mountApp = (root: HTMLElement) => {
           nodes,
           onDelete: actions.deleteNotes,
           onMove: actions.moveNotesToNotebook,
+          onExportPdf: (ids) => exportNotesPdfNative(ids, exportTitleMap),
+          onExportHtml: (ids) => exportNotesHtmlOneFile(ids, exportTitleMap),
         });
         return;
       }
@@ -291,6 +296,8 @@ export const mountApp = (root: HTMLElement) => {
         onDuplicate: actions.duplicateNote,
         onMove: actions.moveNoteToNotebook,
         onRename: actions.renameNote,
+        onExportPdf: (noteId) => exportNotesPdfNative([noteId], exportTitleMap),
+        onExportHtml: (noteId) => exportNotesHtmlOneFile([noteId], exportTitleMap),
       });
     },
     onMoveNotes: (noteIds, notebookId) => {

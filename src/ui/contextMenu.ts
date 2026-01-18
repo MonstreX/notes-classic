@@ -16,6 +16,8 @@ type NoteMenuOptions = {
   onDuplicate: (id: number) => void;
   onMove: (noteId: number, notebookId: number | null) => void;
   onRename: (id: number) => void;
+  onExportPdf: (id: number) => void;
+  onExportHtml: (id: number) => void;
 };
 
 type NotesMenuOptions = {
@@ -25,6 +27,8 @@ type NotesMenuOptions = {
   nodes: ContextMenuNode[];
   onDelete: (ids: number[]) => void;
   onMove: (noteIds: number[], notebookId: number | null) => void;
+  onExportPdf: (ids: number[]) => void;
+  onExportHtml: (ids: number[]) => void;
 };
 
 type TrashNoteMenuOptions = {
@@ -146,7 +150,7 @@ const buildMoveNodesForGroup = (
   });
 };
 
-export const openNoteContextMenu = ({ x, y, noteId, nodes, onDelete, onDuplicate, onMove, onRename }: NoteMenuOptions) => {
+export const openNoteContextMenu = ({ x, y, noteId, nodes, onDelete, onDuplicate, onMove, onRename, onExportPdf, onExportHtml }: NoteMenuOptions) => {
   closeMenu();
 
   const menu = document.createElement("div");
@@ -154,15 +158,18 @@ export const openNoteContextMenu = ({ x, y, noteId, nodes, onDelete, onDuplicate
 
   menu.appendChild(createItem(t("menu.rename_note"), () => onRename(noteId)));
   menu.appendChild(createItem(t("menu.duplicate_note"), () => onDuplicate(noteId)));
-  menu.appendChild(createSeparator());
-  menu.appendChild(createItem(t("menu.delete_note"), () => onDelete(noteId), "is-danger"));
-  menu.appendChild(createSeparator());
-
   const moveItems = [
     createItem(t("menu.all_notes"), () => onMove(noteId, null)),
     ...buildMoveNodes(nodes, noteId, onMove),
   ];
   menu.appendChild(createSubmenu(t("menu.move_to"), moveItems));
+  menu.appendChild(createSeparator());
+  menu.appendChild(createSubmenu(t("menu.export"), [
+    createItem(t("menu.export_pdf_native"), () => onExportPdf(noteId)),
+    createItem(t("menu.export_html_one"), () => onExportHtml(noteId)),
+  ]));
+  menu.appendChild(createSeparator());
+  menu.appendChild(createItem(t("menu.delete_note"), () => onDelete(noteId), "is-danger"));
 
   document.body.appendChild(menu);
   activeMenu = menu;
@@ -282,7 +289,7 @@ export const openNoteMetaMenu = ({ x, y, noteId, onExportPdfNative, onExportHtml
   };
 };
 
-export const openNotesContextMenu = ({ x, y, noteIds, nodes, onDelete, onMove }: NotesMenuOptions) => {
+export const openNotesContextMenu = ({ x, y, noteIds, nodes, onDelete, onMove, onExportPdf, onExportHtml }: NotesMenuOptions) => {
   closeMenu();
 
   const menu = document.createElement("div");
@@ -298,6 +305,11 @@ export const openNotesContextMenu = ({ x, y, noteIds, nodes, onDelete, onMove }:
     ...buildMoveNodesForGroup(nodes, noteIds, onMove),
   ];
   menu.appendChild(createSubmenu(t("menu.move_to"), moveItems));
+  menu.appendChild(createSeparator());
+  menu.appendChild(createSubmenu(t("menu.export"), [
+    createItem(t("menu.export_pdf_native"), () => onExportPdf(noteIds)),
+    createItem(t("menu.export_html_one"), () => onExportHtml(noteIds)),
+  ]));
 
   document.body.appendChild(menu);
   activeMenu = menu;

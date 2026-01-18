@@ -1,4 +1,4 @@
-import { save } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { join } from "@tauri-apps/api/path";
 import { getNote } from "./notes";
 import { readAttachmentBytes } from "./attachments";
@@ -8,6 +8,7 @@ import {
   getDataDir,
   readFileBytes,
   saveBytesAs,
+  ensureUniqueName,
   sanitizeFilename,
   toUtf8Bytes,
 } from "./exportUtils";
@@ -146,23 +147,55 @@ const buildHtml = (title: string, body: string) => `<!doctype html>
   </body>
 </html>`;
 
+const exportNoteHtmlOneFileToPath = async (
+  noteId: number,
+  destPath: string,
+  fallbackTitle: string
+) => {
+  const note = await getNote(noteId);
+  if (!note) return;
+  const doc = stripSelectionMarkers(note.content || "");
+  await embedImages(doc);
+  await embedAttachments(doc);
+  const html = buildHtml(note.title || fallbackTitle, doc.body.innerHTML);
+  const finalPath = destPath.toLowerCase().endsWith(".html") ? destPath : `${destPath}.html`;
+  await saveBytesAs(finalPath, toUtf8Bytes(html));
+};
+
 export const exportNoteHtmlOneFile = async (noteId: number, title: string) => {
   const suggestedName = sanitizeFilename(title?.trim() || "Note");
   try {
-    const note = await getNote(noteId);
-    if (!note) return;
     const destPath = await save({
       defaultPath: `${suggestedName}.html`,
       filters: [{ name: "HTML", extensions: ["html"] }],
     });
     if (!destPath) return;
-    const doc = stripSelectionMarkers(note.content || "");
-    await embedImages(doc);
-    await embedAttachments(doc);
-    const html = buildHtml(note.title || suggestedName, doc.body.innerHTML);
-    const finalPath = destPath.toLowerCase().endsWith(".html") ? destPath : `${destPath}.html`;
-    await saveBytesAs(finalPath, toUtf8Bytes(html));
+    await exportNoteHtmlOneFileToPath(noteId, destPath, suggestedName);
   } catch (error) {
     logError("[export] html-one-file failed", error);
+  }
+};
+
+export const exportNotesHtmlOneFile = async (
+  noteIds: number[],
+  titleById: Map<number, string>
+) => {
+  if (!noteIds.length) return;
+  try {
+    const folder = await open({
+      directory: true,
+      multiple: false,
+    });
+    if (!folder || typeof folder !== "string") return;
+    const used = new Map<string, number>();
+    for (const id of noteIds) {
+      const title = titleById.get(id) || `Note-${id}`;
+      const base = sanitizeFilename(title.trim() || `Note-${id}`);
+      const filename = ensureUniqueName(base, used, ".html");
+      const destPath = await join(folder, filename);
+      await exportNoteHtmlOneFileToPath(id, destPath, base);
+    }
+  } catch (error) {
+    logError("[export] html-one-file bulk failed", error);
   }
 };
