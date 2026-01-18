@@ -19,6 +19,7 @@ import { runObsidianExport } from "../services/obsidianExport";
 import { runHtmlExport } from "../services/htmlExport";
 import { runTextExport } from "../services/textExport";
 import { exportNotePdf } from "../services/pdfExport";
+import { exportNoteHtmlOneFile } from "../services/noteHtmlExport";
 import { createEditorScheduler } from "./editorScheduler";
 import { createAppLayout } from "./appLayout";
 import { createAppRenderer } from "./appRenderer";
@@ -51,6 +52,7 @@ export const mountApp = (root: HTMLElement) => {
         y,
         noteId,
         onExportPdf: (id) => exportNotePdf(id, title),
+        onExportHtml: (id) => exportNoteHtmlOneFile(id, title),
       });
     },
   });

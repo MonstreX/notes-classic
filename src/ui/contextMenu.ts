@@ -220,14 +220,16 @@ type NoteMetaMenuOptions = {
   y: number;
   noteId: number;
   onExportPdf: (noteId: number) => void;
+  onExportHtml: (noteId: number) => void;
 };
 
-export const openNoteMetaMenu = ({ x, y, noteId, onExportPdf }: NoteMetaMenuOptions) => {
+export const openNoteMetaMenu = ({ x, y, noteId, onExportPdf, onExportHtml }: NoteMetaMenuOptions) => {
   closeMenu();
 
   const menu = document.createElement("div");
   menu.className = "context-menu";
   menu.appendChild(createItem(t("menu.export_pdf"), () => onExportPdf(noteId)));
+  menu.appendChild(createItem(t("menu.export_html_one"), () => onExportHtml(noteId)));
 
   document.body.appendChild(menu);
   activeMenu = menu;
