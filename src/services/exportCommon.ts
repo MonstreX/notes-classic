@@ -253,13 +253,16 @@ const nodeToMarkdown = (node: Node): string => {
   return serializeChildren();
 };
 
+const docToMarkdown = (doc: Document) => {
+  const raw = Array.from(doc.body.childNodes).map(nodeToMarkdown).join("");
+  return raw.replace(/\n{3,}/g, "\n\n").trim() + "\n";
+};
+
 const htmlToMarkdown = (html: string) => {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
-  const body = doc.body;
-  body.querySelectorAll("h1").forEach((node) => node.remove());
-  const raw = Array.from(body.childNodes).map(nodeToMarkdown).join("");
-  return raw.replace(/\n{3,}/g, "\n\n").trim() + "\n";
+  doc.body.querySelectorAll("h1").forEach((node) => node.remove());
+  return docToMarkdown(doc);
 };
 
 type NoteLinkInfo = {
@@ -341,6 +344,8 @@ const isImageFilename = (filename: string) => {
   );
 };
 
+let cachedDataDir: string | null = null;
+
 const exportImages = async (
   note: NoteDetail,
   doc: Document,
@@ -350,7 +355,10 @@ const exportImages = async (
   errors: string[],
   mode: "html" | "text",
 ) => {
-  const dataDir = await getDataDir();
+  if (!cachedDataDir) {
+    cachedDataDir = await getDataDir();
+  }
+  const dataDir = cachedDataDir;
   const usedNames = new Map<string, number>();
   const nodes = Array.from(doc.querySelectorAll("img"));
   for (const img of nodes) {
@@ -466,7 +474,7 @@ export const buildExportNoteMarkdown = async (
   const errors: string[] = [];
   await exportAttachments(note, doc, exportRoot, attachments, errors, "text");
   await exportImages(note, doc, exportRoot, images, attachments, errors, "text");
-  const markdown = htmlToMarkdown(doc.body.innerHTML);
+  const markdown = docToMarkdown(doc);
   return { content: markdown, attachments, images, errors };
 };
 

@@ -1295,6 +1295,7 @@ async fn get_note(id: i64, state: State<'_, AppState>) -> Result<Option<Note>, S
     repo.get_note(id).await.map_err(|e| e.to_string())
 }
 
+#[allow(non_snake_case)]
 #[tauri::command]
 async fn search_notes_by_title(
     query: String,

@@ -113,7 +113,10 @@ export const mountEvernoteImportModal = (root: HTMLElement): EvernoteImportModal
   };
 
   const stageOrder = [
-    { id: "notes", title: t("import.progress.notes") },
+    { id: "tables", title: t("import.progress.tables") },
+    { id: "resources", title: t("import.progress.resources") },
+    { id: "decode", title: t("import.progress.decode") },
+    { id: "database", title: t("import.progress.database") },
   ] as const;
 
   const stageTitles = new Map(stageOrder.map((stage) => [stage.id, stage.title]));
@@ -249,7 +252,10 @@ export const mountEvernoteImportModal = (root: HTMLElement): EvernoteImportModal
     summaryEl?.classList.add("is-hidden");
     reportEl?.classList.add("is-hidden");
     initStages({
-      notes: summary.noteCount,
+      tables: 1,
+      resources: summary.attachmentCount,
+      decode: summary.noteCount,
+      database: 1,
     });
     setStatus(t("import.preparing"), "muted", true);
     try {

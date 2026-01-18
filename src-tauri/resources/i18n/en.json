@@ -164,6 +164,8 @@
   "menu.rename_tag": "Rename",
   "menu.rename_note": "Rename",
   "menu.duplicate_note": "Duplicate",
+  "menu.export_pdf": "Export to PDF",
+  "menu.note_actions": "Note actions",
   "menu.empty_trash": "Empty Trash",
   "meta.last_edited": "Last edited on {date}",
   "history.back": "Back",

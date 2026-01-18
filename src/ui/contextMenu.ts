@@ -215,6 +215,70 @@ export const openNoteContextMenu = ({ x, y, noteId, nodes, onDelete, onDuplicate
   };
 };
 
+type NoteMetaMenuOptions = {
+  x: number;
+  y: number;
+  noteId: number;
+  onExportPdf: (noteId: number) => void;
+};
+
+export const openNoteMetaMenu = ({ x, y, noteId, onExportPdf }: NoteMetaMenuOptions) => {
+  closeMenu();
+
+  const menu = document.createElement("div");
+  menu.className = "context-menu";
+  menu.appendChild(createItem(t("menu.export_pdf"), () => onExportPdf(noteId)));
+
+  document.body.appendChild(menu);
+  activeMenu = menu;
+
+  const adjustPosition = () => {
+    const rect = menu.getBoundingClientRect();
+    let left = x;
+    let top = y;
+    if (left + rect.width > window.innerWidth - 8) {
+      left = window.innerWidth - rect.width - 8;
+    }
+    if (top + rect.height > window.innerHeight - 8) {
+      top = window.innerHeight - rect.height - 8;
+    }
+    menu.style.left = `${Math.max(8, left)}px`;
+    menu.style.top = `${Math.max(8, top)}px`;
+  };
+
+  menu.style.left = "0px";
+  menu.style.top = "0px";
+  menu.style.position = "fixed";
+  menu.style.zIndex = "9999";
+  adjustPosition();
+
+  const onOutsideClick = (event: MouseEvent) => {
+    if (!activeMenu) return;
+    if (event.target instanceof Node && activeMenu.contains(event.target)) return;
+    closeMenu();
+  };
+
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "Escape") closeMenu();
+  };
+
+  const onScroll = () => closeMenu();
+
+  setTimeout(() => {
+    document.addEventListener("click", onOutsideClick);
+    document.addEventListener("contextmenu", onOutsideClick);
+    document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("scroll", onScroll, true);
+  }, 0);
+
+  cleanupMenu = () => {
+    document.removeEventListener("click", onOutsideClick);
+    document.removeEventListener("contextmenu", onOutsideClick);
+    document.removeEventListener("keydown", onKeyDown);
+    window.removeEventListener("scroll", onScroll, true);
+  };
+};
+
 export const openNotesContextMenu = ({ x, y, noteIds, nodes, onDelete, onMove }: NotesMenuOptions) => {
   closeMenu();
 

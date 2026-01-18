@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
-import { openNoteContextMenu, openNotebookContextMenu, openTagContextMenu, openTrashContextMenu, openTrashNoteContextMenu, openTrashNotesContextMenu, openNotesContextMenu } from "./contextMenu";
+import { openNoteContextMenu, openNotebookContextMenu, openTagContextMenu, openTrashContextMenu, openTrashNoteContextMenu, openTrashNotesContextMenu, openNotesContextMenu, openNoteMetaMenu } from "./contextMenu";
 import { mountEditor, type EditorInstance } from "./editor";
 import { mountMetaBar } from "./metaBar";
 import { mountNotesList, type NotesListHandlers, type NotesListInstance } from "./notesList";
@@ -18,6 +18,7 @@ import { mountExportModal, mountExportModalWith } from "./exportModal";
 import { runObsidianExport } from "../services/obsidianExport";
 import { runHtmlExport } from "../services/htmlExport";
 import { runTextExport } from "../services/textExport";
+import { exportNotePdf } from "../services/pdfExport";
 import { createEditorScheduler } from "./editorScheduler";
 import { createAppLayout } from "./appLayout";
 import { createAppRenderer } from "./appRenderer";
@@ -43,6 +44,15 @@ export const mountApp = (root: HTMLElement) => {
   const metaBar = mountMetaBar(layout.editorShell, {
     onBack: () => actions.goBack(),
     onForward: () => actions.goForward(),
+    onOpenNoteMenu: (noteId, x, y) => {
+      const title = appStore.getState().activeNote?.title || "Note";
+      openNoteMetaMenu({
+        x,
+        y,
+        noteId,
+        onExportPdf: (id) => exportNotePdf(id, title),
+      });
+    },
   });
   const tagsBar = mountTagsBar(layout.editorShell, {
     onAddTag: actions.addTagToNote,

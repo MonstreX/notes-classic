@@ -16,10 +16,13 @@
     "@tauri-apps/plugin-dialog": "^2.4.2",
     "@tauri-apps/plugin-shell": "^2.3.3",
     "highlight.js": "^11.11.1",
+    "html2canvas": "^1.4.1",
+    "html2pdf.js": "^0.14.0",
     "jodit": "^4.7.9",
+    "jspdf": "^4.0.0",
     "sql.js": "^1.13.0",
-    "yjs": "^13.6.27",
-    "tesseract.js": "^7.0.0"
+    "tesseract.js": "^7.0.0",
+    "yjs": "^13.6.27"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.9.6",
