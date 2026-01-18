@@ -38,31 +38,39 @@ export const fetchNotesData = async (force = false) => {
     notesPromise,
     getNoteCounts(),
   ]);
+  const latestState = appStore.getState();
+  if (
+    latestState.selectedTrash !== state.selectedTrash ||
+    latestState.selectedTagId !== state.selectedTagId ||
+    latestState.selectedNotebookId !== state.selectedNotebookId
+  ) {
+    return;
+  }
   const notesWithExcerpt = filteredNotes.map((note) => ({
     ...note,
     excerpt: buildExcerpt(note.content || ""),
   }));
-  const sortedNotes = state.selectedTrash
+  const sortedNotes = latestState.selectedTrash
     ? notesWithExcerpt
-    : sortNotes(notesWithExcerpt, state.notesSortBy, state.notesSortDir);
+    : sortNotes(notesWithExcerpt, latestState.notesSortBy, latestState.notesSortDir);
   const map = new Map<number, number>();
   counts.perNotebook.forEach((item) => {
     map.set(item.notebookId, item.count);
   });
   const noteIds = new Set(sortedNotes.map((note) => note.id));
   const preservedSelection = new Set(
-    Array.from(state.selectedNoteIds).filter((id) => noteIds.has(id))
+    Array.from(latestState.selectedNoteIds).filter((id) => noteIds.has(id))
   );
-  let nextSelectedNoteId = state.selectedNoteId;
+  let nextSelectedNoteId = latestState.selectedNoteId;
   const hasSelected = nextSelectedNoteId !== null && noteIds.has(nextSelectedNoteId);
-  if (state.selectedTrash || state.selectedTagId !== null || state.selectedNotebookId !== null) {
+  if (latestState.selectedTrash || latestState.selectedTagId !== null || latestState.selectedNotebookId !== null) {
     nextSelectedNoteId = hasSelected
       ? nextSelectedNoteId
       : preservedSelection.size > 0
         ? Array.from(preservedSelection)[0]
         : (sortedNotes[0]?.id ?? null);
   }
-  const selectionChanged = nextSelectedNoteId !== state.selectedNoteId;
+  const selectionChanged = nextSelectedNoteId !== latestState.selectedNoteId;
   if (nextSelectedNoteId !== null) {
     preservedSelection.add(nextSelectedNoteId);
   } else {

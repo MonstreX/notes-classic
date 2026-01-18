@@ -280,6 +280,7 @@ export const openNoteMetaMenu = ({ x, y, noteId, onExportPdf, onExportPdfNative,
     document.removeEventListener("contextmenu", onOutsideClick);
     document.removeEventListener("keydown", onKeyDown);
     window.removeEventListener("scroll", onScroll, true);
+    if (activeMenu) activeMenu.remove();
   };
 };
 

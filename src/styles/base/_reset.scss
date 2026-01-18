@@ -31,3 +31,8 @@ button:active:not(:disabled) {
 button:disabled {
   cursor: default;
 }
+
+body.is-dragging,
+body.is-dragging * {
+  user-select: none;
+}

@@ -409,12 +409,10 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
     dragStartX = event.clientX;
     dragStartY = event.clientY;
     dragNoteId = id;
-    event.preventDefault();
   };
 
   const handlePointerMove = (event: PointerEvent) => {
     if (!dragActive) return;
-    event.preventDefault();
     const dx = event.clientX - dragStartX;
     const dy = event.clientY - dragStartY;
     if (!dragStarted) {
@@ -429,10 +427,10 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
       const label = isGrouped ? tCount("notes.count", selectedIds.size) : note.title;
       startDrag(label, event.clientX, event.clientY);
     }
+    event.preventDefault();
     updateOverlay(event.clientX, event.clientY);
     const target = resolveDropTarget(event.clientX, event.clientY);
     updateDropHighlight(target);
-    event.preventDefault();
   };
 
   const handlePointerUp = () => {
@@ -636,9 +634,15 @@ export const mountNotesList = (root: HTMLElement, handlers: NotesListHandlers): 
       cleanupDrag();
 
       if (shouldFullRender) {
+        const prevScroll = root.querySelector<HTMLElement>("[data-notes-scroll=\"1\"]");
+        const scrollTop = prevScroll?.scrollTop ?? 0;
         root.innerHTML = renderNotesList(state);
         cacheHeaderRefs();
         anchorNoteId = state.selectedNoteId;
+        const nextScroll = root.querySelector<HTMLElement>("[data-notes-scroll=\"1\"]");
+        if (nextScroll) {
+          nextScroll.scrollTop = scrollTop;
+        }
       } else if (prev.selectedNoteIds !== state.selectedNoteIds) {
         updateSelection(prev.selectedNoteIds, state.selectedNoteIds);
       }
