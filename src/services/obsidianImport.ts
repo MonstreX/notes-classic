@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { join } from "@tauri-apps/api/path";
 import { logError } from "./logger";
+import { escapeHtml, escapeAttr, normalizeKey, fallbackHtmlFromText, isLikelyEncoded, withTimeout } from "./importCommon";
 import { createNotebook, createNote, updateNote } from "./notes";
 import { t } from "./i18n";
 
@@ -36,6 +37,7 @@ type ObsidianImportReport = {
     images: number;
   };
   errors: string[];
+  warnings: string[];
 };
 
 type StoredNoteFile = {
@@ -84,18 +86,6 @@ const clearStorageForImport = () => invoke<void>("clear_storage_for_import");
 const saveBytesAs = (destPath: string, bytes: number[]) =>
   invoke<void>("save_bytes_as", { destPath, bytes });
 
-const withTimeout = async <T>(promise: Promise<T>, ms: number) => {
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  const timeout = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error("timeout")), ms);
-  });
-  try {
-    return await Promise.race([promise, timeout]);
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
-  }
-};
-
 const downloadNoteFileWithTimeout = (url: string, ms = 10000) =>
   withTimeout(downloadNoteFile(url), ms);
 
@@ -105,49 +95,6 @@ const isImagePath = (path: string) =>
   imageExts.some((ext) => path.toLowerCase().endsWith(ext));
 
 const stripExt = (filename: string) => filename.replace(/\.[^/.]+$/u, "");
-
-const escapeHtml = (value: string) =>
-  value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-
-const escapeAttr = (value: string) =>
-  escapeHtml(value).replace(/"/g, "&quot;");
-
-const normalizeKey = (value: string) =>
-  value.trim().replace(/\\/g, "/").replace(/\/{2,}/g, "/").toLowerCase();
-
-const fallbackHtmlFromText = (raw: string) => {
-  const safe = escapeHtml(raw).replace(/\n/g, "<br>");
-  return `<p>${safe}</p>`;
-};
-
-const isLikelyEncoded = (raw: string) => {
-  const sample = raw.slice(0, 120000);
-  let totalChars = 0;
-  let base64Chars = 0;
-  let longestBase64Run = 0;
-  let currentRun = 0;
-  for (let i = 0; i < sample.length; i += 1) {
-    const ch = sample[i];
-    if (ch.trim()) {
-      totalChars += 1;
-    }
-    if (/[A-Za-z0-9+/=]/.test(ch)) {
-      base64Chars += 1;
-      currentRun += 1;
-      if (currentRun > longestBase64Run) longestBase64Run = currentRun;
-    } else if (ch === "\n" || ch === "\r" || ch === " " || ch === "\t") {
-      currentRun = 0;
-    } else {
-      currentRun = 0;
-    }
-  }
-  if (totalChars < 20000) return false;
-  const ratio = base64Chars / totalChars;
-  return longestBase64Run >= 5000 && ratio >= 0.97;
-};
 
 const guessMime = (filename: string) => {
   const lower = filename.trim().toLowerCase();
@@ -255,6 +202,8 @@ const renderInline = async (
   let cursor = 0;
   let output = "";
   let imageCount = 0;
+  let externalImages = 0;
+  let externalLinks = 0;
   let match: RegExpExecArray | null;
   while ((match = regex.exec(raw)) !== null) {
     output += escapeHtml(raw.slice(cursor, match.index));
@@ -274,6 +223,7 @@ const renderInline = async (
           imageCount += 1;
         } catch (e) {
           output += `<img data-en-external="1" src="${escapeAttr(resolved.url)}">`;
+          externalImages += 1;
         }
       } else if (resolved.localPath) {
         const filename = target.split("/").pop() || "file";
@@ -316,6 +266,7 @@ const renderInline = async (
         if (resolved.url) {
           const label = escapeHtml(parsed.label || parsed.target);
           output += `<a href="${escapeAttr(resolved.url)}" data-en-external="1">${label}</a>`;
+          externalLinks += 1;
         } else if (resolved.localPath) {
           if (isImagePath(parsed.target)) {
             try {
@@ -355,6 +306,7 @@ const renderInline = async (
           imageCount += 1;
         } catch {
           output += `<img data-en-external="1" src="${escapeAttr(resolved.url)}">`;
+          externalImages += 1;
         }
       } else if (resolved.localPath) {
         if (isImagePath(cleaned)) {
@@ -382,6 +334,7 @@ const renderInline = async (
       if (resolved.url) {
         const label = escapeHtml(cleaned);
         output += `<a href="${escapeAttr(resolved.url)}" data-en-external="1">${label}</a>`;
+        externalLinks += 1;
       } else if (resolved.localPath) {
         if (isImagePath(cleaned)) {
           try {
@@ -421,10 +374,14 @@ const renderInline = async (
       return `<a href="${href}" data-note-link="1">${safeText}</a>`;
     }
     const safeUrl = escapeAttr(trimmedUrl);
+    if (/^https?:\/\//i.test(trimmedUrl)) {
+      externalLinks += 1;
+      return `<a href="${safeUrl}" data-en-external="1">${safeText}</a>`;
+    }
     return `<a href="${safeUrl}">${safeText}</a>`;
   });
 
-  return { html: output.replace(/\n/g, "<br>"), imageCount };
+  return { html: output.replace(/\n/g, "<br>"), imageCount, externalImages, externalLinks };
 };
 
 const renderMarkdown = async (
@@ -453,6 +410,8 @@ const renderMarkdown = async (
     const result = await renderInline(text, root, noteDir, linkMap, attachments, fileIndex);
     rendered.push(`<p>${result.html}</p>`);
     imageCount += result.imageCount;
+    externalImages += result.externalImages;
+    externalLinks += result.externalLinks;
     buffer = [];
   };
 
@@ -467,6 +426,8 @@ const renderMarkdown = async (
     for (const item of items) {
       const result = await renderInline(item.text, root, noteDir, linkMap, attachments, fileIndex);
       imageCount += result.imageCount;
+      externalImages += result.externalImages;
+      externalLinks += result.externalLinks;
       if (todo) {
         renderedItems.push(
           `<li data-en-checked="${item.checked ? "true" : "false"}"><p>${result.html}</p></li>`
@@ -483,6 +444,8 @@ const renderMarkdown = async (
   let listOrdered = false;
   let listTodo = false;
   let imageCount = 0;
+  let externalImages = 0;
+  let externalLinks = 0;
   const flushListBuffer = async () => {
     if (listItems.length === 0) return;
     await flushList(listItems, listOrdered, listTodo);
@@ -571,6 +534,8 @@ const renderMarkdown = async (
       await flushListBuffer();
       const level = headingMatch[1].length;
       const content = await renderInline(headingMatch[2], root, noteDir, linkMap, attachments, fileIndex);
+      externalImages += content.externalImages;
+      externalLinks += content.externalLinks;
       if (level === 1) {
         // drop H1 to avoid title duplication
       } else {
@@ -611,6 +576,8 @@ const renderMarkdown = async (
       await flushParagraph();
       await flushListBuffer();
       const content = await renderInline(quoteMatch[1], root, noteDir, linkMap, attachments, fileIndex);
+      externalImages += content.externalImages;
+      externalLinks += content.externalLinks;
       rendered.push(`<blockquote><p>${content.html}</p></blockquote>`);
       imageCount += content.imageCount;
       continue;
@@ -622,7 +589,7 @@ const renderMarkdown = async (
   await flushParagraph();
   await flushListBuffer();
 
-  return { html: rendered.join(""), attachments, imageCount };
+  return { html: rendered.join(""), attachments, imageCount, externalImages, externalLinks };
 };
 
 const buildAttachmentHtml = (attachment: AttachmentInfo) => {
@@ -736,6 +703,7 @@ export const runObsidianImport = async (
       images: 0,
     },
     errors: [],
+    warnings: [],
   };
   const writeReport = async (payload: ObsidianImportReport) => {
     if (!payload.backupDir) return "";
@@ -820,6 +788,8 @@ export const runObsidianImport = async (
     };
 
     const attachmentTotal = { value: 0 };
+    let externalImagesTotal = 0;
+    let externalLinksTotal = 0;
     let filesDone = 0;
     onProgress?.({ stage: "notes", current: 0, total: noteEntries.length, state: "running" });
     onProgress?.({ stage: "attachments", current: 0, total: 0, state: "running" });
@@ -838,7 +808,7 @@ export const runObsidianImport = async (
       const noteDir = entry.relPath.split("/").slice(0, -1).join("/");
       const bytes = await readFileBytes(entry.path);
       const raw = new TextDecoder("utf-8").decode(Uint8Array.from(bytes));
-      let rendered = { html: fallbackHtmlFromText(raw), attachments: [], imageCount: 0 };
+      let rendered = { html: fallbackHtmlFromText(raw), attachments: [], imageCount: 0, externalImages: 0, externalLinks: 0 };
       if (isLikelyEncoded(raw)) {
         report.errors.push(`note ${noteTitle}: content looks encoded, skipped markdown parsing`);
       } else {
@@ -848,6 +818,8 @@ export const runObsidianImport = async (
         report.errors.push(`note ${noteTitle}: markdown parse timeout`);
       }
       }
+      externalImagesTotal += rendered.externalImages;
+      externalLinksTotal += rendered.externalLinks;
       attachmentTotal.value += rendered.attachments.length + rendered.imageCount;
       report.stats.images += rendered.imageCount;
       filesDone += rendered.imageCount;
@@ -907,6 +879,12 @@ export const runObsidianImport = async (
       state: "done",
     });
     onProgress?.({ stage: "database", current: 1, total: 1, state: "done" });
+    if (externalImagesTotal > 0) {
+      report.warnings.push(t("import.warnings.external_images", { count: externalImagesTotal }));
+    }
+    if (externalLinksTotal > 0) {
+      report.warnings.push(t("import.warnings.external_links", { count: externalLinksTotal }));
+    }
     report.finishedAt = new Date().toISOString();
     await writeReport(report);
     return report;

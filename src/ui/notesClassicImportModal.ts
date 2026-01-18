@@ -93,9 +93,16 @@ export const mountNotesClassicImportModal = (
     `;
   };
 
-  const setReport = (message: string) => {
+  const escapeHtml = (value: string) =>
+    value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  const setReport = (message: string, isHtml = false) => {
     if (!reportEl) return;
-    reportEl.textContent = message;
+    if (isHtml) {
+      reportEl.innerHTML = message;
+    } else {
+      reportEl.textContent = message;
+    }
     reportEl.classList.remove("is-hidden");
   };
 
@@ -279,7 +286,7 @@ export const mountNotesClassicImportModal = (
       } catch (err) {
         logError("[import] notes-classic failed", err);
         setStatus(t("import_notes_classic.failed"), "error");
-        setReport(String(err));
+        setReport(escapeHtml(String(err)), true);
         if (statusEl && reportEl && statusEl.nextSibling !== reportEl) {
           statusEl.insertAdjacentElement("afterend", reportEl);
         }

@@ -83,6 +83,28 @@
   white-space: pre-wrap;
 }
 
+.import-warning-summary {
+  margin-top: 10px;
+  color: #92400e;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.import-warning-list {
+  max-height: 180px;
+  overflow-y: auto;
+  border-top: 1px solid #f3f4f6;
+  padding-top: 6px;
+}
+
+.import-warning-list__item {
+  color: #b45309;
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 2px 0;
+  white-space: pre-wrap;
+}
+
 .dialog__label {
   display: block;
   font-size: 11px;

@@ -11,6 +11,7 @@ type ReplacePrompt = {
 
 type ImportReport = {
   errors: string[];
+  warnings?: string[];
   failed?: boolean;
   backupDir: string;
 };
@@ -19,7 +20,7 @@ type ImportResultHandlerOptions = {
   report: ImportReport;
   reportPath: string;
   setStatus: (message: string, tone?: "ok" | "error" | "muted", loading?: boolean) => void;
-  setReport: (message: string) => void;
+  setReport: (message: string, isHtml?: boolean) => void;
   texts: {
     finished: string;
     finishedErrors: string;
@@ -65,11 +66,26 @@ export const handleImportResult = async (options: ImportResultHandlerOptions) =>
   const { report, reportPath, setStatus, setReport, texts } = options;
   const hasErrors = report.errors.length > 0;
   const isFailed = report.failed === true;
+  const warnings = report.warnings ?? [];
   setStatus(isFailed ? texts.failed : hasErrors ? texts.finishedErrors : texts.finished, isFailed || hasErrors ? "error" : "ok");
-  setReport(t(texts.reportSavedKey, { path: reportPath }));
+  const escapeHtml = (value: string) =>
+    value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const reportParts = [
+    `<div class="import-report__path">${escapeHtml(t(texts.reportSavedKey, { path: reportPath }))}</div>`,
+  ];
+  if (warnings.length > 0) {
+    const warningItems = warnings
+      .map((warning) => `<div class="import-warning-list__item">${escapeHtml(warning)}</div>`)
+      .join("");
+    reportParts.push(
+      `<div class="import-warning-summary">${escapeHtml(
+        t("import.warnings.title", { count: warnings.length })
+      )}</div>`
+    );
+    reportParts.push(`<div class="import-warning-list">${warningItems}</div>`);
+  }
+  setReport(reportParts.join(""), true);
   if (hasErrors || isFailed) {
-    const escapeHtml = (value: string) =>
-      value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const errorItems = report.errors
       .map((err) => `<div class="import-error-list__item">${escapeHtml(err)}</div>`)
       .join("");

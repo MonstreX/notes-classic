@@ -69,6 +69,85 @@ const escapeTableCell = (value: string) =>
     .replace(/\n+/g, " ")
     .trim();
 
+const inlineNodeToMarkdown = (node: Node): string => {
+  if (node.nodeType === Node.TEXT_NODE) {
+    return escapeMarkdownText(node.textContent || "");
+  }
+  if (node.nodeType !== Node.ELEMENT_NODE) {
+    return "";
+  }
+  const el = node as HTMLElement;
+  const tag = el.tagName.toLowerCase();
+  const serializeChildren = () =>
+    Array.from(el.childNodes).map(inlineNodeToMarkdown).join("");
+
+  if (tag === "strong" || tag === "b") {
+    return `**${serializeChildren().trim()}**`;
+  }
+  if (tag === "em" || tag === "i") {
+    return `*${serializeChildren().trim()}*`;
+  }
+  if (tag === "u") {
+    return `<u>${serializeChildren().trim()}</u>`;
+  }
+  if (tag === "s" || tag === "del") {
+    return `~~${serializeChildren().trim()}~~`;
+  }
+  if (tag === "code") {
+    return `\`${serializeChildren()}\``;
+  }
+  if (tag === "a") {
+    const href = el.getAttribute("href") || "";
+    const text = serializeChildren().trim() || href;
+    return href ? `[${text}](${href})` : text;
+  }
+  if (tag === "img") {
+    const src = el.getAttribute("src") || "";
+    return src ? `![](${src})` : "";
+  }
+  if (tag === "br") {
+    return "\n";
+  }
+  return serializeChildren();
+};
+
+const listToMarkdown = (listEl: HTMLElement, indent = ""): string => {
+  const tag = listEl.tagName.toLowerCase();
+  const ordered = tag === "ol";
+  const isTodo = listEl.getAttribute("data-en-todo") === "true";
+  const items = Array.from(listEl.children).filter(
+    (node) => node instanceof HTMLElement && node.tagName.toLowerCase() === "li"
+  ) as HTMLElement[];
+  const lines: string[] = [];
+  items.forEach((item, idx) => {
+    const checked = item.getAttribute("data-en-checked") === "true";
+    const inlineParts: string[] = [];
+    const nestedParts: string[] = [];
+    Array.from(item.childNodes).forEach((child) => {
+      if (
+        child.nodeType === Node.ELEMENT_NODE &&
+        ["ul", "ol"].includes((child as HTMLElement).tagName.toLowerCase())
+      ) {
+        nestedParts.push(listToMarkdown(child as HTMLElement, `${indent}  `));
+      } else {
+        inlineParts.push(inlineNodeToMarkdown(child));
+      }
+    });
+    const text = inlineParts.join("").trim() || escapeMarkdownText(item.textContent || "").trim();
+    const prefix = isTodo
+      ? `- [${checked ? "x" : " "}] `
+      : ordered
+        ? `${idx + 1}. `
+        : "- ";
+    let line = `${indent}${prefix}${text}`;
+    if (nestedParts.length > 0) {
+      line += `\n${nestedParts.join("\n")}`;
+    }
+    lines.push(line);
+  });
+  return lines.join("\n") + "\n\n";
+};
+
 const nodeToMarkdown = (node: Node): string => {
   if (node.nodeType === Node.TEXT_NODE) {
     return escapeMarkdownText(node.textContent || "");
@@ -94,6 +173,12 @@ const nodeToMarkdown = (node: Node): string => {
   if (tag === "em" || tag === "i") {
     return `*${serializeChildren().trim()}*`;
   }
+  if (tag === "u") {
+    return `<u>${serializeChildren().trim()}</u>`;
+  }
+  if (tag === "s" || tag === "del") {
+    return `~~${serializeChildren().trim()}~~`;
+  }
   if (tag === "code") {
     return `\`${serializeChildren()}\``;
   }
@@ -118,21 +203,7 @@ const nodeToMarkdown = (node: Node): string => {
       .join("\n") + "\n\n";
   }
   if (tag === "ul" || tag === "ol") {
-    const isTodo = el.getAttribute("data-en-todo") === "true";
-    const ordered = tag === "ol";
-    const items = Array.from(el.querySelectorAll(":scope > li"));
-    const lines = items.map((item, idx) => {
-      const checked = item.getAttribute("data-en-checked") === "true";
-      const itemText = Array.from(item.childNodes).map(nodeToMarkdown).join("").trim();
-      if (isTodo) {
-        return `- [${checked ? "x" : " "}] ${itemText}`;
-      }
-      if (ordered) {
-        return `${idx + 1}. ${itemText}`;
-      }
-      return `- ${itemText}`;
-    });
-    return lines.join("\n") + "\n\n";
+    return listToMarkdown(el);
   }
   if (tag === "table") {
     const rows = Array.from(el.querySelectorAll("tr"));
