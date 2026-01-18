@@ -124,30 +124,29 @@ const fallbackHtmlFromText = (raw: string) => {
 };
 
 const isLikelyEncoded = (raw: string) => {
-  const sample = raw.slice(0, 50000);
-  let maxLine = 0;
-  let currentLine = 0;
+  const sample = raw.slice(0, 120000);
   let totalChars = 0;
   let base64Chars = 0;
+  let longestBase64Run = 0;
+  let currentRun = 0;
   for (let i = 0; i < sample.length; i += 1) {
     const ch = sample[i];
-    if (ch === "\n" || ch === "\r") {
-      if (currentLine > maxLine) maxLine = currentLine;
-      currentLine = 0;
-      continue;
-    }
-    currentLine += 1;
     if (ch.trim()) {
       totalChars += 1;
-      if (/[A-Za-z0-9+/=]/.test(ch)) {
-        base64Chars += 1;
-      }
+    }
+    if (/[A-Za-z0-9+/=]/.test(ch)) {
+      base64Chars += 1;
+      currentRun += 1;
+      if (currentRun > longestBase64Run) longestBase64Run = currentRun;
+    } else if (ch === "\n" || ch === "\r" || ch === " " || ch === "\t") {
+      currentRun = 0;
+    } else {
+      currentRun = 0;
     }
   }
-  if (currentLine > maxLine) maxLine = currentLine;
-  if (totalChars < 1000) return false;
+  if (totalChars < 20000) return false;
   const ratio = base64Chars / totalChars;
-  return maxLine > 3000 || ratio > 0.92;
+  return longestBase64Run >= 5000 && ratio >= 0.97;
 };
 
 const guessMime = (filename: string) => {
