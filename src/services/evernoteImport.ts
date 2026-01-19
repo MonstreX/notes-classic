@@ -173,11 +173,18 @@ const normalizeEnmlToHtml = (enml: string) => {
 
 const rewriteEnml = (enml: string, assetMap: Map<string, string>) => {
   if (!enml) return enml;
-  return enml.replace(/<en-media[^>]*?hash=\"([0-9a-f]+)\"[^>]*?(?:><\/en-media>|\s*\/>)/gi, (match, hash) => {
-    const rel = assetMap.get(hash);
-    if (!rel) return match;
-    return `<img data-en-hash="${hash}" src="files/${rel}" />`;
-  });
+  const hashRegex = /hash\s*=\s*['"]?([0-9a-f]+)['"]?/i;
+  return enml.replace(
+    /<en-media\b[^>]*?(?:\/>|>[\s\S]*?<\/en-media>)/gi,
+    (match) => {
+      const hashMatch = match.match(hashRegex);
+      const hash = hashMatch?.[1];
+      if (!hash) return match;
+      const rel = assetMap.get(hash);
+      if (!rel) return match;
+      return `<img data-en-hash="${hash}" src="files/${rel}" />`;
+    }
+  );
 };
 
 const toRowObjects = (stmt: any) => {
