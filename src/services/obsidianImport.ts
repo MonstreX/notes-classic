@@ -59,6 +59,14 @@ type AttachmentInfo = {
   size: number;
 };
 
+type RenderedNote = {
+  html: string;
+  attachments: Array<{ token: string; name: string; path: string }>;
+  imageCount: number;
+  externalImages: number;
+  externalLinks: number;
+};
+
 type StageUpdate = {
   stage: "notes" | "attachments" | "database";
   current: number;
@@ -808,7 +816,13 @@ export const runObsidianImport = async (
       const noteDir = entry.relPath.split("/").slice(0, -1).join("/");
       const bytes = await readFileBytes(entry.path);
       const raw = new TextDecoder("utf-8").decode(Uint8Array.from(bytes));
-      let rendered = { html: fallbackHtmlFromText(raw), attachments: [], imageCount: 0, externalImages: 0, externalLinks: 0 };
+      let rendered: RenderedNote = {
+        html: fallbackHtmlFromText(raw),
+        attachments: [],
+        imageCount: 0,
+        externalImages: 0,
+        externalLinks: 0,
+      };
       if (isLikelyEncoded(raw)) {
         report.errors.push(`note ${noteTitle}: content looks encoded, skipped markdown parsing`);
       } else {

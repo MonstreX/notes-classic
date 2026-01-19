@@ -313,7 +313,11 @@ fn normalize_export_html(html: &str) -> String {
             cursor = idx + 4;
             continue;
         }
-        let q = quote.unwrap();
+        let Some(q) = quote else {
+            out.push_str("src=");
+            cursor = idx + 4;
+            continue;
+        };
         let remainder = &after[1..];
         if let Some(end) = remainder.find(q) {
             let url = &remainder[..end];

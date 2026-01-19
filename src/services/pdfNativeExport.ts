@@ -38,7 +38,7 @@ export const exportNotesPdfNative = async (
   noteIds: number[],
   titleById: Map<number, string>
 ): Promise<ExportResult | null> => {
-  if (!noteIds.length) return;
+  if (!noteIds.length) return null;
   try {
     const folder = await open({
       directory: true,

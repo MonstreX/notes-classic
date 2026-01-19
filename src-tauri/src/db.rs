@@ -1785,13 +1785,7 @@ impl SqliteRepository {
     }
 
     pub async fn get_ocr_pending_files(&self, limit: i64) -> Result<Vec<OcrFileItem>, sqlx::Error> {
-        let (notes_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM notes")
-            .fetch_one(&self.pool)
-            .await?;
-        let (ocr_files_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM ocr_files")
-            .fetch_one(&self.pool)
-            .await?;
-        if notes_count > 0 && ocr_files_count == 0 {
+        if self.needs_note_files_backfill().await? {
             let _ = self.backfill_note_files().await?;
         }
         let query = format!(
@@ -1850,13 +1844,7 @@ impl SqliteRepository {
     }
 
     pub async fn get_ocr_stats(&self) -> Result<OcrStats, sqlx::Error> {
-        let (notes_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM notes")
-            .fetch_one(&self.pool)
-            .await?;
-        let (ocr_files_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM ocr_files")
-            .fetch_one(&self.pool)
-            .await?;
-        if notes_count > 0 && ocr_files_count == 0 {
+        if self.needs_note_files_backfill().await? {
             let _ = self.backfill_note_files().await?;
         }
         let total_query = format!(

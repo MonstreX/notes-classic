@@ -534,9 +534,6 @@ const extractCodeText = (code: HTMLElement, mutate: boolean) => {
 const applyHighlightToEditor = (editor: any) => {
   if (!editor || !editor.editor) return;
   if (DEBUG_CODE) {
-    console.log("[note-code] highlight run", {
-      blocks: editor.editor.querySelectorAll(".note-code").length,
-    });
   }
   editor.editor.querySelectorAll(".note-code").forEach((block: HTMLElement) => {
     const code = block.querySelector("code") as HTMLElement | null;
@@ -544,11 +541,6 @@ const applyHighlightToEditor = (editor: any) => {
     const lang = block.getAttribute("data-lang") || "auto";
     const text = extractCodeText(code, true);
     if (DEBUG_CODE) {
-      console.log("[note-code] block", {
-        lang,
-        textLength: text.length,
-        sample: text.slice(0, 80),
-      });
     }
     if (!text.trim()) return;
     if (lang !== "auto") {
@@ -962,7 +954,6 @@ const setupCodeToolbarHandlers = (editor: any) => {
   (editor as any).__noteCodeSetup = true;
 
   if (DEBUG_CODE) {
-    console.log("[note-code] attach");
   }
 
   editor.editor.addEventListener(
