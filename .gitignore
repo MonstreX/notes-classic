@@ -26,3 +26,9 @@ Thumbs.db
 tmp/
 data/
 settings/
+logs/
+*.log
+notes-import-examples/
+notes-export-examples/
+docs/
+dev/

@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2.9.5",
   "productName": "notes-classic",
   "version": "0.1.0",
-  "identifier": "com.notes-classic.app",
+  "identifier": "com.notesclassic",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
