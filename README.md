@@ -116,21 +116,37 @@ Artifacts are written to `src-tauri/target/release` (platform-specific).
 ### Windows
 
 - Output: `.exe` and installer artifacts in `src-tauri/target/release`.
-- PDF export relies on bundled resources:
-  - `resources/pdf/win/wkhtmltopdf.exe`
-  - `resources/pdf/win/wkhtmltox.dll`
+- PDF export relies on wkhtmltopdf binaries (not committed to git):
+  - `src-tauri/resources/pdf/win/wkhtmltopdf.exe`
+  - `src-tauri/resources/pdf/win/wkhtmltox.dll`
 
 ### Linux
 
 - Output: native bundle in `src-tauri/target/release`.
-- PDF export relies on bundled resources:
-  - `resources/pdf/linux/wkhtmltopdf`
-  - `resources/pdf/linux/libwkhtmltox.so.0.12.6`
+- PDF export relies on wkhtmltopdf binaries (not committed to git):
+  - `src-tauri/resources/pdf/linux/wkhtmltopdf`
+  - `src-tauri/resources/pdf/linux/libwkhtmltox.so.0.12.6`
 
 ### macOS
 
 - Output: `.app` bundle in `src-tauri/target/release`.
-- PDF export uses `resources/pdf/mac/wkhtmltopdf.pkg`.
+- PDF export uses `src-tauri/resources/pdf/mac/wkhtmltopdf.pkg` (not committed to git).
+
+## PDF Export Binaries (wkhtmltopdf)
+
+PDF export requires wkhtmltopdf binaries to be present in:
+
+```
+src-tauri/resources/pdf/win/
+src-tauri/resources/pdf/linux/
+src-tauri/resources/pdf/mac/
+```
+
+These files are intentionally excluded from git. Download a wkhtmltopdf build
+for each target OS and place the binaries in the paths above before running
+`npm run tauri build`.
+
+Download source: https://wkhtmltopdf.org/downloads.html
 
 ## OCR Resources
 
