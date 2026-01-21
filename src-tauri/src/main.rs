@@ -807,6 +807,12 @@ fn resolve_portable_paths() -> Result<(PathBuf, PathBuf), String> {
     let mut data_dir = exe_dir.join("data");
     let mut settings_dir = exe_dir.join("settings");
 
+    if let Ok(appimage_path) = std::env::var("APPIMAGE") {
+        let base = PathBuf::from(appimage_path);
+        data_dir = PathBuf::from(format!("{}.data", base.to_string_lossy()));
+        settings_dir = PathBuf::from(format!("{}.settings", base.to_string_lossy()));
+    }
+
     if let Ok(cwd) = std::env::current_dir() {
         let mut candidates = Vec::new();
         candidates.push(cwd.clone());

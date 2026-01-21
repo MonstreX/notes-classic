@@ -1,5 +1,6 @@
 {
   "bundle": {
+    "targets": ["appimage"],
     "resources": [
       "resources/ocr/worker.min.js",
       "resources/ocr/tesseract-core.wasm.js",
