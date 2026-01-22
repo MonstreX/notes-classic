@@ -6,6 +6,7 @@ import type { NoteListItem } from "../state/types";
 import { mountPreviewEditor, type EditorInstance } from "./editor";
 import { createIcon } from "./icons";
 import { t } from "../services/i18n";
+import { openRestartDialog } from "./importFlow";
 import { openResourceInstallDialog } from "./dialogs";
 
 type SearchModalHandlers = {
@@ -411,13 +412,17 @@ export const mountSearchModal = (container: HTMLElement, handlers: SearchModalHa
       dialog.setStatus(t("ocr.dialog_downloading"), "muted");
       try {
         await installOcrResources((payload) => {
-          dialog.setProgress(payload.current, payload.total);
+          const useBytes = payload.total > 0 && payload.current <= payload.total;
+          const current = useBytes ? payload.current : payload.index;
+          const total = useBytes ? payload.total : payload.count;
+          dialog.setProgress(current, total);
           dialog.setStatus(t("ocr.dialog_downloading"), "muted");
         });
         dialog.setStatus(t("ocr.dialog_done"), "success");
+        openRestartDialog(t("ocr.dialog_restart"));
         await updateOcrStatus();
-      } catch {
-        dialog.setStatus(t("ocr.dialog_failed"), "error");
+      } catch (err) {
+        dialog.setStatus(`${t("ocr.dialog_failed")}: ${String(err)}`, "error");
       } finally {
         dialog.setBusy(false);
       }

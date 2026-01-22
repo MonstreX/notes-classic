@@ -28,6 +28,7 @@ import { actions, initApp } from "../controllers/appController";
 import { startOcrQueue } from "../services/ocr";
 import { appStore } from "../state/store";
 import { openExportResultDialog, openResourceInstallDialog } from "./dialogs";
+import { openRestartDialog } from "./importFlow";
 import { t } from "../services/i18n";
 import type { ExportResult } from "../services/exportUtils";
 
@@ -95,12 +96,16 @@ export const mountApp = (root: HTMLElement) => {
       dialog.setStatus(t("pdf.dialog_downloading"), "muted");
       try {
         await installPdfResources((payload) => {
-          dialog.setProgress(payload.current, payload.total);
+          const useBytes = payload.total > 0 && payload.current <= payload.total;
+          const current = useBytes ? payload.current : payload.index;
+          const total = useBytes ? payload.total : payload.count;
+          dialog.setProgress(current, total);
           dialog.setStatus(t("pdf.dialog_downloading"), "muted");
         });
         dialog.setStatus(t("pdf.dialog_done"), "success");
-      } catch {
-        dialog.setStatus(t("pdf.dialog_failed"), "error");
+        openRestartDialog(t("pdf.dialog_restart"));
+      } catch (err) {
+        dialog.setStatus(`${t("pdf.dialog_failed")}: ${String(err)}`, "error");
       } finally {
         dialog.setBusy(false);
       }
