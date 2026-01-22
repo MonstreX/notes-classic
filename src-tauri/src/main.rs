@@ -347,24 +347,26 @@ fn get_pdf_resource_status(app_handle: AppHandle) -> Result<PdfResourceStatus, S
     #[cfg(target_os = "windows")]
     {
         let base = data_dir.join("resources").join("pdf").join("win");
-        if !base.join("wkhtmltopdf.exe").exists() {
+        let exe_exists = base.join("wkhtmltopdf.exe").exists() || base.join("bin").join("wkhtmltopdf.exe").exists();
+        let dll_exists = base.join("wkhtmltox.dll").exists() || base.join("bin").join("wkhtmltox.dll").exists();
+        if !exe_exists {
             missing.push("wkhtmltopdf.exe".to_string());
         }
-        if !base.join("wkhtmltox.dll").exists() {
+        if !dll_exists {
             missing.push("wkhtmltox.dll".to_string());
         }
     }
     #[cfg(target_os = "linux")]
     {
         let base = data_dir.join("resources").join("pdf").join("linux");
-        if !base.join("wkhtmltopdf").exists() {
+        if !base.join("wkhtmltopdf").exists() && !base.join("bin").join("wkhtmltopdf").exists() {
             missing.push("wkhtmltopdf".to_string());
         }
     }
     #[cfg(target_os = "macos")]
     {
         let base = data_dir.join("resources").join("pdf").join("mac");
-        if !base.join("wkhtmltopdf").exists() {
+        if !base.join("wkhtmltopdf").exists() && !base.join("bin").join("wkhtmltopdf").exists() {
             missing.push("wkhtmltopdf".to_string());
         }
     }
@@ -431,42 +433,99 @@ async fn download_pdf_resources(app_handle: AppHandle, state: State<'_, AppState
         .map_err(|e| e.to_string())?;
 
     #[cfg(target_os = "windows")]
-    let (url, dest_dir) = {
+    let (urls, dest_dir) = {
         let dir = state.data_dir.join("resources").join("pdf").join("win");
-        ("https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.12.6-1.msvc2015-win64.zip", dir)
+        (vec![
+            "https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.12.6-1.msvc2015-win64.exe",
+        ], dir)
     };
     #[cfg(target_os = "linux")]
-    let (url, dest_dir) = {
+    let (urls, dest_dir) = {
         let dir = state.data_dir.join("resources").join("pdf").join("linux");
-        ("https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.12.6-1.linux-generic-amd64.tar.xz", dir)
+        (vec![
+            "https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.12.6-1.linux-generic-amd64.tar.xz",
+        ], dir)
     };
     #[cfg(target_os = "macos")]
-    let (url, dest_dir) = {
+    let (urls, dest_dir) = {
         let dir = state.data_dir.join("resources").join("pdf").join("mac");
-        ("https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.12.6-1.macos-cocoa-x86_64.tar.xz", dir)
+        (vec![
+            "https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.12.6-1.macos-cocoa-x86_64.tar.xz",
+        ], dir)
     };
 
-    let total = content_length(&client, url).await.unwrap_or(0);
-    let mut current = 0;
-    let archive_path = temp_dir.join("wkhtmltopdf-download");
-    download_with_progress(
-        &client,
-        &app_handle,
-        "pdf",
-        url,
-        &archive_path,
-        1,
-        1,
-        &mut current,
-        total,
-    )
-    .await?;
+    let mut last_error: Option<String> = None;
+    let mut archive_path = temp_dir.join("wkhtmltopdf-download");
+    let mut chosen_url: Option<String> = None;
+    for (idx, url) in urls.iter().enumerate() {
+        let total = content_length(&client, url).await.unwrap_or(0);
+        let mut current = 0;
+        let path = temp_dir.join(format!("wkhtmltopdf-download-{}", idx));
+        match download_with_progress(
+            &client,
+            &app_handle,
+            "pdf",
+            url,
+            &path,
+            (idx as u32) + 1,
+            urls.len() as u32,
+            &mut current,
+            total,
+        )
+        .await
+        {
+            Ok(_) => {
+                archive_path = path;
+                chosen_url = Some(url.to_string());
+                last_error = None;
+                break;
+            }
+            Err(err) => {
+                last_error = Some(format!("{} {}", url, err));
+            }
+        }
+    }
+    if chosen_url.is_none() {
+        return Err(last_error.unwrap_or_else(|| "download failed".to_string()));
+    }
     tokio::fs::create_dir_all(&dest_dir)
         .await
         .map_err(|e| e.to_string())?;
     #[cfg(target_os = "windows")]
     {
-        extract_zip_to_dir(&archive_path, &dest_dir).await?;
+        let url = chosen_url.as_ref().unwrap();
+        if url.ends_with(".exe") {
+            let dest = dest_dir.clone();
+            let installer = archive_path.clone();
+            let status = tokio::task::spawn_blocking(move || {
+                std::process::Command::new(installer)
+                    .arg("/S")
+                    .arg(format!("/D={}", dest.display()))
+                    .status()
+                    .map_err(|e| e.to_string())
+            })
+            .await
+            .map_err(|e| e.to_string())??;
+            if !status.success() {
+                return Err("installer failed".to_string());
+            }
+        } else {
+            extract_zip_to_dir(&archive_path, &dest_dir).await?;
+        }
+        if dest_dir.join("bin").join("wkhtmltopdf.exe").exists() {
+            let bin = dest_dir.join("bin").join("wkhtmltopdf.exe");
+            let target = dest_dir.join("wkhtmltopdf.exe");
+            if !target.exists() {
+                let _ = std::fs::copy(bin, target);
+            }
+        }
+        if dest_dir.join("bin").join("wkhtmltox.dll").exists() {
+            let bin = dest_dir.join("bin").join("wkhtmltox.dll");
+            let target = dest_dir.join("wkhtmltox.dll");
+            if !target.exists() {
+                let _ = std::fs::copy(bin, target);
+            }
+        }
     }
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     {
