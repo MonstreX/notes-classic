@@ -1,3 +1,6 @@
+# Rule file for agents
+AGENTS.md
+
 # Node.js
 node_modules/
 dist/
@@ -8,6 +11,7 @@ dist-tauri/
 src-tauri/target/
 src-tauri/Cargo.lock
 src-tauri/gen/
+src-tauri/resources/pdf/
 
 # IDEs
 .vscode/
@@ -22,14 +26,17 @@ src-tauri/gen/
 Thumbs.db
 .DS_Store
 
-# Temporary directory
-tmp/
+# Local runtime/data
 data/
 settings/
 logs/
 *.log
+
+# Temporary directories
+tmp/
+
+# Dev-only data/examples
 notes-import-examples/
 notes-export-examples/
 docs/
 dev/
-src-tauri/resources/pdf/

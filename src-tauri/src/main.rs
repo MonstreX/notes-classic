@@ -1130,32 +1130,7 @@ fn resolve_portable_paths() -> Result<(PathBuf, PathBuf), String> {
 
 #[tauri::command]
 fn get_resource_dir(app_handle: AppHandle) -> Result<String, String> {
-    let resource_dir = app_handle
-        .path()
-        .resource_dir()
-        .map_err(|e| e.to_string())?;
-    let test_name = "eng.traineddata.gz";
-    let has_tessdata = |dir: &PathBuf| dir.join("ocr").join("tessdata").join(test_name).exists();
-    if has_tessdata(&resource_dir) {
-        return Ok(resource_dir.to_string_lossy().to_string());
-    }
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(exe_dir) = exe.parent().map(|p| p.to_path_buf()) {
-            let candidate = exe_dir.join("resources");
-            if has_tessdata(&candidate) {
-                return Ok(candidate.to_string_lossy().to_string());
-            }
-            let mut current = Some(exe_dir);
-            for _ in 0..6 {
-                let Some(dir) = current.take() else { break };
-                let candidate = dir.join("src-tauri").join("resources");
-                if has_tessdata(&candidate) {
-                    return Ok(candidate.to_string_lossy().to_string());
-                }
-                current = dir.parent().map(|p| p.to_path_buf());
-            }
-        }
-    }
+    let resource_dir = resolve_i18n_dir(&app_handle);
     Ok(resource_dir.to_string_lossy().to_string())
 }
 
