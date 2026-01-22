@@ -596,6 +596,19 @@
   white-space: nowrap;
 }
 
+.search-modal__ocr-help {
+  border: 0;
+  background: transparent;
+  color: #2563eb;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.search-modal__ocr-help:hover {
+  text-decoration: underline;
+}
+
 @keyframes search-ocr-spin {
   from {
     transform: rotate(0deg);

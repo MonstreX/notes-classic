@@ -1,11 +1,12 @@
 import { normalizeFileLinks, normalizeEnmlContent, toDisplayContent } from "../services/content";
 import { getNote, searchNotes } from "../services/notes";
-import { getOcrRuntimeStatus, getOcrStats } from "../services/ocr";
+import { getOcrAvailability, getOcrRuntimeStatus, getOcrStats, installOcrResources } from "../services/ocr";
 import { appStore } from "../state/store";
 import type { NoteListItem } from "../state/types";
 import { mountPreviewEditor, type EditorInstance } from "./editor";
 import { createIcon } from "./icons";
 import { t } from "../services/i18n";
+import { openResourceInstallDialog } from "./dialogs";
 
 type SearchModalHandlers = {
   onOpenNote: (noteId: number, notebookId: number | null) => void;
@@ -86,8 +87,13 @@ export const mountSearchModal = (container: HTMLElement, handlers: SearchModalHa
   const searchOcrText = document.createElement("span");
   searchOcrText.className = "search-modal__ocr-text";
   searchOcrText.textContent = t("search.index.none");
+  const searchOcrHelp = document.createElement("button");
+  searchOcrHelp.type = "button";
+  searchOcrHelp.className = "search-modal__ocr-help is-hidden";
+  searchOcrHelp.textContent = t("ocr.install_link");
   searchOcrStatus.appendChild(searchOcrSpinner);
   searchOcrStatus.appendChild(searchOcrText);
+  searchOcrStatus.appendChild(searchOcrHelp);
   searchOptions.appendChild(searchEverywhere);
   searchOptions.appendChild(searchScope);
   searchOptions.appendChild(searchOptionsSpacer);
@@ -348,8 +354,16 @@ export const mountSearchModal = (container: HTMLElement, handlers: SearchModalHa
 
   const updateOcrStatus = async () => {
     try {
-      const stats = await getOcrStats();
+      const [stats, availability] = await Promise.all([getOcrStats(), getOcrAvailability()]);
       const runtime = getOcrRuntimeStatus();
+      const disabled = runtime === "disabled" || !availability.available;
+      searchOcrHelp.classList.toggle("is-hidden", !disabled);
+      searchOcrSpinner.classList.toggle("is-hidden", disabled);
+      if (disabled) {
+        searchOcrText.textContent = t("search.index.disabled");
+        searchOcrStatus.classList.remove("is-active");
+        return;
+      }
       if (runtime === "paused") {
         searchOcrText.textContent = t("search.index.paused");
         searchOcrStatus.classList.remove("is-active");
@@ -367,6 +381,47 @@ export const mountSearchModal = (container: HTMLElement, handlers: SearchModalHa
       searchOcrText.textContent = t("search.index.unavailable");
       searchOcrStatus.classList.remove("is-active");
     }
+  };
+
+  const openOcrInstallDialog = () => {
+    const ocrLinks = [
+      "https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/worker.min.js",
+      "https://cdn.jsdelivr.net/npm/tesseract.js-core@7.0.0/tesseract-core.wasm.js",
+      "https://cdn.jsdelivr.net/npm/tesseract.js-core@7.0.0/tesseract-core.wasm",
+      "https://tessdata.projectnaptha.com/4.0.0/eng.traineddata.gz",
+      "https://tessdata.projectnaptha.com/4.0.0/rus.traineddata.gz",
+    ];
+    const ocrLinksHtml = ocrLinks
+      .map((url) => `<div><a href="${url}">${escapeHtml(url)}</a></div>`)
+      .join("");
+    const dialog = openResourceInstallDialog({
+      title: t("ocr.dialog_title"),
+      body: `
+        <div>${t("ocr.dialog_body")}</div>
+        <div class="storage-dialog__hint">${t("ocr.dialog_manual")}</div>
+        <div class="storage-dialog__hint">${t("ocr.dialog_manual_links")}</div>
+        <div class="storage-dialog__meta">${ocrLinksHtml}</div>
+      `,
+      actionLabel: t("ocr.dialog_install"),
+    });
+    dialog.setStatus(t("ocr.dialog_idle"), "muted");
+    dialog.setBusy(false);
+    dialog.actionButton?.addEventListener("click", async () => {
+      dialog.setBusy(true);
+      dialog.setStatus(t("ocr.dialog_downloading"), "muted");
+      try {
+        await installOcrResources((payload) => {
+          dialog.setProgress(payload.current, payload.total);
+          dialog.setStatus(t("ocr.dialog_downloading"), "muted");
+        });
+        dialog.setStatus(t("ocr.dialog_done"), "success");
+        await updateOcrStatus();
+      } catch {
+        dialog.setStatus(t("ocr.dialog_failed"), "error");
+      } finally {
+        dialog.setBusy(false);
+      }
+    }, { once: true });
   };
 
   const setSearchLoading = (visible: boolean) => {
@@ -498,6 +553,7 @@ export const mountSearchModal = (container: HTMLElement, handlers: SearchModalHa
     updateSearchScopeState();
   };
 
+  searchOcrHelp.addEventListener("click", openOcrInstallDialog);
   searchOverlay.addEventListener("click", handleOverlayClick);
   searchClose.addEventListener("click", handleCloseClick);
   searchSubmit.addEventListener("click", handleSubmitClick);

@@ -715,3 +715,107 @@ export const openExportResultDialog = ({
 
   document.body.appendChild(overlay);
 };
+
+export type ResourceInstallDialog = {
+  setStatus: (text: string, tone?: "muted" | "error" | "success") => void;
+  setProgress: (current: number, total: number) => void;
+  setBusy: (busy: boolean) => void;
+  actionButton: HTMLButtonElement | null;
+  close: () => void;
+};
+
+export const openResourceInstallDialog = ({
+  title,
+  body,
+  actionLabel,
+  cancelLabel,
+}: {
+  title: string;
+  body: string;
+  actionLabel: string;
+  cancelLabel?: string;
+}): ResourceInstallDialog => {
+  const overlay = document.createElement("div");
+  overlay.className = "dialog-overlay";
+  overlay.dataset.dialogOverlay = "1";
+  const resolvedCancelLabel = cancelLabel ?? t("dialog.cancel");
+
+  overlay.innerHTML = `
+    <div class="dialog">
+      <div class="dialog__header">
+        <h3 class="dialog__title">${title}</h3>
+        <button class="dialog__close" type="button" data-dialog-close="1" aria-label="${t("settings.close")}">
+          <svg class="dialog__close-icon" aria-hidden="true">
+            <use href="#icon-close"></use>
+          </svg>
+        </button>
+      </div>
+      <div class="dialog__body dialog__body--message">
+        ${body}
+        <div class="dialog__status dialog__status--muted" data-dialog-status="1"></div>
+        <div class="dialog__progress is-hidden" data-dialog-progress="1">
+          <div class="import-modal__progress-bar">
+            <div class="import-modal__progress-fill" style="width: 0%;"></div>
+          </div>
+          <div class="dialog__progress-text" data-dialog-progress-text="1"></div>
+        </div>
+      </div>
+      <div class="dialog__footer">
+        <button class="dialog__button dialog__button--ghost" data-dialog-cancel="1">
+          ${resolvedCancelLabel}
+        </button>
+        <button class="dialog__button dialog__button--primary" data-dialog-action="1">
+          ${actionLabel}
+        </button>
+      </div>
+    </div>
+  `;
+
+  const status = overlay.querySelector("[data-dialog-status]") as HTMLDivElement | null;
+  const progressWrap = overlay.querySelector("[data-dialog-progress]") as HTMLDivElement | null;
+  const progressFill = overlay.querySelector(".import-modal__progress-fill") as HTMLDivElement | null;
+  const progressText = overlay.querySelector("[data-dialog-progress-text]") as HTMLDivElement | null;
+  const cancelBtn = overlay.querySelector("[data-dialog-cancel]") as HTMLButtonElement | null;
+  const actionBtn = overlay.querySelector("[data-dialog-action]") as HTMLButtonElement | null;
+  const closeBtns = overlay.querySelectorAll("[data-dialog-close]");
+
+  const close = () => overlay.remove();
+
+  const setStatus = (text: string, tone: "muted" | "error" | "success" = "muted") => {
+    if (!status) return;
+    status.textContent = text;
+    status.classList.remove("dialog__status--muted", "dialog__status--error", "dialog__status--success");
+    status.classList.add(`dialog__status--${tone}`);
+  };
+
+  const setProgress = (current: number, total: number) => {
+    if (!progressWrap || !progressFill || !progressText) return;
+    progressWrap.classList.remove("is-hidden");
+    if (total > 0) {
+      const percent = Math.min(100, Math.round((current / total) * 100));
+      progressFill.style.width = `${percent}%`;
+      progressText.textContent = `${current} / ${total}`;
+    } else {
+      progressFill.style.width = "100%";
+      progressText.textContent = t("dialog.progress_unknown");
+    }
+  };
+
+  const setBusy = (busy: boolean) => {
+    if (cancelBtn) cancelBtn.disabled = busy;
+    if (actionBtn) actionBtn.disabled = busy;
+  };
+
+  cancelBtn?.addEventListener("click", close);
+  closeBtns.forEach((btn) => btn.addEventListener("click", close));
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) close();
+  });
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") close();
+  }, { once: true });
+
+  document.body.appendChild(overlay);
+
+  return { setStatus, setProgress, setBusy, actionButton: actionBtn, close };
+};

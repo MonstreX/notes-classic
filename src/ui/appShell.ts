@@ -20,13 +20,14 @@ import { runHtmlExport } from "../services/htmlExport";
 import { runTextExport } from "../services/textExport";
 import { exportNoteHtmlOneFile, exportNotesHtmlOneFile } from "../services/noteHtmlExport";
 import { exportNotePdfNative, exportNotesPdfNative } from "../services/pdfNativeExport";
+import { getPdfAvailability, installPdfResources } from "../services/pdfResources";
 import { createEditorScheduler } from "./editorScheduler";
 import { createAppLayout } from "./appLayout";
 import { createAppRenderer } from "./appRenderer";
 import { actions, initApp } from "../controllers/appController";
 import { startOcrQueue } from "../services/ocr";
 import { appStore } from "../state/store";
-import { openExportResultDialog } from "./dialogs";
+import { openExportResultDialog, openResourceInstallDialog } from "./dialogs";
 import { t } from "../services/i18n";
 import type { ExportResult } from "../services/exportUtils";
 
@@ -67,6 +68,46 @@ export const mountApp = (root: HTMLElement) => {
     });
   };
 
+  const ensurePdfResources = async () => {
+    const status = await getPdfAvailability();
+    if (status.available) return true;
+    const pdfLinks = [
+      "https://wkhtmltopdf.org/downloads.html",
+      "https://github.com/wkhtmltopdf/packaging/releases/tag/0.12.6-1",
+    ];
+    const pdfLinksHtml = pdfLinks
+      .map((url) => `<div><a href="${url}">${url}</a></div>`)
+      .join("");
+    const dialog = openResourceInstallDialog({
+      title: t("pdf.dialog_title"),
+      body: `
+        <div>${t("pdf.dialog_body")}</div>
+        <div class="storage-dialog__hint">${t("pdf.dialog_manual")}</div>
+        <div class="storage-dialog__hint">${t("pdf.dialog_manual_links")}</div>
+        <div class="storage-dialog__meta">${pdfLinksHtml}</div>
+      `,
+      actionLabel: t("pdf.dialog_install"),
+    });
+    dialog.setStatus(t("pdf.dialog_idle"), "muted");
+    dialog.setBusy(false);
+    dialog.actionButton?.addEventListener("click", async () => {
+      dialog.setBusy(true);
+      dialog.setStatus(t("pdf.dialog_downloading"), "muted");
+      try {
+        await installPdfResources((payload) => {
+          dialog.setProgress(payload.current, payload.total);
+          dialog.setStatus(t("pdf.dialog_downloading"), "muted");
+        });
+        dialog.setStatus(t("pdf.dialog_done"), "success");
+      } catch {
+        dialog.setStatus(t("pdf.dialog_failed"), "error");
+      } finally {
+        dialog.setBusy(false);
+      }
+    }, { once: true });
+    return false;
+  };
+
   let openSearchModal = () => {};
   let openHistoryModal = () => {};
   let openSettingsModal = () => {};
@@ -90,7 +131,10 @@ export const mountApp = (root: HTMLElement) => {
         x,
         y,
         noteId,
-        onExportPdfNative: async (id) => showExportResult(await exportNotePdfNative(id, title)),
+        onExportPdfNative: async (id) => {
+          if (!(await ensurePdfResources())) return;
+          showExportResult(await exportNotePdfNative(id, title));
+        },
         onExportHtml: async (id) => showExportResult(await exportNoteHtmlOneFile(id, title)),
       });
     },
@@ -320,7 +364,10 @@ export const mountApp = (root: HTMLElement) => {
           nodes,
           onDelete: actions.deleteNotes,
           onMove: actions.moveNotesToNotebook,
-          onExportPdf: async (ids) => showExportResult(await exportNotesPdfNative(ids, exportTitleMap)),
+          onExportPdf: async (ids) => {
+            if (!(await ensurePdfResources())) return;
+            showExportResult(await exportNotesPdfNative(ids, exportTitleMap));
+          },
           onExportHtml: async (ids) => showExportResult(await exportNotesHtmlOneFile(ids, exportTitleMap)),
         });
         return;
@@ -335,7 +382,10 @@ export const mountApp = (root: HTMLElement) => {
         onDuplicate: actions.duplicateNote,
         onMove: actions.moveNoteToNotebook,
         onRename: actions.renameNote,
-        onExportPdf: async (noteId) => showExportResult(await exportNotesPdfNative([noteId], exportTitleMap)),
+        onExportPdf: async (noteId) => {
+          if (!(await ensurePdfResources())) return;
+          showExportResult(await exportNotesPdfNative([noteId], exportTitleMap));
+        },
         onExportHtml: async (noteId) => showExportResult(await exportNotesHtmlOneFile([noteId], exportTitleMap)),
       });
     },

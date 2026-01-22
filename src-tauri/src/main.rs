@@ -22,6 +22,14 @@ use tauri::menu::{
 };
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use tauri_plugin_dialog::DialogExt;
+use tokio::io::AsyncWriteExt;
+use futures::StreamExt;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+use tar::Archive;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+use xz2::read::XzDecoder;
+#[cfg(target_os = "windows")]
+use zip::ZipArchive;
 
 const NOTES_VIEW_DETAILED: &str = "view_notes_detailed";
 const NOTES_VIEW_COMPACT: &str = "view_notes_compact";
@@ -150,6 +158,37 @@ fn rewrite_pdf_asset_sources(content: &str, data_dir: &Path) -> String {
 
 fn resolve_wkhtmltopdf_path(app_handle: &AppHandle) -> Result<PathBuf, String> {
     let mut candidates: Vec<PathBuf> = Vec::new();
+    let data_dir = app_handle.state::<AppState>().data_dir.clone();
+    #[cfg(target_os = "windows")]
+    {
+        candidates.push(
+            data_dir
+                .join("resources")
+                .join("pdf")
+                .join("win")
+                .join("wkhtmltopdf.exe"),
+        );
+    }
+    #[cfg(target_os = "linux")]
+    {
+        candidates.push(
+            data_dir
+                .join("resources")
+                .join("pdf")
+                .join("linux")
+                .join("wkhtmltopdf"),
+        );
+    }
+    #[cfg(target_os = "macos")]
+    {
+        candidates.push(
+            data_dir
+                .join("resources")
+                .join("pdf")
+                .join("mac")
+                .join("wkhtmltopdf"),
+        );
+    }
     let resource_dir = app_handle.path().resource_dir().ok();
     #[cfg(target_os = "windows")]
     {
@@ -196,6 +235,255 @@ fn resolve_wkhtmltopdf_path(app_handle: &AppHandle) -> Result<PathBuf, String> {
         }
     }
     Err("wkhtmltopdf binary not found".to_string())
+}
+
+#[derive(serde::Serialize, Clone)]
+struct ResourceDownloadProgress {
+    stage: String,
+    current: u64,
+    total: u64,
+    file: String,
+    index: u32,
+    count: u32,
+}
+
+async fn download_with_progress(
+    client: &reqwest::Client,
+    app_handle: &AppHandle,
+    stage: &str,
+    url: &str,
+    dest: &Path,
+    index: u32,
+    count: u32,
+    current: &mut u64,
+    total: u64,
+) -> Result<(), String> {
+    if let Some(parent) = dest.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    let response = client.get(url).send().await.map_err(|e| e.to_string())?;
+    if !response.status().is_success() {
+        return Err(format!("download failed: {} {}", response.status(), url));
+    }
+    let mut file = tokio::fs::File::create(dest).await.map_err(|e| e.to_string())?;
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e: reqwest::Error| e.to_string())?;
+        file.write_all(&chunk).await.map_err(|e| e.to_string())?;
+        *current += chunk.len() as u64;
+        let event_name = format!("{}-download-progress", stage);
+        let _ = app_handle.emit(
+            event_name.as_str(),
+            ResourceDownloadProgress {
+                stage: stage.to_string(),
+                current: *current,
+                total,
+                file: url.to_string(),
+                index,
+                count,
+            },
+        );
+    }
+    Ok(())
+}
+
+async fn content_length(client: &reqwest::Client, url: &str) -> Option<u64> {
+    client
+        .head(url)
+        .send()
+        .await
+        .ok()
+        .and_then(|resp| resp.headers().get(reqwest::header::CONTENT_LENGTH)?.to_str().ok()?.parse().ok())
+}
+
+#[tauri::command]
+async fn download_ocr_resources(app_handle: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let base = state.data_dir.join("resources").join("ocr");
+    let items = vec![
+        ("https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/worker.min.js", "worker.min.js"),
+        ("https://cdn.jsdelivr.net/npm/tesseract.js-core@7.0.0/tesseract-core.wasm.js", "tesseract-core.wasm.js"),
+        ("https://cdn.jsdelivr.net/npm/tesseract.js-core@7.0.0/tesseract-core.wasm", "tesseract-core.wasm"),
+        ("https://tessdata.projectnaptha.com/4.0.0/eng.traineddata.gz", "tessdata/eng.traineddata.gz"),
+        ("https://tessdata.projectnaptha.com/4.0.0/rus.traineddata.gz", "tessdata/rus.traineddata.gz"),
+    ];
+    let client = reqwest::Client::new();
+    let mut total: u64 = 0;
+    for (url, _) in &items {
+        if let Some(size) = content_length(&client, url).await {
+            total += size;
+        }
+    }
+    let mut current: u64 = 0;
+    for (idx, (url, rel)) in items.iter().enumerate() {
+        let dest = base.join(rel);
+        download_with_progress(
+            &client,
+            &app_handle,
+            "ocr",
+            url,
+            &dest,
+            idx as u32 + 1,
+            items.len() as u32,
+            &mut current,
+            total,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+#[derive(serde::Serialize)]
+struct PdfResourceStatus {
+    available: bool,
+    missing: Vec<String>,
+}
+
+#[tauri::command]
+fn get_pdf_resource_status(app_handle: AppHandle) -> Result<PdfResourceStatus, String> {
+    let mut missing = Vec::new();
+    let data_dir = app_handle.state::<AppState>().data_dir.clone();
+    #[cfg(target_os = "windows")]
+    {
+        let base = data_dir.join("resources").join("pdf").join("win");
+        if !base.join("wkhtmltopdf.exe").exists() {
+            missing.push("wkhtmltopdf.exe".to_string());
+        }
+        if !base.join("wkhtmltox.dll").exists() {
+            missing.push("wkhtmltox.dll".to_string());
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let base = data_dir.join("resources").join("pdf").join("linux");
+        if !base.join("wkhtmltopdf").exists() {
+            missing.push("wkhtmltopdf".to_string());
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let base = data_dir.join("resources").join("pdf").join("mac");
+        if !base.join("wkhtmltopdf").exists() {
+            missing.push("wkhtmltopdf".to_string());
+        }
+    }
+    Ok(PdfResourceStatus {
+        available: missing.is_empty(),
+        missing,
+    })
+}
+
+#[cfg(target_os = "windows")]
+async fn extract_zip_to_dir(zip_path: &Path, dest: &Path) -> Result<(), String> {
+    let file = std::fs::File::open(zip_path).map_err(|e| e.to_string())?;
+    let mut archive = ZipArchive::new(file).map_err(|e| e.to_string())?;
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i).map_err(|e| e.to_string())?;
+        let name = entry.name().replace('\\', "/");
+        let lower = name.to_lowercase();
+        if !lower.ends_with("wkhtmltopdf.exe") && !lower.ends_with("wkhtmltox.dll") {
+            continue;
+        }
+        let filename = Path::new(&name)
+            .file_name()
+            .ok_or("invalid zip entry")?
+            .to_string_lossy()
+            .to_string();
+        let out_path = dest.join(filename);
+        let mut out_file = std::fs::File::create(&out_path).map_err(|e| e.to_string())?;
+        std::io::copy(&mut entry, &mut out_file).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+async fn extract_tar_xz_to_dir(archive_path: &Path, dest: &Path) -> Result<(), String> {
+    let file = std::fs::File::open(archive_path).map_err(|e| e.to_string())?;
+    let decompressor = XzDecoder::new(file);
+    let mut archive = Archive::new(decompressor);
+    for entry in archive.entries().map_err(|e| e.to_string())? {
+        let mut entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path().map_err(|e| e.to_string())?;
+        let path_str = path.to_string_lossy().replace('\\', "/");
+        let lower = path_str.to_lowercase();
+        if !(lower.ends_with("/wkhtmltopdf") || lower.contains("libwkhtmltox")) {
+            continue;
+        }
+        let filename = path
+            .file_name()
+            .ok_or("invalid archive entry")?
+            .to_string_lossy()
+            .to_string();
+        let out_path = dest.join(filename);
+        let mut out_file = std::fs::File::create(&out_path).map_err(|e| e.to_string())?;
+        std::io::copy(&mut entry, &mut out_file).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn download_pdf_resources(app_handle: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let client = reqwest::Client::new();
+    let temp_dir = state.data_dir.join("resources").join("tmp");
+    tokio::fs::create_dir_all(&temp_dir)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    #[cfg(target_os = "windows")]
+    let (url, dest_dir) = {
+        let dir = state.data_dir.join("resources").join("pdf").join("win");
+        ("https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.12.6-1.msvc2015-win64.zip", dir)
+    };
+    #[cfg(target_os = "linux")]
+    let (url, dest_dir) = {
+        let dir = state.data_dir.join("resources").join("pdf").join("linux");
+        ("https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.12.6-1.linux-generic-amd64.tar.xz", dir)
+    };
+    #[cfg(target_os = "macos")]
+    let (url, dest_dir) = {
+        let dir = state.data_dir.join("resources").join("pdf").join("mac");
+        ("https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.12.6-1.macos-cocoa-x86_64.tar.xz", dir)
+    };
+
+    let total = content_length(&client, url).await.unwrap_or(0);
+    let mut current = 0;
+    let archive_path = temp_dir.join("wkhtmltopdf-download");
+    download_with_progress(
+        &client,
+        &app_handle,
+        "pdf",
+        url,
+        &archive_path,
+        1,
+        1,
+        &mut current,
+        total,
+    )
+    .await?;
+    tokio::fs::create_dir_all(&dest_dir)
+        .await
+        .map_err(|e| e.to_string())?;
+    #[cfg(target_os = "windows")]
+    {
+        extract_zip_to_dir(&archive_path, &dest_dir).await?;
+    }
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    {
+        extract_tar_xz_to_dir(&archive_path, &dest_dir).await?;
+        let bin_path = dest_dir.join("wkhtmltopdf");
+        if bin_path.exists() {
+            let mut perms = std::fs::metadata(&bin_path).map_err(|e| e.to_string())?.permissions();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                perms.set_mode(0o755);
+                std::fs::set_permissions(&bin_path, perms).map_err(|e| e.to_string())?;
+            }
+        }
+    }
+    let _ = tokio::fs::remove_file(&archive_path).await;
+    Ok(())
 }
 
 fn normalize_stack_id(value: Option<&str>) -> Option<String> {
@@ -4213,6 +4501,9 @@ fn main() {
             upsert_ocr_text,
             mark_ocr_failed,
             get_ocr_stats,
+            download_ocr_resources,
+            get_pdf_resource_status,
+            download_pdf_resources,
             export_note_pdf_native,
             get_tags,
             get_note_tags,

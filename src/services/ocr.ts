@@ -1,4 +1,5 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { createWorker } from "tesseract.js";
 
 type OcrPendingFile = {
@@ -13,7 +14,13 @@ export type OcrStats = {
   pending: number;
 };
 
-export type OcrRuntimeStatus = "running" | "paused";
+export type OcrRuntimeStatus = "running" | "paused" | "disabled";
+
+export type OcrAvailability = {
+  available: boolean;
+  missing: string[];
+  baseDir: string | null;
+};
 
 const OCR_LANGS = ["eng", "rus"];
 const OCR_LANG = OCR_LANGS.join("+");
@@ -31,6 +38,8 @@ let workerBlobUrl: string | null = null;
 let workerReject: ((error: Error) => void) | null = null;
 let currentFetchAbort: AbortController | null = null;
 let recognizeReject: ((error: Error) => void) | null = null;
+let ocrAvailabilityPromise: Promise<OcrAvailability> | null = null;
+let ocrBaseDir: string | null = null;
 
 const logOcr = async (_message: string) => {};
 
@@ -57,9 +66,60 @@ const getExtension = (value: string) => {
   return part.slice(idx + 1).toLowerCase();
 };
 
+const REQUIRED_OCR_FILES = [
+  "ocr/worker.min.js",
+  "ocr/tesseract-core.wasm.js",
+  "ocr/tesseract-core.wasm",
+  "ocr/tessdata/eng.traineddata.gz",
+  "ocr/tessdata/rus.traineddata.gz",
+];
+
+const checkOcrBase = async (base: string): Promise<OcrAvailability> => {
+  const normalized = normalizePath(base);
+  const missing: string[] = [];
+  for (const rel of REQUIRED_OCR_FILES) {
+    const exists = await invoke<boolean>("path_exists", {
+      path: `${normalized}/${rel}`,
+    });
+    if (!exists) missing.push(rel);
+  }
+  return {
+    available: missing.length === 0,
+    missing,
+    baseDir: normalized,
+  };
+};
+
+const resolveOcrBase = async (): Promise<OcrAvailability> => {
+  if (!ocrAvailabilityPromise) {
+    ocrAvailabilityPromise = (async () => {
+      const dataDir = normalizePath(await getDataDir());
+      const dataBase = `${dataDir}/resources`;
+      const dataStatus = await checkOcrBase(dataBase);
+      if (dataStatus.available) {
+        return dataStatus;
+      }
+      const resourceDir = normalizePath(await getResourceDir());
+      const resourceStatus = await checkOcrBase(resourceDir);
+      if (resourceStatus.available) {
+        return resourceStatus;
+      }
+      return {
+        available: false,
+        missing: Array.from(new Set([...dataStatus.missing, ...resourceStatus.missing])),
+        baseDir: null,
+      };
+    })();
+  }
+  return ocrAvailabilityPromise;
+};
+
 const getLangPath = async () => {
-  const base = normalizePath(await getResourceDir());
-  return convertFileSrc(`${base}/ocr/tessdata`);
+  const availability = await resolveOcrBase();
+  if (!availability.baseDir) {
+    throw new Error("ocr resources not available");
+  }
+  return convertFileSrc(`${availability.baseDir}/ocr/tessdata`);
 };
 
 const getFileUrl = async (filePath: string) => {
@@ -69,7 +129,11 @@ const getFileUrl = async (filePath: string) => {
 };
 
 const buildWorker = async () => {
-  const base = normalizePath(await getResourceDir());
+  const availability = await resolveOcrBase();
+  if (!availability.baseDir) {
+    throw new Error("ocr resources not available");
+  }
+  const base = availability.baseDir;
   const workerAssetPath = convertFileSrc(`${base}/ocr/worker.min.js`);
   let workerPath = workerAssetPath;
   try {
@@ -162,8 +226,8 @@ export const startOcrQueue = () => {
     if (worker) {
       try {
         await worker.terminate();
-      } catch (e) {
-        console.warn("[ocr] terminate failed", e);
+      } catch {
+        // ignore terminate errors
       }
     }
     worker = null;
@@ -185,7 +249,7 @@ export const startOcrQueue = () => {
   };
 
   const handleFailure = async (error: unknown) => {
-    console.error("[ocr] failed", error);
+    await logOcr(`[ocr] failed ${String(error)}`);
     consecutiveFailures += 1;
     await resetWorker();
     if (consecutiveFailures >= MAX_WORKER_FAILURES) {
@@ -222,6 +286,12 @@ export const startOcrQueue = () => {
     if (cancelled) return;
     isRunning = true;
     try {
+      const availability = await resolveOcrBase();
+      if (!availability.available) {
+        runtimeStatus = "disabled";
+        cancelled = true;
+        return;
+      }
       const files = await invoke<OcrPendingFile[]>("get_ocr_pending_files", { limit: BATCH_SIZE });
       if (!files.length) {
         schedule(IDLE_DELAY_MS);
@@ -243,7 +313,6 @@ export const startOcrQueue = () => {
         const response = await fetch(url, { signal: currentFetchAbort.signal });
         currentFetchAbort = null;
         if (!response.ok) {
-          console.warn("[ocr] fetch failed", file.filePath, response.status);
           if (cancelled) return;
           await markOcrFailed(file.fileId, `fetch-${response.status}`);
           continue;
@@ -260,7 +329,6 @@ export const startOcrQueue = () => {
           const text = normalizeText(result.data.text || "");
           cleaned = text;
         } catch (err) {
-          console.error("[ocr] recognize failed", file.filePath, err);
           if (cancelled) return;
           await markOcrFailed(file.fileId, "recognize");
           const shouldRetry = await handleFailure(err);
@@ -318,3 +386,27 @@ export const startOcrQueue = () => {
 
 export const getOcrStats = () => invoke<OcrStats>("get_ocr_stats");
 export const getOcrRuntimeStatus = () => runtimeStatus;
+export const getOcrAvailability = () => resolveOcrBase();
+
+export type ResourceDownloadProgress = {
+  stage: string;
+  current: number;
+  total: number;
+  file: string;
+  index: number;
+  count: number;
+};
+
+export const installOcrResources = async (
+  onProgress: (payload: ResourceDownloadProgress) => void,
+) => {
+  const unlisten = await listen<ResourceDownloadProgress>("ocr-download-progress", (event) => {
+    onProgress(event.payload);
+  });
+  try {
+    await invoke("download_ocr_resources");
+  } finally {
+    unlisten();
+    ocrAvailabilityPromise = null;
+  }
+};

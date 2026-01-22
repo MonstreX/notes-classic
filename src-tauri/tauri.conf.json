@@ -63,11 +63,6 @@
       "icons/128x128@2x.png"
     ],
     "resources": [
-      "resources/ocr/worker.min.js",
-      "resources/ocr/tesseract-core.wasm.js",
-      "resources/ocr/tesseract-core.wasm",
-      "resources/ocr/tessdata/eng.traineddata.gz",
-      "resources/ocr/tessdata/rus.traineddata.gz",
       "resources/i18n/en.json",
       "resources/i18n/ru.json",
       "resources/fonts/NotoSans-Regular.ttf"
