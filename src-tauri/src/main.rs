@@ -1357,21 +1357,29 @@ fn t(
 
 fn resolve_i18n_dir<R: Runtime>(app_handle: &AppHandle<R>) -> PathBuf {
     let has_i18n = |dir: &PathBuf| dir.join("i18n").join("en.json").exists();
+    let resolve_from_dir = |dir: &PathBuf| -> Option<PathBuf> {
+        if has_i18n(dir) {
+            return Some(dir.clone());
+        }
+        let nested = dir.join("resources");
+        if has_i18n(&nested) {
+            return Some(nested);
+        }
+        None
+    };
     if let Ok(resource_dir) = app_handle.path().resource_dir() {
-        let dir = resource_dir;
-        if has_i18n(&dir) {
+        if let Some(dir) = resolve_from_dir(&resource_dir) {
             return dir;
         }
     }
     if let Ok(exe) = std::env::current_exe() {
         if let Some(exe_dir) = exe.parent().map(|p| p.to_path_buf()) {
-            let candidate = exe_dir.join("resources");
-            if has_i18n(&candidate) {
-                return candidate;
-            }
             let mut current = Some(exe_dir);
             for _ in 0..6 {
                 let Some(dir) = current.take() else { break };
+                if let Some(candidate) = resolve_from_dir(&dir) {
+                    return candidate;
+                }
                 let candidate = dir.join("src-tauri").join("resources");
                 if has_i18n(&candidate) {
                     return candidate;
@@ -1384,6 +1392,9 @@ fn resolve_i18n_dir<R: Runtime>(app_handle: &AppHandle<R>) -> PathBuf {
         let mut current = Some(cwd);
         for _ in 0..6 {
             let Some(dir) = current.take() else { break };
+            if let Some(candidate) = resolve_from_dir(&dir) {
+                return candidate;
+            }
             let candidate = dir.join("src-tauri").join("resources");
             if has_i18n(&candidate) {
                 return candidate;

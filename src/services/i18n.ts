@@ -18,15 +18,33 @@ const getResourceDir = async () => {
   return resourceDirPromise;
 };
 
+const decodeJson = (raw: string) => {
+  try {
+    return JSON.parse(raw) as Record<string, string>;
+  } catch {
+    return {};
+  }
+};
+
 const loadMessages = async (lang: LanguageCode) => {
   try {
     const base = await getResourceDir();
+    if (!base) return {};
     const url = convertFileSrc(`${base}/i18n/${lang}.json`);
     const response = await fetch(url);
-    if (!response.ok) {
-      return {};
+    if (response.ok) {
+      return (await response.json()) as Record<string, string>;
     }
-    return (await response.json()) as Record<string, string>;
+  } catch {
+    // Fall through to Tauri file read.
+  }
+  try {
+    const base = await getResourceDir();
+    if (!base) return {};
+    const path = `${base}/i18n/${lang}.json`;
+    const bytes = await invoke<number[]>("read_file_bytes", { path });
+    const text = new TextDecoder("utf-8").decode(new Uint8Array(bytes));
+    return decodeJson(text);
   } catch {
     return {};
   }
