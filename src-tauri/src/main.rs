@@ -1580,13 +1580,10 @@ fn build_menu<R: Runtime>(app_handle: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         )?)
         .build()?;
 
-    let tools_menu = SubmenuBuilder::new(app_handle, label("menu.tools")).build()?;
-
     MenuBuilder::new(app_handle)
         .item(&file_menu)
         .item(&view_menu)
         .item(&note_menu)
-        .item(&tools_menu)
         .build()
 }
 

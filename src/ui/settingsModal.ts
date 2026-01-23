@@ -124,8 +124,7 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
   let currentStoragePath = "";
 
   const formatDefaultPath = () => {
-    if (!defaultStoragePath) return "\\data\\<storage>";
-    return "\\data\\<storage>";
+    return "data/<storage>";
   };
 
   const setStoragePathDisplay = (mode: "default" | "custom", path: string) => {
@@ -135,7 +134,8 @@ export const mountSettingsModal = (root: HTMLElement): SettingsModal => {
       return;
     }
     const normalized = path.replace(/[\\/]+$/, "");
-    storagePath.textContent = `${normalized}\\<storage>`;
+    const separator = normalized.includes("\\") ? "\\" : "/";
+    storagePath.textContent = `${normalized}${separator}<storage>`;
   };
 
   const updateDefaultButtonState = () => {
