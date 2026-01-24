@@ -9,6 +9,7 @@ let currentLang: LanguageCode = FALLBACK_LANG;
 let messages: Record<string, string> = {};
 let fallbackMessages: Record<string, string> = {};
 let resourceDirPromise: Promise<string> | null = null;
+let i18nDirPromise: Promise<string> | null = null;
 let pluralRules: Intl.PluralRules | null = null;
 
 const getResourceDir = async () => {
@@ -16,6 +17,40 @@ const getResourceDir = async () => {
     resourceDirPromise = invoke<string>("get_resource_dir");
   }
   return resourceDirPromise;
+};
+
+const getI18nDir = async () => {
+  if (!i18nDirPromise) {
+    i18nDirPromise = invoke<string>("get_i18n_dir").catch(async () => {
+      const base = await getResourceDir();
+      return base ? `${base}/i18n` : "";
+    });
+  }
+  return i18nDirPromise;
+};
+
+const stripExtendedPrefix = (value: string) => {
+  if (value.startsWith("\\\\?\\")) return value.slice(4);
+  if (value.startsWith("//?/")) return value.slice(4);
+  return value;
+};
+
+const normalizeBasePath = (base: string) => {
+  const cleaned = stripExtendedPrefix(base).replace(/[\\/]+$/, "");
+  return cleaned;
+};
+
+const buildUrlPath = (base: string, lang: string) => {
+  const cleaned = normalizeBasePath(base).replace(/\\/g, "/");
+  return `${cleaned}/${lang}.json`;
+};
+
+const buildFsPath = (base: string, lang: string) => {
+  const cleaned = normalizeBasePath(base);
+  if (cleaned.includes("\\") || /^[A-Za-z]:\\/.test(cleaned)) {
+    return `${cleaned}\\${lang}.json`;
+  }
+  return `${cleaned}/${lang}.json`;
 };
 
 const decodeJson = (raw: string) => {
@@ -28,24 +63,33 @@ const decodeJson = (raw: string) => {
 
 const loadMessages = async (lang: LanguageCode) => {
   try {
-    const base = await getResourceDir();
-    if (!base) return {};
-    const url = convertFileSrc(`${base}/i18n/${lang}.json`);
+    const base = await getI18nDir();
+    if (!base) {
+      console.warn("[i18n] empty i18n dir");
+      return {};
+    }
+    const urlPath = buildUrlPath(base, lang);
+    const url = convertFileSrc(urlPath);
     const response = await fetch(url);
     if (response.ok) {
       return (await response.json()) as Record<string, string>;
     }
-  } catch {
-    // Fall through to Tauri file read.
+    console.warn("[i18n] fetch failed", { lang, url, status: response.status });
+  } catch (err) {
+    console.warn("[i18n] fetch error", err);
   }
   try {
-    const base = await getResourceDir();
-    if (!base) return {};
-    const path = `${base}/i18n/${lang}.json`;
+    const base = await getI18nDir();
+    if (!base) {
+      console.warn("[i18n] empty i18n dir for read");
+      return {};
+    }
+    const path = buildFsPath(base, lang);
     const bytes = await invoke<number[]>("read_file_bytes", { path });
     const text = new TextDecoder("utf-8").decode(new Uint8Array(bytes));
     return decodeJson(text);
-  } catch {
+  } catch (err) {
+    console.warn("[i18n] read_file_bytes failed", err);
     return {};
   }
 };
